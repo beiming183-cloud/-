@@ -39,6 +39,10 @@ public final class Cw991LayoutMetricsSuite {
                 "keycap height is width-driven, not leftover-height-driven");
         check(number.height() > function.height(),
                 "numeric keycaps retain the physical 991 size hierarchy");
+        check(number.height() / 162f >= 0.80f,
+                "numeric keycap is large enough to contain both legends");
+        check(function.height() / 136f >= 0.75f,
+                "function keycap is large enough to contain both legends");
 
         float[] rows = Cw991LayoutMetrics.mainRowCenters(
                 900f, 1940f, viewportWidth, density);
