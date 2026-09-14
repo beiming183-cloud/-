@@ -1,0 +1,73 @@
+plugins {
+    id 'java-library'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+sourceSets {
+    regression {
+        java.srcDir 'src/regression/java'
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+
+tasks.register('regressionTest', JavaExec) {
+    group = 'verification'
+    description = 'Runs dependency-free calculator state-machine regression tests.'
+    classpath = sourceSets.regression.runtimeClasspath
+    mainClass = 'com.codex.fx991.core.RegressionSuite'
+    dependsOn tasks.named('regressionClasses')
+}
+
+tasks.register('cwRegressionTest', JavaExec) {
+    group = 'verification'
+    description = 'Runs CN CW HOME/menu/input golden interaction traces.'
+    classpath = sourceSets.regression.runtimeClasspath
+    mainClass = 'com.codex.fx991.core.CnCwMachineSuite'
+    dependsOn tasks.named('regressionClasses')
+}
+
+tasks.register('cwSemanticTest', JavaExec) {
+    group = 'verification'
+    description = 'Runs 991 physical-key, HOME viewport and EXE/relation semantics.'
+    classpath = sourceSets.regression.runtimeClasspath
+    mainClass = 'com.codex.fx991.core.cw.CnCwSemanticSuite'
+    dependsOn tasks.named('regressionClasses')
+}
+
+tasks.register('cwModeRegressionTest', JavaExec) {
+    group = 'verification'
+    description = 'Runs structured Statistics/Distribution/Table/Equation mode workflows.'
+    classpath = sourceSets.regression.runtimeClasspath
+    mainClass = 'com.codex.fx991.core.CnCwModeEngineSuite'
+    dependsOn tasks.named('regressionClasses')
+}
+
+tasks.register('manualFunctionsTest', JavaExec) {
+    group = 'verification'
+    description = 'Runs ÷R, DMS, Pol/Rec, engineering and multi-statement checks.'
+    classpath = sourceSets.regression.runtimeClasspath
+    mainClass = 'com.codex.fx991.core.ManualFunctionsSuite'
+    dependsOn tasks.named('regressionClasses')
+}
+
+tasks.register('cwLayoutMetricsTest', JavaExec) {
+    group = 'verification'
+    description = 'Runs physical 991 keycap proportion and typography checks.'
+    classpath = sourceSets.regression.runtimeClasspath
+    mainClass = 'com.codex.fx991.core.ui.Cw991LayoutMetricsSuite'
+    dependsOn tasks.named('regressionClasses')
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('regressionTest')
+    dependsOn tasks.named('cwRegressionTest')
+    dependsOn tasks.named('cwSemanticTest')
+    dependsOn tasks.named('cwModeRegressionTest')
+    dependsOn tasks.named('manualFunctionsTest')
+    dependsOn tasks.named('cwLayoutMetricsTest')
+}

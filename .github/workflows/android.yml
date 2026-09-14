@@ -1,0 +1,45 @@
+name: Android build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Run core regression tests
+        run: ./gradlew :core:regressionTest
+
+      - name: Build CN991 debug APK
+        run: ./gradlew :app:assembleCn991Debug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: cn991-debug-apk
+          path: app/build/outputs/apk/cn991/**/*.apk
+          if-no-files-found: error
+
