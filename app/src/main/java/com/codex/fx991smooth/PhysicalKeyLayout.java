@@ -136,12 +136,9 @@ public final class PhysicalKeyLayout {
      * than pinned to the top of a tall handset canvas.
      */
     public RectF displayBounds(float width, float height) {
-        float left = Math.max(dp(16), width * 0.083f);
-        float top = Math.max(dp(26), height * 0.075f);
-        float usable = Math.max(dp(180), width - left * 2f);
-        float ratioHeight = usable * 0.435f;
-        float heightLimit = height * 0.205f;
-        float lcdHeight = Math.min(ratioHeight, heightLimit);
+        float left = Math.max(dp(13), width * 0.04f);
+        float top = Math.max(dp(12), height * 0.02f);
+        float lcdHeight = height * 0.22f;
         return new RectF(left, top, width - left, top + lcdHeight);
     }
 
@@ -154,9 +151,9 @@ public final class PhysicalKeyLayout {
         viewportWidth = width;
         List<Hit> hits = new ArrayList<>(64);
         RectF lcd = displayBounds(width, height);
-        float margin = dp(13);
-        float controlTop = lcd.bottom + width * 0.035f;
-        float controlHeight = Math.min(height * 0.22f, width * 0.45f);
+        float margin = Math.max(dp(13), width * 0.04f);
+        float controlTop = lcd.bottom + width * 0.025f;
+        float controlHeight = Math.min(height * 0.15f, width * 0.40f);
         float controlBottom = controlTop + controlHeight;
         float radius = clamp(Math.min(dp(21), width * 0.053f), dp(15), dp(28));
 
@@ -190,7 +187,7 @@ public final class PhysicalKeyLayout {
 
         // Context row: larger, evenly spaced, and visually distinct from math.
         float contextTop = controlBottom + width * 0.022f;
-        float contextHeight = Math.min(height * 0.065f, width * 0.130f);
+        float contextHeight = Math.min(height * 0.075f, width * 0.160f);
         float contextGap = dp(7);
         float contextWidth = (width - margin * 2f - contextGap * 4f) / 5f;
         Definition[] context = {
@@ -207,7 +204,7 @@ public final class PhysicalKeyLayout {
         }
 
         float keyboardTop = contextTop + contextHeight + width * 0.025f;
-        float keyboardBottom = height - dp(8);
+        float keyboardBottom = height - dp(12);
         float[] rowCenters = Cw991LayoutMetrics.mainRowCenters(
                 keyboardTop, keyboardBottom, width, density);
         for (int row = 0; row < MAIN_ROWS.length; row++) {
@@ -253,6 +250,11 @@ public final class PhysicalKeyLayout {
         float visualHeight = visual.height();
         float centerX = touch.centerX();
         float centerY = touch.top + touch.height() * visual.verticalBias();
+        if (definition.kind == Kind.NUMBER || definition.kind == Kind.FUNCTION
+                || definition.kind == Kind.OPERATOR || definition.kind == Kind.ACTION
+                || definition.kind == Kind.EXECUTE) {
+            centerY += dp(8);
+        }
         centerY = clamp(centerY, touch.top + visualHeight * 0.5f,
                 touch.bottom - visualHeight * 0.5f);
         RectF visualBounds = new RectF(centerX - visualWidth * 0.5f,

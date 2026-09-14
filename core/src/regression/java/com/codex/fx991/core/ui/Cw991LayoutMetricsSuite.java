@@ -9,6 +9,8 @@ public final class Cw991LayoutMetricsSuite {
     }
 
     private void run() {
+        checkPhoneTypography(393f, 3f);
+        checkPhoneTypography(360f, 2f);
         float viewportWidth = 922f;
         float density = 2.75f;
 
@@ -50,6 +52,27 @@ public final class Cw991LayoutMetricsSuite {
                 "physical body margin remains below the last key row");
 
         System.out.println("PASS " + checks + " CW layout metric checks");
+    }
+
+    private void checkPhoneTypography(float widthDp, float density) {
+        float width = widthDp * density;
+        float margin = Math.max(13f * density, width * 0.04f);
+        float functionWidth = (width - margin * 2f - 4f * density * 5f) / 6f;
+        float numberWidth = (width - margin * 2f - 6f * density * 4f) / 5f;
+        Cw991LayoutMetrics.KeyVisual function = Cw991LayoutMetrics.forKey(
+                Cw991LayoutMetrics.Role.FUNCTION, functionWidth, width * 0.16f, width, density);
+        Cw991LayoutMetrics.KeyVisual number = Cw991LayoutMetrics.forKey(
+                Cw991LayoutMetrics.Role.NUMBER, numberWidth, width * 0.18f, width, density);
+        Cw991LayoutMetrics.KeyVisual context = Cw991LayoutMetrics.forKey(
+                Cw991LayoutMetrics.Role.CONTEXT, numberWidth, width * 0.14f, width, density);
+        check(function.mainTextSize() / density >= 20f,
+                "phone function text must be at least 20dp");
+        check(function.secondaryTextSize() / density >= 15f,
+                "phone SHIFT annotations must be at least 15dp");
+        check(number.mainTextSize() / density >= 28f,
+                "phone digits must be at least 28dp");
+        check(context.secondaryTextSize() / density >= 14f,
+                "phone context labels must be at least 14dp");
     }
 
     private void check(boolean condition, String message) {

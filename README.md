@@ -1,74 +1,48 @@
-# CN Scientific Calculator
+# CN 科学计算器
 
-An independent, clean-room Android scientific-calculator rebuild focused on a
-predictable physical-calculator interaction model: touch-down input, semantic
-editing, two-key rollover and a retained display/keyboard canvas.  The supplied
-manual is used as a behavioral specification; this repository does not contain
-vendor firmware, branding assets or copied calculator source.
+独立开发的 Android 科学计算器项目，采用实体计算器式的按下即输入、语义化公式编辑和双键同时操作。显示区与键盘采用单画布绘制，不包含厂商固件、品牌素材或复制的计算器源码。
 
-## Product
+## 产品信息
 
-This release publishes only the requested 991 profile.  The shared `:core`
-module remains model-aware so the reducer can be tested independently, but no
-999 APK or 999 launcher entry is generated:
+当前仅发布 991 配置，不生成其他型号的安装包。版本为 `0.3.8`，这是交互和界面开发里程碑，不代表已经完全实现说明书中的所有功能。
 
-| Variant | Label | Application ID | Version code | Applications |
-| --- | --- | --- | ---: | ---: |
-| `cn991` | CN Scientific 991 | `com.codex.cnscientific.calculator991` | 320 | 10 |
+| 项目 | 内容 |
+| --- | --- |
+| 应用名称 | CN 科学计算器 991 |
+| 构建配置 | `cn991` |
+| 应用标识 | `com.codex.cnscientific.calculator991` |
+| 版本代码 | 320 |
+| 应用数量 | 10 |
+| 系统要求 | Android 8.0 及以上 |
+| 编译与目标 SDK | 34 |
 
-Debug packages append `.debug` to the application ID so they can coexist with
-their release build.
+调试包的应用标识追加 `.debug`，可以与发布包共存。共享的 `:core` 模块与 Android 界面分离，便于独立验证计算和状态切换。
 
-The UI receives the 991 capability contract through generated
-`BuildConfig.MODEL_ID`, `MODEL_PROFILE`, `MODEL_LABEL`, `MODEL_EXTENDED`,
-`HAS_DISTRIBUTION`, `HAS_SPREADSHEET` and `APPLICATION_COUNT` fields.  Keeping
-the contract explicit prevents unsupported 999-only applications from leaking
-into the 991 HOME grid.
+## 已实现的功能
 
-The current build is version `0.3.8` (debug variants append `-debug`).  It is a
-991 interaction/UI milestone, not a claim of 1:1 manual parity.  See the
-[feature coverage matrix](docs/FEATURE_COVERAGE.md) for the exact boundary.
+- 启动直接进入计算界面，按下 HOME 时才打开应用网格。
+- 按下立即输入，先提供触觉反馈；双键同时操作按实际按下顺序处理。
+- 支持方向导航、确定、执行、删除、SHIFT、语义化公式编辑及内存历史记录。
+- 提供标量表达式、精确分数、统计、函数表、方程与不等式、复数、进制、矩阵、向量和单位换算引擎。
+- 统计、函数表、方程、不等式、矩阵、向量和比例计算可以通过逗号输入方式使用。
+- 已实现带余除法、度分秒输入、语句赋值、关系验证及工程和坐标工具接口。
+- 不包含广告、分析组件、网络权限、网页嵌入、相机或启动 SDK。
 
-## Current implementation
+完整的表格、系数编辑器、答案页和部分自然数学输入输出界面仍在开发中。功能状态以[功能覆盖说明](docs/FEATURE_COVERAGE.md)为准，不把计算引擎可用等同于完整界面已经完成。
 
-- Android 8.0+ (`minSdk 26`), target/compile SDK 34.  API 26 is intentional:
-  the shared Java core uses the Android 8 collection/unsigned-number surface;
-  API 33-only `Math.fma` is isolated behind `Compat.multiplyAdd`.
-- No ads, analytics, network permission, WebView, camera or startup SDKs.
-- One hardware-accelerated canvas for the 991 HOME grid, menus, physical
-  control deck, context keys, six-key function rows, five-column numeric rows
-  and result display.
-- State changes begin on touch-down; haptic feedback is issued before reducer
-  work so a long calculation cannot delay the physical-key response.
-- Two-key rollover preserves touch-down order when fingers release in either
-  order.
-- A 991-gated CN CW state machine with Home/Back/OK/EXE/directional
-  navigation, separate relation `=`, semantic-token editing, DEL, SHIFT and
-  in-memory history.
-- Dependency-free engines for scalar expressions, exact rationals, statistics,
-  function tables, equations/inequalities, complex numbers, Base-N, matrices,
-  vectors and units.  Distribution and spreadsheet capabilities are not part
-  of the 991 product surface.
-- Compact comma-entry bridges make Statistics, Function Table, Equation,
-  Inequality, Matrix, Vector and Ratio calculations reachable now; their
-  dedicated table/coefficient editors remain a later UI layer.
-- ÷R, DMS input, statement assignment, relation verification and engineering/
-  coordinate utility APIs are independently implemented; ÷R/DMS/relations are
-  reachable through the catalog.
-- The current JVM gates pass 169 general regression checks, 53 CN CW machine
-  checks, 20 structured-mode checks, 24 manual-utility checks and 26 dedicated
-  991 semantic checks (295 assertions in these suites; some lower-level cases
-  are intentionally shared).
+## 界面优化方向
 
-The mode engines are deliberately separated from Android.  Every application
-enabled for the cn991 product has a HOME entry and landing selector.  Structured
-modes currently use a compact, deterministic comma-entry editor; the full
-manual table/grid, coefficient, answer-page and MathI/MathO editors are still
-release work.
+保留 991 的按键顺序和 SHIFT 对应关系，同时以手机可读性为优先：
 
-## Build and verify
+- 放大公式、结果、数字和科学函数文字。
+- 黄色二级功能逐键居中，与键帽之间保留独立标注空间。
+- 同行键帽、阴影和中心线保持一致，数学上下标独立排版。
+- 使用暖白机身、浅绿屏幕、石墨文字和深金色标注。
+- 压缩装饰与空白，不以缩小文字解决空间不足。
 
-Use the bundled Gradle wrapper and a Java 17 runtime:
+## 本地构建与验证
+
+使用项目自带的 Gradle Wrapper 和 Java 17：
 
 ```powershell
 $env:JAVA_HOME='C:\Program Files\Eclipse Adoptium\jdk-17.0.17.10-hotspot'
@@ -76,45 +50,28 @@ $env:JAVA_HOME='C:\Program Files\Eclipse Adoptium\jdk-17.0.17.10-hotspot'
 ./gradlew.bat :app:assembleCn991Debug
 ```
 
-For a clean verification/build pass:
+完整检查与构建：
 
 ```powershell
 ./gradlew.bat clean check :app:assembleCn991Debug
 ```
 
-The APK is written below `app/build/outputs/apk/cn991/`.  A connected device is
-not required for the JVM regression suite.  Device-level frame, accessibility
-and manual-differential checks remain release gates.
+APK 输出目录为 `app/build/outputs/apk/cn991/`。JVM 回归测试不需要连接设备；实际设备的帧率、无障碍和视觉检查仍需单独验收。
 
-## Architecture and migration
+## GitHub 云端构建
 
-- [Architecture](docs/ARCHITECTURE.md) — state boundaries, release contract,
-  worker model and performance invariants.
-- [Feature coverage](docs/FEATURE_COVERAGE.md) — manual-derived status without
-  overstating UI or verification.
-- [Migration](docs/MIGRATION.md) — legacy-path replacement, staged mode wiring,
-  data compatibility and clean-room policy.
+推送到 `main` 分支、创建针对 `main` 的合并请求或手动启动工作流后，GitHub Actions 会执行核心回归测试并构建调试 APK。构建完成后，在对应运行页面的构建产物区域下载 `cn991-debug-apk`。
 
-## Why a rebuild
+云端构建不依赖本机持续开机，但它只执行已提交的代码，不会自动完成后续设计或修改任务。
 
-The supplied legacy package is `com.nstudio.calc.casio.business` (version
-4.4.2), whose original signing key and exact source are unavailable.  Its
-interaction path was approximately:
+## 项目文档
 
-```text
-touch-up listener -> keyboard fragment -> formula display -> generic editor
-                  -> asynchronous evaluator
-```
+- [架构说明](docs/ARCHITECTURE.md)：状态边界、工作线程和性能约束。
+- [功能覆盖说明](docs/FEATURE_COVERAGE.md)：功能实现状态与验证范围。
+- [迁移说明](docs/MIGRATION.md)：旧路径替换、数据兼容及独立开发约束。
 
-That hierarchy makes physical-calculator semantics, latency and model-specific
-menus difficult to reason about.  This project instead owns the reducer and
-typed input path, and keeps heavy calculations behind explicit core APIs.  No
-GPL or unclear-license ancestor is linked into the product.
+## 来源与商标
 
-## Provenance and trademarks
+数学定义和可观察行为参考随附说明书及通用数值知识。代码、测试、界面资源和项目名称均独立编写。原有安装包的原始签名密钥与完整源码不可用，本项目不包含来源不清的上游代码。
 
-Mathematical definitions and observable behavior are derived from the supplied
-official manual and general numerical knowledge.  Code, tests, UI assets and
-branding are authored independently.  “CN Scientific” is this project's label;
-any third-party trademarks remain the property of their owners.  This is not an
-official vendor product.
+“CN 科学计算器”是本项目名称，不代表厂商官方产品。第三方商标归各自所有者所有。

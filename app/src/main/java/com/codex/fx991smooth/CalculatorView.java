@@ -6,6 +6,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
+import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
@@ -62,13 +63,14 @@ public final class CalculatorView extends View {
     private static final int INK_DARK = Color.rgb(18, 30, 24);
     private static final int SHIFT_INK = Color.rgb(137, 102, 13);
     private static final Typeface FACE_NORMAL = Typeface.create("sans-serif", Typeface.NORMAL);
-    private static final Typeface FACE_MEDIUM = Typeface.create("sans-serif", Typeface.BOLD);
+    private static final Typeface FACE_MEDIUM = Typeface.create("sans-serif-medium", Typeface.NORMAL);
     private static final Typeface FACE_BOLD = Typeface.create("sans-serif", Typeface.BOLD);
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
     private final Paint.FontMetrics fontMetrics = new Paint.FontMetrics();
     private final Path iconPath = new Path();
     private final RectF scratch = new RectF();
+    private final Rect textBounds = new Rect();
     private final List<KeyHit> hitMap = new ArrayList<>(64);
     /** Geometry/legends are owned by the physical 991 layout, not the painter. */
     private final PhysicalKeyLayout physicalLayout;
@@ -206,7 +208,7 @@ public final class CalculatorView extends View {
         if (!title.isEmpty()) {
             paint.setColor(LCD_INK);
             paint.setTypeface(FACE_BOLD);
-            paint.setTextSize(sp(6.6f));
+            paint.setTextSize(sp(12f));
             paint.setTextAlign(Paint.Align.LEFT);
             canvas.drawText(ellipsize(title, lcd.width() * 0.52f),
                     lcd.left + dp(5), centeredBaseline(lcd.top, lcd.top + barHeight), paint);
@@ -255,7 +257,7 @@ public final class CalculatorView extends View {
             drawApplicationGlyph(canvas, items.get(visibleIndex).id(), scratch,
                     selected ? LCD : LCD_INK);
             paint.setTypeface(FACE_MEDIUM);
-            paint.setTextSize(sp(8.2f));
+            paint.setTextSize(sp(16f));
             paint.setTextAlign(Paint.Align.CENTER);
             canvas.drawText(items.get(visibleIndex).label(), scratch.centerX(),
                     scratch.bottom - dp(2.8f), paint);
@@ -340,12 +342,12 @@ public final class CalculatorView extends View {
             }
             paint.setColor(selected ? LCD : LCD_INK);
             paint.setTypeface(FACE_MEDIUM);
-            paint.setTextSize(sp(9.4f));
+            paint.setTextSize(sp(18f));
             paint.setTextAlign(Paint.Align.LEFT);
             canvas.drawText(items.get(index).label(), lcd.left + dp(6),
                     centeredBaseline(rowTop, rowTop + rowHeight), paint);
             paint.setTypeface(FACE_NORMAL);
-            paint.setTextSize(sp(7.2f));
+            paint.setTextSize(sp(12f));
             paint.setTextAlign(Paint.Align.RIGHT);
             canvas.drawText(ellipsize(items.get(index).description(), lcd.width() * 0.47f),
                     lcd.right - dp(7), centeredBaseline(rowTop, rowTop + rowHeight), paint);
@@ -378,12 +380,12 @@ public final class CalculatorView extends View {
                         contentBottom, available)
                         && !drawNaturalFractionResult(canvas, lines[0], lcd, contentTop,
                         contentBottom, available)) {
-                    paint.setTextSize(sp(15.5f));
+                    paint.setTextSize(sp(34f));
                     canvas.drawText(ellipsize(lines[0], available), lcd.right - dp(6),
                             contentTop + (contentBottom - contentTop) * 0.86f, paint);
                 }
             } else {
-                paint.setTextSize(sp(8.2f));
+                paint.setTextSize(sp(16f));
                 int visibleLines = Math.min(2, lines.length);
                 for (int index = 0; index < visibleLines; index++) {
                     canvas.drawText(ellipsize(lines[index], available), lcd.right - dp(6),
@@ -392,7 +394,7 @@ public final class CalculatorView extends View {
             }
         } else {
             paint.setTypeface(FACE_NORMAL);
-            paint.setTextSize(sp(6.7f));
+            paint.setTextSize(sp(14f));
             paint.setTextAlign(Paint.Align.RIGHT);
             canvas.drawText(ellipsize(state.status(), available * 0.8f), lcd.right - dp(6),
                     contentBottom - dp(1), paint);
@@ -403,7 +405,7 @@ public final class CalculatorView extends View {
     private void drawNaturalExpression(Canvas canvas, CnCwExpressionNode expression,
                                        RectF lcd, float contentTop, float contentBottom,
                                        float available) {
-        float baseSize = sp(13.5f);
+        float baseSize = sp(25f);
         NaturalMetrics metrics = measureNatural(expression, baseSize);
         float viewportLeft = lcd.left + dp(6);
         float cursorOffset = naturalCursorOffset(expression, baseSize);
@@ -591,7 +593,7 @@ public final class CalculatorView extends View {
         }
         if (mantissa.isEmpty() || exponent.isEmpty()) return false;
 
-        float baseSize = sp(15.5f);
+        float baseSize = sp(34f);
         float exponentSize = baseSize * 0.62f;
         paint.setTypeface(FACE_MEDIUM);
         paint.setTextSize(baseSize);
@@ -640,13 +642,13 @@ public final class CalculatorView extends View {
 
         paint.setTypeface(FACE_MEDIUM);
         paint.setTextAlign(Paint.Align.CENTER);
-        paint.setTextSize(sp(10.8f));
+        paint.setTextSize(sp(24f));
         float numeratorWidth = paint.measureText(numerator);
         float denominatorWidth = paint.measureText(denominator);
         float fractionWidth = Math.max(numeratorWidth, denominatorWidth) + dp(7);
         float wholeWidth = 0f;
         if (!whole.isEmpty()) {
-            paint.setTextSize(sp(15.5f));
+            paint.setTextSize(sp(32f));
             wholeWidth = paint.measureText(whole) + dp(5);
         }
         if (fractionWidth + wholeWidth > available) return false;
@@ -658,12 +660,12 @@ public final class CalculatorView extends View {
         paint.setColor(LCD_INK);
         canvas.drawLine(fractionCenter - fractionWidth * 0.5f, centerY,
                 fractionCenter + fractionWidth * 0.5f, centerY, paint);
-        paint.setTextSize(sp(10.8f));
-        canvas.drawText(numerator, fractionCenter, centerY - dp(3.2f), paint);
-        canvas.drawText(denominator, fractionCenter, centerY + dp(11.2f), paint);
+        paint.setTextSize(sp(24f));
+        canvas.drawText(numerator, fractionCenter, centerY - dp(6f), paint);
+        canvas.drawText(denominator, fractionCenter, centerY + dp(19f), paint);
         if (!whole.isEmpty()) {
             paint.setTextAlign(Paint.Align.RIGHT);
-            paint.setTextSize(sp(15.5f));
+            paint.setTextSize(sp(32f));
             canvas.drawText(whole, fractionCenter - fractionWidth * 0.5f - dp(3),
                     centerY + dp(4.8f), paint);
         }
@@ -682,13 +684,13 @@ public final class CalculatorView extends View {
         paint.setColor(LCD_INK);
         paint.setTypeface(FACE_BOLD);
         paint.setTextAlign(Paint.Align.LEFT);
-        paint.setTextSize(sp(7.2f));
+            paint.setTextSize(sp(14f));
         String address = ((char) ('A' + state.spreadsheetColumn()))
                 + Integer.toString(state.spreadsheetRow() + 1);
         canvas.drawText(address, lcd.left + dp(3),
                 centeredBaseline(formulaTop, formulaBottom), paint);
         paint.setTypeface(FACE_NORMAL);
-        paint.setTextSize(sp(6.2f));
+        paint.setTextSize(sp(13f));
         String formula = state.displayText().equals("│")
                 ? state.spreadsheetFormula() : state.displayText();
         if (formula.isEmpty()) formula = state.result();
@@ -704,7 +706,7 @@ public final class CalculatorView extends View {
         int rowStart = (state.spreadsheetRow() / visibleRows) * visibleRows;
         List<String> values = state.spreadsheetCells();
         paint.setStrokeWidth(dp(0.6f));
-        paint.setTextSize(sp(5.8f));
+        paint.setTextSize(sp(12f));
         for (int column = 0; column < 5; column++) {
             float left = lcd.left + rowHeader + column * columnWidth;
             paint.setColor(Color.argb(42, 20, 27, 23));
@@ -762,12 +764,12 @@ public final class CalculatorView extends View {
             paint.setColor(selected ? LCD : LCD_INK);
             paint.setTextAlign(Paint.Align.LEFT);
             paint.setTypeface(FACE_MEDIUM);
-            paint.setTextSize(sp(9.2f));
+        paint.setTextSize(sp(18f));
             canvas.drawText(commands.get(index).label(), lcd.left + dp(7),
                     centeredBaseline(rowTop, rowTop + rowHeight), paint);
             paint.setTextAlign(Paint.Align.RIGHT);
             paint.setTypeface(FACE_NORMAL);
-            paint.setTextSize(sp(6.3f));
+        paint.setTextSize(sp(12f));
             canvas.drawText(ellipsize(commands.get(index).description(), lcd.width() * 0.48f),
                     lcd.right - dp(7), centeredBaseline(rowTop, rowTop + rowHeight), paint);
         }
@@ -938,31 +940,26 @@ public final class CalculatorView extends View {
             paint.setColor(darkInk ? INK_DARK : INK_LIGHT);
             paint.setTypeface(FACE_BOLD);
             paint.setTextAlign(Paint.Align.CENTER);
-            float mainSize = hit.visual.mainTextSize() * textLengthScale(hit.spec.main);
-            paint.setTextSize(mainSize);
-            canvas.drawText(hit.spec.main, visual.centerX(),
-                    centeredBaseline(visual.top, visual.bottom), paint);
+            if (hit.spec.secondary.isEmpty()) {
+                drawFittedCentered(canvas, hit.spec.main, visual.centerX(),
+                        visual.top, visual.bottom, hit.visual.mainTextSize(),
+                        visual.width() * 0.88f, dp(11), darkInk ? INK_DARK : INK_LIGHT,
+                        FACE_BOLD);
+            } else {
+                // Secondary legends get a real band inside their own keycap.
+                // This keeps them centered and prevents them from colliding with
+                // the key above on compact phone layouts.
+                drawFittedCentered(canvas, hit.spec.secondary, visual.centerX(),
+                        visual.top + dp(1), visual.top + visual.height() * 0.34f,
+                        hit.visual.secondaryTextSize(), visual.width() * 0.92f,
+                        dp(9), SHIFT_INK, FACE_MEDIUM);
+                drawFittedCentered(canvas, hit.spec.main, visual.centerX(),
+                        visual.top + visual.height() * 0.27f, visual.bottom,
+                        hit.visual.mainTextSize(), visual.width() * 0.90f,
+                        dp(11), darkInk ? INK_DARK : INK_LIGHT, FACE_BOLD);
+            }
         }
         canvas.restore();
-
-        if (!pageRocker && !hit.spec.secondary.isEmpty()) {
-            paint.setTypeface(FACE_MEDIUM);
-            float secondarySize = hit.visual.secondaryTextSize()
-                    * textLengthScale(hit.spec.secondary);
-            paint.setTextSize(secondarySize);
-            boolean functionLegend = hit.spec.kind == KeyKind.NUMBER
-                    || hit.spec.kind == KeyKind.OPERATOR
-                    || hit.spec.kind == KeyKind.FUNCTION
-                    || hit.spec.kind == KeyKind.ACTION
-                    || hit.spec.kind == KeyKind.EQUALS;
-            paint.setColor(functionLegend ? SHIFT_INK : Color.rgb(81, 88, 84));
-            // The legend belongs to the key below it. Keeping its baseline
-            // near that key leaves the preceding row's key shadow clear.
-            float baseline = visual.top - dp(functionLegend ? 1.8f : 4.5f);
-            paint.setTextAlign(functionLegend ? Paint.Align.LEFT : Paint.Align.CENTER);
-            float legendX = functionLegend ? visual.left + dp(2.5f) : visual.centerX();
-            canvas.drawText(hit.spec.secondary, legendX, baseline, paint);
-        }
 
         if (state.shiftArmed() && hit.spec.key == CnCwKey.SHIFT) {
             paint.setStyle(Paint.Style.STROKE);
@@ -1135,6 +1132,22 @@ public final class CalculatorView extends View {
     private float centeredBaseline(float top, float bottom) {
         paint.getFontMetrics(fontMetrics);
         return (top + bottom) * 0.5f - (fontMetrics.ascent + fontMetrics.descent) * 0.5f;
+    }
+
+    private void drawFittedCentered(Canvas canvas, String text, float centerX,
+                                    float top, float bottom, float requestedSize,
+                                    float maxWidth, float minimumSize, int color,
+                                    Typeface typeface) {
+        paint.setTypeface(typeface);
+        paint.setTextAlign(Paint.Align.CENTER);
+        float size = requestedSize;
+        paint.setTextSize(size);
+        while (size > minimumSize && paint.measureText(text) > maxWidth) {
+            size -= dp(0.5f);
+            paint.setTextSize(size);
+        }
+        paint.setColor(color);
+        canvas.drawText(text, centerX, centeredBaseline(top, bottom), paint);
     }
 
     private static float textLengthScale(String text) {

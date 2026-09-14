@@ -42,8 +42,8 @@ public final class Cw991LayoutMetrics {
                 // Give the frequently-used number row a deliberate weight so it
                 // reads at arm's length instead of looking like tiny labels in
                 // oversized circles.
-                mainRatio = 0.54f;
-                secondaryRatio = 0.31f;
+                mainRatio = 0.63f;
+                secondaryRatio = 0.34f;
                 verticalBias = 0.50f;
             }
             case OPERATOR -> {
@@ -60,15 +60,15 @@ public final class Cw991LayoutMetrics {
             }
             case FUNCTION -> {
                 diameter = diameter(width, height, viewport, 0.74f, 0.74f, 0.108f);
-                mainRatio = 0.45f;
-                secondaryRatio = 0.31f;
+                mainRatio = 0.56f;
+                secondaryRatio = 0.39f;
                 verticalBias = 0.50f;
             }
             case CONTEXT, SHIFT -> {
                 diameter = diameter(width, height, viewport, 0.62f, 0.76f, 0.102f);
-                mainRatio = role == Role.SHIFT ? 0.49f : 0.35f;
-                secondaryRatio = 0.20f;
-                verticalBias = 0.62f;
+                mainRatio = 0.50f;
+                secondaryRatio = 0.36f;
+                verticalBias = 0.66f;
             }
             case CONTROL -> {
                 diameter = Math.min(width, height);
@@ -90,8 +90,13 @@ public final class Cw991LayoutMetrics {
             }
             default -> throw new IllegalStateException("Unhandled key role: " + role);
         }
-        return new KeyVisual(diameter, diameter, diameter * mainRatio,
-                diameter * secondaryRatio, verticalBias, true);
+        float mainSize = diameter * mainRatio;
+        if (role == Role.CONTROL) mainSize = Math.max(mainSize, safeDensity * 16f);
+        if (role == Role.OK) mainSize = Math.max(mainSize, safeDensity * 14f);
+        float secondarySize = Math.max(safeDensity * 15f,
+                Math.min(safeDensity * 17f, diameter * secondaryRatio));
+        return new KeyVisual(diameter, diameter, mainSize,
+                secondarySize, verticalBias, true);
     }
 
     /**
@@ -103,17 +108,17 @@ public final class Cw991LayoutMetrics {
         float safeDensity = Math.max(0.75f, density);
         float width = Math.max(viewportWidth, safeDensity * 180f);
         float[] desired = {
-                width * 0.070f,
-                width * 0.220f,
-                width * 0.390f,
-                width * 0.565f,
-                width * 0.740f,
-                width * 0.915f
+                width * 0.080f,
+                width * 0.240f,
+                width * 0.415f,
+                width * 0.595f,
+                width * 0.775f,
+                width * 0.955f
         };
         float bottomInset = Math.max(safeDensity * 22f, width * 0.075f);
         float available = Math.max(safeDensity * 180f,
                 keyboardBottom - bottomInset - keyboardTop);
-        float scale = Math.min(1f, available / desired[desired.length - 1]);
+        float scale = Math.min(1f, available / (desired[desired.length - 1] + width * 0.09f));
         float lastHalfPitch = width * 0.0875f * scale;
         float free = Math.max(0f,
                 available - desired[desired.length - 1] * scale - lastHalfPitch);
