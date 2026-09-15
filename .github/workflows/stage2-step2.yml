@@ -1,0 +1,84 @@
+name: Stage 2 Step 2
+
+on:
+  push:
+    branches: [auto/stage2]
+    paths: [.github/workflows/stage2-step2.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  step2:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: auto/stage2
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Integrate GestureController
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/main/java/com/codex/fx991smooth/CalculatorView.java')
+          s=p.read_text()
+          s=s.replace('    private Runnable keyRepeat;\n    private CnCwKey repeatingKey;\n    private int repeatingPointerId = -1;\n', '    private final GestureController gestureController = new GestureController(gestureHandler, key -> {\n        performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);\n        dispatchKey(key);\n    });\n')
+          s=s.replace('                    scheduleKeyRepeat(pointerId, hit.spec.key);', '                    gestureController.press(pointerId, hit.spec.key);')
+          s=s.replace('                if (pointerId == repeatingPointerId) stopKeyRepeat();', '                gestureController.release(pointerId);')
+          s=s.replace('                stopKeyRepeat();', '                gestureController.cancel();')
+          start=s.index('    /**\n     * Basic phone-style repeat for the low-risk editing keys.')
+          end=s.index('    private void moveCursorToDisplayPosition', start)
+          s=s[:start]+s[end:]
+          p.write_text(s)
+          PY
+      - name: Core regression
+        run: ./gradlew :core:regressionTest
+      - name: Build CN991 debug APK
+        run: ./gradlew :app:assembleCn991Debug
+      - name: Write hand-off and relay state
+        run: |
+          cat > docs/hand-offs/STAGE2_STEP2.md <<'EOF'
+          # 第 2 阶段第 2 步交接：统一手势重复与方向键连续移动
+
+          完成日期：2026-09-16
+
+          ## 已完成
+          - 新增独立 `GestureController`，统一按下、长按重复、释放与取消的重复时序状态。
+          - 数字、`.`、`DEL` 保持 420 ms 后开始、约 72 ms 间隔的连续行为。
+          - `LEFT`、`RIGHT`、`UP`、`DOWN` 加入相同长按连续移动。
+          - `CalculatorView` 继续只向核心发送 typed `CnCwKey`；未把编辑语义搬入 Android 层。
+          - 未实现函数备用菜单。
+          - 未修改 AC、语义 DEL、历史、复制粘贴的核心处理逻辑。
+
+          ## 验证
+          - `./gradlew :core:regressionTest`：通过。
+          - `./gradlew :app:assembleCn991Debug`：通过。
+          - APK：`app/build/outputs/apk/cn991/debug/`。
+
+          ## 已知限制
+          - 本步只统一按键重复手势；显示区滑动光标与语义选区属于 Step 3。
+          - 设备级触感/多指边界仍需真机差分验证。
+
+          ## 下一步
+          指定模型：GPT-5.6 Sol High。
+          Stage 2 Step 3：滑动光标、语义光标移动、语义选区；完成回归测试、APK、hand-off、commit。
+          EOF
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('docs/hand-offs/STAGE2_RELAY.md')
+          s=p.read_text().replace('- 当前步骤：Stage 2 Step 2\n- 状态：ready\n- 指定模型：GPT-5.6 Sol Medium\n- 下一步骤：Stage 2 Step 3\n- 下一模型：GPT-5.6 Sol High', '- 当前步骤：Stage 2 Step 3\n- 状态：ready\n- 指定模型：GPT-5.6 Sol High\n- 已完成：Stage 2 Step 2（回归测试与 CN991 Debug APK 构建通过）')
+          p.write_text(s)
+          PY
+      - name: Commit Step 2
+        run: |
+          git config user.name 'stage2-relay'
+          git config user.email 'actions@users.noreply.github.com'
+          git add app/src/main/java/com/codex/fx991smooth/CalculatorView.java app/src/main/java/com/codex/fx991smooth/GestureController.java docs/hand-offs/STAGE2_STEP2.md docs/hand-offs/STAGE2_RELAY.md
+          git commit -m 'stage2: complete Step 2 gesture repeat model'
+          git push origin HEAD:auto/stage2
