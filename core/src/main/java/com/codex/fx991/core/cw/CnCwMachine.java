@@ -327,7 +327,15 @@ public final class CnCwMachine {
     private void handleApplication(CnCwKey key) {
         if (errorShown) {
             switch (key) {
-                case OK, ENTER, BACK, AC -> { dismissError(); return; }
+                case OK, ENTER, BACK -> { dismissError(); return; }
+                case AC -> {
+                    // AC is an all-clear action even while an error overlay is
+                    // visible.  Dismissing only the error leaves the invalid
+                    // expression behind and forces the user to press AC twice.
+                    if (shiftArmed) powerOff();
+                    else clearExpression();
+                    return;
+                }
                 case LEFT -> {
                     dismissError();
                     cursor = Math.max(0, cursor - 1);

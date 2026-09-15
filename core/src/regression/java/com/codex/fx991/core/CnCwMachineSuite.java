@@ -216,8 +216,9 @@ public final class CnCwMachineSuite {
         equal("Math ERROR", machine.state().result(), "division by zero category");
         equal(3, machine.state().cursor(), "error cursor points at zero");
         machine.dispatch(CnCwKey.AC);
-        equal("14÷│0×2", machine.state().displayText(),
-                "AC returns to original expression at error");
+        equal("│", machine.state().displayText(),
+                "AC clears the errored expression in one press");
+        check(!machine.state().resultShown(), "AC clears the error result in one press");
     }
 
     private void randomKeyUsesCoreFunctionName() {
