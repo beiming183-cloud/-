@@ -3,6 +3,7 @@ package com.codex.fx991smooth;
 import android.content.Context;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.app.AlertDialog;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -983,7 +984,7 @@ public final class CalculatorView extends View {
                     displayDownX = event.getX();
                     displayDownY = event.getY();
                     displayLongPress = () -> {
-                        if (displayPressed) copyDisplayText();
+                        if (displayPressed) showClipboardMenu();
                     };
                     gestureHandler.postDelayed(displayLongPress, 520);
                     return true;
@@ -1032,6 +1033,41 @@ public final class CalculatorView extends View {
             Toast.makeText(getContext(), "已复制公式", Toast.LENGTH_SHORT).show();
             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
         }
+    }
+
+    private void showClipboardMenu() {
+        new AlertDialog.Builder(getContext())
+                .setItems(new String[]{"复制", "粘贴"}, (dialog, which) -> {
+                    if (which == 0) copyDisplayText(); else pasteClipboardText();
+                }).show();
+    }
+
+    private void pasteClipboardText() {
+        ClipboardManager clipboard = (ClipboardManager) getContext()
+                .getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard == null || !clipboard.hasPrimaryClip()) return;
+        CharSequence value = clipboard.getPrimaryClip().getItemAt(0).coerceToText(getContext());
+        if (value == null) return;
+        int accepted = 0;
+        for (int i = 0; i < value.length(); i++) {
+            CnCwKey key = pasteKey(value.charAt(i));
+            if (key != null) { dispatchKey(key); accepted++; }
+        }
+        Toast.makeText(getContext(), accepted == 0 ? "没有可识别内容" : "已粘贴", Toast.LENGTH_SHORT).show();
+    }
+
+    private CnCwKey pasteKey(char ch) {
+        return switch (ch) {
+            case '0' -> CnCwKey.DIGIT_0; case '1' -> CnCwKey.DIGIT_1;
+            case '2' -> CnCwKey.DIGIT_2; case '3' -> CnCwKey.DIGIT_3;
+            case '4' -> CnCwKey.DIGIT_4; case '5' -> CnCwKey.DIGIT_5;
+            case '6' -> CnCwKey.DIGIT_6; case '7' -> CnCwKey.DIGIT_7;
+            case '8' -> CnCwKey.DIGIT_8; case '9' -> CnCwKey.DIGIT_9;
+            case '.' -> CnCwKey.DOT; case '+' -> CnCwKey.ADD;
+            case '-' -> CnCwKey.SUBTRACT; case '*' -> CnCwKey.MULTIPLY;
+            case '/' -> CnCwKey.DIVIDE; case '(' -> CnCwKey.OPEN_PAREN;
+            case ')' -> CnCwKey.CLOSE_PAREN; default -> null;
+        };
     }
 
     @Override
