@@ -1075,6 +1075,15 @@ public final class CalculatorView extends View {
         try {
             return BigDecimal.valueOf(Double.parseDouble(clean)).stripTrailingZeros().toPlainString();
         } catch (NumberFormatException ignored) {
+            int slash = clean.indexOf('/');
+            if (slash > 0 && slash == clean.lastIndexOf('/')) {
+                try {
+                    BigDecimal a = new BigDecimal(clean.substring(0, slash).trim());
+                    BigDecimal b = new BigDecimal(clean.substring(slash + 1).trim());
+                    return a.divide(b, 12, java.math.RoundingMode.HALF_UP)
+                            .stripTrailingZeros().toPlainString();
+                } catch (ArithmeticException | NumberFormatException ignoredAgain) { }
+            }
             return clean;
         }
     }
