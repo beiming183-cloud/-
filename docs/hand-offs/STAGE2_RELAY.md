@@ -9,7 +9,7 @@
 ## 当前状态
 
 - 当前步骤：Stage 2 Step 3
-- 状态：ready
+- 状态：completed
 - 指定模型：GPT-5.6 Sol High
 - 已完成：Stage 2 Step 2（回归测试与 CN991 Debug APK 构建通过）
 
@@ -57,3 +57,9 @@
 3. 任一步遇到真正阻塞时停止，不通过猜测、静默改模或删减验收条件绕过。
 4. 模型额度不足时保留当前分支、提交、测试结果和 hand-off 状态，由后续执行器从最近已提交状态继续。
 5. 不直接修改 `main`；所有 Stage 2 工作保持在 `auto/stage2` Draft PR 中。
+
+## Stage 2 Step 3 验证结果
+
+- 指定模型：GPT-5.6 Sol High。
+- 回归测试与 CN991 Debug APK 构建通过。
+- hand-off：docs/hand-offs/STAGE2_STEP3.md。
