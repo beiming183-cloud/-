@@ -8,11 +8,10 @@
 
 ## 当前状态
 
-- 当前步骤：Stage 2 Step 2
+- 当前步骤：Stage 2 Step 3
 - 状态：ready
-- 指定模型：GPT-5.6 Sol Medium
-- 下一步骤：Stage 2 Step 3
-- 下一模型：GPT-5.6 Sol High
+- 指定模型：GPT-5.6 Sol High
+- 已完成：Stage 2 Step 2（回归测试与 CN991 Debug APK 构建通过）
 
 ## Stage 2 Step 2
 
