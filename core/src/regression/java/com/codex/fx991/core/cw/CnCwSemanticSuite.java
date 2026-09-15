@@ -22,6 +22,8 @@ public final class CnCwSemanticSuite {
         shiftDivideIsDerivative();
         shiftedMixedFractionEvaluates();
         calculateScientificKeysEvaluate();
+        calculatePostfixAndCombinatoricKeysEvaluate();
+        calculateInverseAndNthRootKeysEvaluate();
         calculateAnsChainsAndHistory();
         calculateDivisionErrorIsVisible();
         shiftFormatInsertsAns();
@@ -149,6 +151,63 @@ public final class CnCwSemanticSuite {
         machine.dispatch(CnCwKey.CLOSE_PAREN);
         machine.dispatch(CnCwKey.EXE);
         near(2.0, machine.state().ans(), 1e-12, "log key evaluates");
+    }
+
+    private void calculatePostfixAndCombinatoricKeysEvaluate() {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        machine.dispatch(CnCwKey.OK);
+        machine.dispatch(CnCwKey.DIGIT_5);
+        machine.dispatch(CnCwKey.FACTORIAL);
+        machine.dispatch(CnCwKey.EXE);
+        near(120.0, machine.state().ans(), 1e-12, "factorial key evaluates");
+
+        machine.dispatch(CnCwKey.AC);
+        machine.dispatch(CnCwKey.DIGIT_5);
+        machine.dispatch(CnCwKey.NPR);
+        machine.dispatch(CnCwKey.DIGIT_2);
+        machine.dispatch(CnCwKey.EXE);
+        near(20.0, machine.state().ans(), 1e-12, "permutation key evaluates");
+
+        machine.dispatch(CnCwKey.AC);
+        machine.dispatch(CnCwKey.DIGIT_5);
+        machine.dispatch(CnCwKey.NCR);
+        machine.dispatch(CnCwKey.DIGIT_2);
+        machine.dispatch(CnCwKey.EXE);
+        near(10.0, machine.state().ans(), 1e-12, "combination key evaluates");
+
+        machine.dispatch(CnCwKey.AC);
+        machine.dispatch(CnCwKey.DIGIT_2);
+        machine.dispatch(CnCwKey.DIGIT_5);
+        machine.dispatch(CnCwKey.PERCENT);
+        machine.dispatch(CnCwKey.EXE);
+        near(0.25, machine.state().ans(), 1e-12, "percent key evaluates");
+    }
+
+    private void calculateInverseAndNthRootKeysEvaluate() {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        machine.dispatch(CnCwKey.OK);
+        machine.dispatch(CnCwKey.SHIFT);
+        machine.dispatch(CnCwKey.SIN);
+        machine.dispatch(CnCwKey.DIGIT_1);
+        machine.dispatch(CnCwKey.CLOSE_PAREN);
+        machine.dispatch(CnCwKey.EXE);
+        near(90.0, machine.state().ans(), 1e-12, "inverse sine key evaluates in degrees");
+
+        machine.dispatch(CnCwKey.AC);
+        machine.dispatch(CnCwKey.ROOT);
+        machine.dispatch(CnCwKey.DIGIT_3);
+        machine.dispatch(CnCwKey.COMMA);
+        machine.dispatch(CnCwKey.DIGIT_2);
+        machine.dispatch(CnCwKey.DIGIT_7);
+        machine.dispatch(CnCwKey.CLOSE_PAREN);
+        machine.dispatch(CnCwKey.EXE);
+        near(3.0, machine.state().ans(), 1e-12, "nth-root key evaluates");
+
+        machine.dispatch(CnCwKey.AC);
+        machine.dispatch(CnCwKey.DIGIT_4);
+        machine.dispatch(CnCwKey.RECIPROCAL);
+        machine.dispatch(CnCwKey.EXE);
+        near(0.25, machine.state().ans(), 1e-12, "reciprocal key evaluates");
     }
 
     private void calculateAnsChainsAndHistory() {
