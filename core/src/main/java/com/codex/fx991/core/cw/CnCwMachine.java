@@ -634,7 +634,10 @@ public final class CnCwMachine {
     private void evaluate(boolean forceDecimal) {
         if (tokens.isEmpty()) return;
         String source = autoCloseParentheses(evaluationSource());
-        String plainSource = source.replace("\u2063", "");
+            String plainSource = source.replace("\u2063", "");
+            boolean complexEvaluation = application == ApplicationMode.COMPLEX
+                    || needsComplexEvaluation(plainSource)
+                    || (hasComplexAns && plainSource.contains("Ans"));
         errorShown = false;
         lastError = null;
         try {
@@ -705,7 +708,7 @@ public final class CnCwMachine {
                 int value = BaseNEngine.parse(plainSource, base);
                 formatted = BaseNEngine.format(value, base);
                 scalar = value;
-            } else if (application == ApplicationMode.COMPLEX || needsComplexEvaluation(plainSource)) {
+            } else if (complexEvaluation) {
                 Map<String, ComplexValue> complexVariables = new HashMap<>();
                 for (Map.Entry<String, Double> entry : variables.entrySet()) {
                     complexVariables.put(entry.getKey(), new ComplexValue(entry.getValue(), 0.0));
@@ -788,6 +791,10 @@ public final class CnCwMachine {
                 ans = scalar;
                 hasAns = true;
                 exactAns = exactScalar;
+                if (!complexEvaluation) {
+                    complexAns = new ComplexValue(scalar, 0.0);
+                    hasComplexAns = false;
+                }
             }
             lastExactResult = exactScalar;
         result = formatted;
@@ -2220,8 +2227,10 @@ public final class CnCwMachine {
             if (Math.abs(value.imaginary() + 1.0) < 1e-14) return "−i";
             return formatNumber(value.imaginary()) + "i";
         }
-        return formatNumber(value.real()) + (value.imaginary() < 0 ? "−" : "+")
-                + formatNumber(Math.abs(value.imaginary())) + "i";
+        String imaginary = Math.abs(value.imaginary() - 1.0) < 1e-14
+                ? "i" : Math.abs(value.imaginary() + 1.0) < 1e-14
+                ? "i" : formatNumber(Math.abs(value.imaginary())) + "i";
+        return formatNumber(value.real()) + (value.imaginary() < 0 ? "−" : "+") + imaginary;
     }
 
     private String engineeringResult(double value) {

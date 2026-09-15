@@ -160,6 +160,11 @@ public final class CnCwMachineSuite {
                 CnCwKey.DIGIT_1, CnCwKey.DIVIDE, CnCwKey.DIGIT_2,
                 CnCwKey.CLOSE_PAREN, CnCwKey.EXE);
         equal("i", machine.state().result(), "negative fractional power upgrades to complex evaluation");
+
+        machine = calculateMachine();
+        press(machine, CnCwKey.SHIFT, CnCwKey.DIGIT_9, CnCwKey.EXE,
+                CnCwKey.ADD, CnCwKey.DIGIT_1, CnCwKey.EXE);
+        equal("1+i", machine.state().result(), "complex Ans keeps its imaginary part");
     }
 
     private void shiftedExeForcesDecimalResult() {
