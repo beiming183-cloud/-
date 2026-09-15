@@ -1082,9 +1082,20 @@ public final class CalculatorView extends View {
         if (clipboard == null || !clipboard.hasPrimaryClip()) return;
         CharSequence value = clipboard.getPrimaryClip().getItemAt(0).coerceToText(getContext());
         if (value == null) return;
+        String normalized = value.toString()
+                .replace("×", "*").replace("÷", "/")
+                .replace("−", "-").replace("√", "sqrt(")
+                .replace("²", "^2").replace("³", "^3");
         int accepted = 0;
-        for (int i = 0; i < value.length(); i++) {
-            CnCwKey key = pasteKey(value.charAt(i));
+        for (int i = 0; i < normalized.length(); i++) {
+            if (normalized.startsWith("sqrt(", i)) {
+                dispatchKey(CnCwKey.SQRT);
+                dispatchKey(CnCwKey.OPEN_PAREN);
+                accepted++;
+                i += 4;
+                continue;
+            }
+            CnCwKey key = pasteKey(normalized.charAt(i));
             if (key != null) { dispatchKey(key); accepted++; }
         }
         Toast.makeText(getContext(), accepted == 0 ? "没有可识别内容" : "已粘贴", Toast.LENGTH_SHORT).show();
