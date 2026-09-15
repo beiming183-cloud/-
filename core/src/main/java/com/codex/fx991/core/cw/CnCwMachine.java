@@ -431,7 +431,9 @@ public final class CnCwMachine {
             case OK, ENTER, EXE -> {
                 boolean approximate = key == CnCwKey.EXE && shiftArmed;
                 shiftArmed = false;
-                evaluate(approximate);
+                // The phone calculator defaults to a readable decimal result.
+                // FORMAT/SHIFT remains available for exact or alternate display.
+                evaluate(key == CnCwKey.EXE || approximate);
             }
             // Keep the keyboard '=' key as a relation token.  In particular,
             // do not fold it into the EXE/OK/ENTER execution branch above.
