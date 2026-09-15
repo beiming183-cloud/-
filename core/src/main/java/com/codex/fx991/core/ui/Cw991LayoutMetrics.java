@@ -40,7 +40,7 @@ public final class Cw991LayoutMetrics {
                 // Let the round cap use nearly the whole grid cell.  The
                 // earlier 0.86/0.90 cap left a visibly large ring of blank
                 // space around the two legends on phone-sized screens.
-                diameter = diameter(width, height, viewport, 0.92f, 1.00f, 0.170f);
+                diameter = diameter(width, height, viewport, 0.92f, 0.90f, 0.170f);
                 // Phone screens leave more visual room than a physical keycap.
                 // Give the frequently-used number row a deliberate weight so it
                 // reads at arm's length instead of looking like tiny labels in
@@ -50,19 +50,19 @@ public final class Cw991LayoutMetrics {
                 verticalBias = 0.50f;
             }
             case OPERATOR -> {
-                diameter = diameter(width, height, viewport, 0.92f, 1.00f, 0.170f);
+                diameter = diameter(width, height, viewport, 0.92f, 0.90f, 0.170f);
                 mainRatio = 0.46f;
                 secondaryRatio = 0.30f;
                 verticalBias = 0.50f;
             }
             case ACTION, EXECUTE -> {
-                diameter = diameter(width, height, viewport, 0.92f, 1.00f, 0.170f);
+                diameter = diameter(width, height, viewport, 0.92f, 0.90f, 0.170f);
                 mainRatio = role == Role.EXECUTE ? 0.34f : 0.37f;
                 secondaryRatio = 0.30f;
                 verticalBias = 0.50f;
             }
             case FUNCTION -> {
-                diameter = diameter(width, height, viewport, 0.92f, 1.00f, 0.145f);
+                diameter = diameter(width, height, viewport, 0.92f, 0.90f, 0.145f);
                 mainRatio = 0.56f;
                 secondaryRatio = 0.39f;
                 verticalBias = 0.50f;
