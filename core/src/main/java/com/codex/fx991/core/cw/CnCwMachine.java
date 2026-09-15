@@ -208,6 +208,26 @@ public final class CnCwMachine {
 
     public CnCwUiState reduce(CnCwKey key) { return dispatch(key); }
 
+    /** Atomically moves the expression insertion point for direct-touch adapters. */
+    public CnCwUiState moveCursorTo(int target) {
+        if (!poweredOn || !screen.isApplication() || applicationLanding) return state;
+        cursor = Math.max(0, Math.min(tokens.size(), target));
+        shiftArmed = false;
+        resultShown = false;
+        publish();
+        return state;
+    }
+
+    /** Number of semantic insertion slots currently available. */
+    public int cursorLimit() { return tokens.size(); }
+
+    /** Display labels for touch hit-testing; one entry per semantic token. */
+    public List<String> cursorTokenDisplays() {
+        List<String> labels = new ArrayList<>(tokens.size());
+        for (Token token : tokens) labels.add(token.display());
+        return com.codex.fx991.core.Compat.copyList(labels);
+    }
+
     public CnCwUiState reset() {
         screen = CnCwScreen.HOME;
         application = null;

@@ -45,6 +45,7 @@ public final class CnCwMachineSuite {
         functionDefinitionsPersistAndEvaluate();
         unfinishedFunctionParenthesisIsCompleted();
         semanticDeleteAndCursor();
+        directTouchCursorMovesAtomically();
         shiftedDeleteTogglesOverwriteAndOnIsDistinct();
         settingsAreMachineOwned();
         fixDigitsDriveRndOnMainKeyPath();
@@ -500,6 +501,19 @@ public final class CnCwMachineSuite {
         equal("│", machine.state().displayText(), "DEL removes complete function token");
         press(machine, CnCwKey.DIGIT_1, CnCwKey.DIGIT_2, CnCwKey.LEFT, CnCwKey.DIGIT_3);
         equal("13│2", machine.state().displayText(), "token cursor insertion");
+    }
+
+    private void directTouchCursorMovesAtomically() {
+        CnCwMachine machine = calculateMachine();
+        press(machine, CnCwKey.DIGIT_1, CnCwKey.SIN, CnCwKey.DIGIT_2);
+        equal(3, machine.cursorLimit(), "touch cursor exposes semantic token count");
+        machine.moveCursorTo(1);
+        equal("1│sin(2", machine.state().displayText(),
+                "touch cursor lands between semantic tokens in one update");
+        machine.moveCursorTo(99);
+        equal(3, machine.state().cursor(), "touch cursor clamps to expression end");
+        machine.moveCursorTo(-10);
+        equal(0, machine.state().cursor(), "touch cursor clamps to expression start");
     }
 
     private void shiftedDeleteTogglesOverwriteAndOnIsDistinct() {

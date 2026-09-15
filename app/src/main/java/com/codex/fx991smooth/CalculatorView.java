@@ -47,6 +47,7 @@ public final class CalculatorView extends View {
     private boolean displayPressed;
     private float displayDownX;
     private float displayDownY;
+    private int lastDragCursor = -1;
     private static final int BODY_EDGE = Color.rgb(48, 55, 52);
     /* A warm neutral shell keeps the calculator from looking washed out while
        the cool LCD and ochre function layer remain immediately scannable. */
@@ -984,6 +985,7 @@ public final class CalculatorView extends View {
                     displayPressed = true;
                     displayDownX = event.getX();
                     displayDownY = event.getY();
+                    lastDragCursor = state.cursor();
                     displayLongPress = () -> {
                         if (displayPressed) {
                             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
@@ -1000,16 +1002,26 @@ public final class CalculatorView extends View {
                 }
                 return true;
             }
+            case MotionEvent.ACTION_MOVE -> {
+                if (displayPressed) {
+                    float dx = event.getX() - displayDownX;
+                    float dy = event.getY() - displayDownY;
+                    if (Math.abs(dx) > dp(4) && Math.abs(dx) > Math.abs(dy)) {
+                        if (displayLongPress != null) gestureHandler.removeCallbacks(displayLongPress);
+                        moveCursorToDisplayPosition(event.getX(), true);
+                    }
+                    return true;
+                }
+                return true;
+            }
             case MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                 if (displayPressed && event.getActionMasked() == MotionEvent.ACTION_UP) {
                     displayPressed = false;
                     if (displayLongPress != null) gestureHandler.removeCallbacks(displayLongPress);
                     float dx = event.getX() - displayDownX;
                     float dy = event.getY() - displayDownY;
-                    if (Math.abs(dx) > dp(28) && Math.abs(dx) > Math.abs(dy) * 1.25f) {
-                        dispatchKey(dx < 0 ? CnCwKey.RIGHT : CnCwKey.LEFT);
-                    } else if (Math.abs(dx) < dp(18) && Math.abs(dy) < dp(18)) {
-                        moveCursorToDisplayPosition(event.getX());
+                    if (Math.abs(dx) < dp(18) && Math.abs(dy) < dp(18)) {
+                        moveCursorToDisplayPosition(event.getX(), false);
                     }
                     return true;
                 }
@@ -1029,18 +1041,43 @@ public final class CalculatorView extends View {
         }
     }
 
-    private void moveCursorToDisplayPosition(float x) {
-        String expression = cleanClipboardText(state.expression());
-        if (expression.isEmpty()) return;
+    private void moveCursorToDisplayPosition(float x, boolean haptic) {
+        List<String> labels = machine.cursorTokenDisplays();
+        if (labels.isEmpty()) return;
         RectF lcd = displayBounds(getWidth());
-        float left = lcd.left + dp(8);
-        float right = lcd.right - dp(8);
-        int target = Math.round(((x - left) / Math.max(1f, right - left)) * expression.length());
-        target = Math.max(0, Math.min(expression.length(), target));
-        int current = Math.max(0, Math.min(expression.length(), state.cursor()));
-        CnCwKey direction = target > current ? CnCwKey.RIGHT : CnCwKey.LEFT;
-        int steps = Math.abs(target - current);
-        for (int i = 0; i < steps; i++) dispatchKey(direction);
+        float baseSize = sp(25f);
+        NaturalMetrics natural = measureNatural(state.naturalExpression(), baseSize);
+        float available = lcd.width() - dp(12);
+        float expressionX = lcd.left + dp(6);
+        if (natural.width > available) {
+            float cursorOffset = naturalCursorOffset(state.naturalExpression(), baseSize);
+            float focus = cursorOffset < 0 ? natural.width : cursorOffset;
+            expressionX = expressionX + available * 0.58f - focus;
+            expressionX = Math.min(lcd.left + dp(6),
+                    Math.max(lcd.left + dp(6) + available - natural.width, expressionX));
+        }
+        paint.setTypeface(FACE_NORMAL);
+        paint.setTextSize(baseSize);
+        float rawWidth = 0f;
+        for (String label : labels) rawWidth += Math.max(dp(4), paint.measureText(label));
+        float scale = rawWidth <= 0 ? 1f : natural.width / rawWidth;
+        float boundary = expressionX;
+        int target = 0;
+        for (int i = 0; i < labels.size(); i++) {
+            float width = Math.max(dp(4), paint.measureText(labels.get(i))) * scale;
+            if (x >= boundary + width * 0.5f) target = i + 1;
+            boundary += width;
+        }
+        moveCursorAtomically(target, haptic);
+    }
+
+    private void moveCursorAtomically(int target, boolean haptic) {
+        int clamped = Math.max(0, Math.min(machine.cursorLimit(), target));
+        if (clamped == lastDragCursor && haptic) return;
+        state = machine.moveCursorTo(clamped);
+        lastDragCursor = clamped;
+        if (haptic) performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+        postInvalidateOnAnimation();
     }
 
     private void copyDisplayText() {
