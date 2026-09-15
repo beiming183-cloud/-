@@ -705,7 +705,7 @@ public final class CnCwMachine {
                 int value = BaseNEngine.parse(plainSource, base);
                 formatted = BaseNEngine.format(value, base);
                 scalar = value;
-            } else if (application == ApplicationMode.COMPLEX || containsImaginaryUnit(plainSource)) {
+            } else if (application == ApplicationMode.COMPLEX || needsComplexEvaluation(plainSource)) {
                 Map<String, ComplexValue> complexVariables = new HashMap<>();
                 for (Map.Entry<String, Double> entry : variables.entrySet()) {
                     complexVariables.put(entry.getKey(), new ComplexValue(entry.getValue(), 0.0));
@@ -2187,6 +2187,13 @@ public final class CnCwMachine {
         return formatComplex(value, settings.complexMode() == CnCwSettings.ComplexMode.POLAR);
     }
 
+    private static boolean needsComplexEvaluation(String source) {
+        if (containsImaginaryUnit(source)) return true;
+        String compact = source == null ? "" : source.replace(" ", "");
+        return compact.contains("sqrt(-") || compact.contains("root(") && compact.contains(",-" )
+                || compact.contains("^") && compact.contains("-");
+    }
+
     private static boolean containsImaginaryUnit(String source) {
         if (source == null) return false;
         for (int index = 0; index < source.length(); index++) {
@@ -2208,7 +2215,11 @@ public final class CnCwMachine {
             return formatNumber(value.abs()) + "∠" + formatNumber(angle);
         }
         if (Math.abs(value.imaginary()) < 1e-14) return formatNumber(value.real());
-        if (Math.abs(value.real()) < 1e-14) return formatNumber(value.imaginary()) + "i";
+        if (Math.abs(value.real()) < 1e-14) {
+            if (Math.abs(value.imaginary() - 1.0) < 1e-14) return "i";
+            if (Math.abs(value.imaginary() + 1.0) < 1e-14) return "−i";
+            return formatNumber(value.imaginary()) + "i";
+        }
         return formatNumber(value.real()) + (value.imaginary() < 0 ? "−" : "+")
                 + formatNumber(Math.abs(value.imaginary())) + "i";
     }

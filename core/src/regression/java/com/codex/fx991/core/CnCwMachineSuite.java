@@ -148,6 +148,18 @@ public final class CnCwMachineSuite {
                 CnCwKey.SHIFT, CnCwKey.DIGIT_9, CnCwKey.CLOSE_PAREN,
                 CnCwKey.POWER, CnCwKey.DIGIT_2, CnCwKey.EXE);
         equal("2i", machine.state().result(), "complex power uses the complex engine");
+
+        machine = calculateMachine();
+        press(machine, CnCwKey.SQRT, CnCwKey.SUBTRACT, CnCwKey.DIGIT_1,
+                CnCwKey.CLOSE_PAREN, CnCwKey.EXE);
+        equal("i", machine.state().result(), "sqrt negative upgrades to complex evaluation");
+
+        machine = calculateMachine();
+        press(machine, CnCwKey.OPEN_PAREN, CnCwKey.SUBTRACT, CnCwKey.DIGIT_1,
+                CnCwKey.CLOSE_PAREN, CnCwKey.POWER, CnCwKey.OPEN_PAREN,
+                CnCwKey.DIGIT_1, CnCwKey.DIVIDE, CnCwKey.DIGIT_2,
+                CnCwKey.CLOSE_PAREN, CnCwKey.EXE);
+        equal("i", machine.state().result(), "negative fractional power upgrades to complex evaluation");
     }
 
     private void shiftedExeForcesDecimalResult() {
