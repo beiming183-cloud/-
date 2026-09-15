@@ -53,7 +53,7 @@ public final class CalculatorView extends View {
     private static final int KEY_CONTROL = Color.rgb(226, 231, 226);
     private static final int KEY_NAV = Color.rgb(186, 199, 190);
     private static final int KEY_OK = Color.rgb(165, 184, 173);
-    private static final int KEY_SHIFT = Color.rgb(183, 144, 33);
+    private static final int KEY_SHIFT = Color.rgb(250, 250, 246);
     private static final int KEY_ACTION = Color.rgb(205, 216, 209);
     private static final int KEY_EXECUTE = Color.rgb(163, 185, 173);
     private static final int KEY_BORDER = Color.rgb(163, 173, 166);
@@ -920,14 +920,6 @@ public final class CalculatorView extends View {
             paint.setStrokeWidth(dp(0.85f));
             paint.setColor(pressed ? blend(KEY_BORDER, INK_DARK, 0.20f) : KEY_BORDER);
             canvas.drawRoundRect(visual, radius, radius, paint);
-            if (!pressed) {
-                paint.setStrokeWidth(dp(0.7f));
-                paint.setColor(Color.argb(150, Color.red(KEY_HIGHLIGHT),
-                        Color.green(KEY_HIGHLIGHT), Color.blue(KEY_HIGHLIGHT)));
-                canvas.drawArc(visual.left + dp(1.4f), visual.top + dp(1.4f),
-                        visual.right - dp(1.4f), visual.bottom - dp(1.4f),
-                        205f, 130f, false, paint);
-            }
             paint.setStyle(Paint.Style.FILL);
         }
 
@@ -936,7 +928,7 @@ public final class CalculatorView extends View {
         } else if (pageRocker) {
             drawPageRockerGlyph(canvas, hit.spec.key, visual);
         } else {
-            boolean darkInk = hit.spec.kind != KeyKind.SHIFT;
+            boolean darkInk = true;
             paint.setColor(darkInk ? INK_DARK : INK_LIGHT);
             paint.setTypeface(FACE_BOLD);
             paint.setTextAlign(Paint.Align.CENTER);

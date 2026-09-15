@@ -128,7 +128,8 @@ public final class Cw991LayoutMetrics {
         return role == Role.NUMBER || role == Role.OPERATOR
                 || role == Role.FUNCTION || role == Role.ACTION
                 || role == Role.EXECUTE || role == Role.CONTEXT
-                || role == Role.SHIFT;
+                || role == Role.SHIFT || role == Role.CONTROL
+                || role == Role.NAV || role == Role.OK;
     }
 
     /**
