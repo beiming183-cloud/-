@@ -155,7 +155,11 @@ public final class PhysicalKeyLayout {
         float controlTop = lcd.bottom + width * 0.025f;
         float controlHeight = Math.min(height * 0.15f, width * 0.40f);
         float controlBottom = controlTop + controlHeight;
-        float radius = clamp(Math.min(dp(21), width * 0.053f), dp(15), dp(28));
+        // The X100s Pro viewport is wide enough that the old 21dp control
+        // radius made ON/HOME and the direction pad look undersized beside
+        // the function caps.  Keep the deck compact, but give it the same
+        // visual weight as the keypad on a 20:9 phone.
+        float radius = clamp(Math.min(dp(25), width * 0.060f), dp(17), dp(32));
 
         // Left-side controls on the real unit: power/home above settings/back.
         addCircle(hits, circle(CnCwKey.ON, "ON", "", Kind.CONTROL),
