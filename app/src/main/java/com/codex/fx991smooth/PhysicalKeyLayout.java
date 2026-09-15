@@ -163,13 +163,13 @@ public final class PhysicalKeyLayout {
         float radius = clamp(Math.min(dp(25), width * 0.060f), dp(17), dp(32));
 
         // Left-side controls on the real unit: power/home above settings/back.
-        add(hits, key(CnCwKey.ON, "ON", "", Kind.CONTROL),
+        addCircle(hits, key(CnCwKey.ON, "ON", "", Kind.CONTROL),
                 margin + radius, controlTop + controlHeight * 0.29f, radius * 2f);
-        add(hits, key(CnCwKey.HOME, "⌂", "主屏", Kind.CONTROL),
+        addCircle(hits, key(CnCwKey.HOME, "⌂", "主屏", Kind.CONTROL),
                 margin + radius * 3.15f, controlTop + controlHeight * 0.29f, radius * 2f);
-        add(hits, key(CnCwKey.SETTINGS, "≡", "设置", Kind.CONTROL),
+        addCircle(hits, key(CnCwKey.SETTINGS, "≡", "设置", Kind.CONTROL),
                 margin + radius, controlTop + controlHeight * 0.74f, radius * 2f);
-        add(hits, key(CnCwKey.BACK, "↩", "返回", Kind.CONTROL),
+        addCircle(hits, key(CnCwKey.BACK, "↩", "返回", Kind.CONTROL),
                 margin + radius * 3.15f, controlTop + controlHeight * 0.74f, radius * 2f);
 
         // Direction pad is the interaction centre, not a tiny afterthought.
