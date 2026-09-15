@@ -639,6 +639,7 @@ public final class CnCwMachine {
         resultShown = false;
         errorShown = false;
         lastError = null;
+        status = applicationStatus();
     }
 
     /** Collapses an existing selection toward the requested movement side. */
