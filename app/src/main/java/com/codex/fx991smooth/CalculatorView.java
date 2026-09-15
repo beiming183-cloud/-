@@ -1038,8 +1038,8 @@ public final class CalculatorView extends View {
     private void showClipboardMenu() {
         new AlertDialog.Builder(getContext())
                 .setItems(new String[]{"复制计算过程", "复制计算结果", "粘贴"}, (dialog, which) -> {
-                    if (which == 0) copyText(cleanClipboardText(state.displayText()), "已复制计算过程");
-                    else if (which == 1) copyText(cleanClipboardText(state.displayText()), "已复制计算结果");
+                    if (which == 0) copyText(cleanClipboardText(state.expression()), "已复制计算过程");
+                    else if (which == 1) copyText(cleanClipboardText(state.result()), "已复制计算结果");
                     else pasteClipboardText();
                 }).show();
     }
