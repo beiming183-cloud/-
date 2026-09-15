@@ -632,7 +632,7 @@ public final class CnCwMachine {
     /** Moves the active end of a semantic token selection by one token. */
     private void extendSelection(int direction) {
         if (selectionAnchor < 0) selectionAnchor = cursor;
-        int next = Math.max(0, Math.min(tokens.size(), cursor + direction));
+        int next = semanticSelectionTarget(cursor, direction);
         cursor = next;
         selectionFocus = cursor;
         result = "";
@@ -640,6 +640,90 @@ public final class CnCwMachine {
         errorShown = false;
         lastError = null;
         status = applicationStatus();
+    }
+
+    /**
+     * Returns the next selection boundary without splitting the common
+     * structures users perceive as one expression unit.
+     */
+    private int semanticSelectionTarget(int position, int direction) {
+        if (direction < 0) {
+            if (position <= 0) return 0;
+            int atomStart = semanticAtomStart(position);
+            if (atomStart > 0
+                    && "^".equals(tokens.get(atomStart - 1).evaluation)) {
+                return semanticAtomStart(atomStart - 1);
+            }
+            return atomStart;
+        }
+        if (position >= tokens.size()) return tokens.size();
+        int atomEnd = semanticAtomEnd(position);
+        if (atomEnd < tokens.size() && "^".equals(tokens.get(atomEnd).evaluation)) {
+            return semanticAtomEnd(atomEnd + 1);
+        }
+        return atomEnd;
+    }
+
+    private int semanticAtomStart(int position) {
+        int safe = Math.max(0, Math.min(tokens.size(), position));
+        if (safe == 0) return 0;
+        Token previous = tokens.get(safe - 1);
+        if (isNumericFragment(previous)) {
+            int start = safe - 1;
+            while (start > 0 && isNumericFragment(tokens.get(start - 1))) start--;
+            return start;
+        }
+        if (")".equals(previous.evaluation)) {
+            int open = matchingOpen(safe - 1);
+            return open >= 0 ? open : safe - 1;
+        }
+        return safe - 1;
+    }
+
+    private int semanticAtomEnd(int position) {
+        int safe = Math.max(0, Math.min(tokens.size(), position));
+        if (safe >= tokens.size()) return tokens.size();
+        Token current = tokens.get(safe);
+        if (isNumericFragment(current)) {
+            int end = safe + 1;
+            while (end < tokens.size() && isNumericFragment(tokens.get(end))) end++;
+            return end;
+        }
+        if (opensParenthesis(current)) {
+            int close = matchingClose(safe);
+            return close >= 0 ? close + 1 : safe + 1;
+        }
+        return safe + 1;
+    }
+
+    private int matchingOpen(int closeIndex) {
+        int depth = 0;
+        for (int index = closeIndex; index >= 0; index--) {
+            String value = tokens.get(index).evaluation;
+            if (")".equals(value)) depth++;
+            else if (opensParenthesis(tokens.get(index))) {
+                depth--;
+                if (depth == 0) return index;
+            }
+        }
+        return -1;
+    }
+
+    private int matchingClose(int openIndex) {
+        int depth = 0;
+        for (int index = openIndex; index < tokens.size(); index++) {
+            Token token = tokens.get(index);
+            if (opensParenthesis(token)) depth++;
+            else if (")".equals(token.evaluation)) {
+                depth--;
+                if (depth == 0) return index;
+            }
+        }
+        return -1;
+    }
+
+    private static boolean opensParenthesis(Token token) {
+        return token.evaluation.endsWith("(") || "(".equals(token.evaluation);
     }
 
     /** Collapses an existing selection toward the requested movement side. */

@@ -539,19 +539,31 @@ public final class CnCwMachineSuite {
     private void semanticSelectionSupportsDeleteAndReplace() {
         CnCwMachine machine = calculateMachine();
         press(machine, CnCwKey.DIGIT_1, CnCwKey.DIGIT_2, CnCwKey.DIGIT_3,
-                CnCwKey.LEFT, CnCwKey.SHIFT, CnCwKey.LEFT);
+                CnCwKey.SHIFT, CnCwKey.LEFT);
         check(machine.state().hasSelection(), "SHIFT+LEFT creates a selection");
-        equal("2", machine.selectedExpression(), "selection exports semantic token text");
-        equal(1, machine.state().selectionStart(), "selection start is semantic index");
-        equal(2, machine.state().selectionEnd(), "selection end is semantic index");
+        equal("123", machine.selectedExpression(), "selection exports semantic number text");
+        equal(0, machine.state().selectionStart(), "selection start is semantic index");
+        equal(3, machine.state().selectionEnd(), "selection end is semantic index");
         machine.dispatch(CnCwKey.DEL);
-        equal("1│3", machine.state().displayText(), "DEL removes selected token");
+        equal("│", machine.state().displayText(), "DEL removes selected token");
 
         machine = calculateMachine();
         press(machine, CnCwKey.DIGIT_1, CnCwKey.DIGIT_2, CnCwKey.DIGIT_3,
-                CnCwKey.LEFT, CnCwKey.SHIFT, CnCwKey.LEFT, CnCwKey.DIGIT_9);
-        equal("19│3", machine.state().displayText(),
+                CnCwKey.SHIFT, CnCwKey.LEFT, CnCwKey.DIGIT_9);
+        equal("9│", machine.state().displayText(),
                 "inserting a key replaces the selected token");
+
+        machine = calculateMachine();
+        press(machine, CnCwKey.SIN, CnCwKey.DIGIT_2, CnCwKey.CLOSE_PAREN,
+                CnCwKey.SHIFT, CnCwKey.LEFT);
+        equal("sin(2)", machine.selectedExpression(),
+                "selection treats a function call as one unit");
+
+        machine = calculateMachine();
+        press(machine, CnCwKey.DIGIT_3, CnCwKey.POWER, CnCwKey.DIGIT_2,
+                CnCwKey.SHIFT, CnCwKey.LEFT);
+        equal("3^2", machine.selectedExpression(),
+                "selection treats a power as one unit");
     }
 
     private void directTouchCursorMovesAtomically() {
