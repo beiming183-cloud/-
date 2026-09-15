@@ -1,0 +1,80 @@
+name: Stage 2 Step 3
+
+on:
+  push:
+    branches: [auto/stage2]
+    paths:
+      - 'core/**'
+      - 'app/**'
+      - '.github/workflows/stage2-step3.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: auto/stage2
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: chmod +x ./gradlew
+      - name: Core regression
+        run: ./gradlew :core:regressionTest
+      - name: Build CN991 debug APK
+        run: ./gradlew :app:assembleCn991Debug
+      - name: Save CN991 debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: cn991-debug-apk-step3
+          path: app/build/outputs/apk/cn991/**/*.apk
+          if-no-files-found: error
+      - name: Write Step 3 hand-off
+        run: |
+          cat > docs/hand-offs/STAGE2_STEP3.md <<'EOF'
+          # 第 2 阶段第 3 步交接：滑动光标与语义编辑
+
+          完成日期：2026-09-16
+
+          ## 已完成
+          - 保留显示区水平拖动定位，并以核心语义 token 插槽作为唯一目标。
+          - 增加核心语义光标移动：函数/括号结构整体跳转，普通 token 仍按最小编辑单元移动。
+          - 增加语义选区：SHIFT+方向键和选区插入/DEL 均以 token 边界工作。
+          - 自然显示树发布选中状态；显示层绘制选区高亮。
+          - 长按剪贴板菜单增加“复制选中内容”，原有复制过程、复制结果和粘贴入口保持不变。
+          - 未实现函数备用菜单。
+
+          ## 验证
+          - ./gradlew :core:regressionTest：通过。
+          - ./gradlew :app:assembleCn991Debug：通过。
+          - APK artifact：cn991-debug-apk-step3。
+
+          ## 已知限制
+          - 选择扩展当前通过 SHIFT+方向键；设备级触摸拖选、多指边界和复杂模板的差分验证仍需真机测试。
+          - 本步未改变 AC、语义 DEL、历史和普通复制粘贴的既有语义。
+
+          ## 下一步
+          进行真机差分验证，并在需要时单独安排后续交互优化。
+          EOF
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('docs/hand-offs/STAGE2_RELAY.md')
+          s = p.read_text()
+          s = s.replace('- 当前步骤：Stage 2 Step 3\n- 状态：ready',
+                        '- 当前步骤：Stage 2 Step 3\n- 状态：completed')
+          if '## Stage 2 Step 3 验证结果' not in s:
+              s += '\n## Stage 2 Step 3 验证结果\n\n- 指定模型：GPT-5.6 Sol High。\n- 回归测试与 CN991 Debug APK 构建通过。\n- hand-off：docs/hand-offs/STAGE2_STEP3.md。\n'
+          p.write_text(s)
+          PY
+          git config user.name 'stage2-relay'
+          git config user.email 'actions@users.noreply.github.com'
+          git add docs/hand-offs/STAGE2_STEP3.md docs/hand-offs/STAGE2_RELAY.md
+          git commit -m 'stage2: complete Step 3 semantic editing hand-off'
+          git push origin HEAD:auto/stage2

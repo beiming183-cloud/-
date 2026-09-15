@@ -491,6 +491,14 @@ public final class CalculatorView extends View {
 
     private void drawNaturalNode(Canvas canvas, CnCwExpressionNode node,
                                  float left, float baseline, float textSize) {
+        if (node.selected() && node.kind() != CnCwExpressionNode.Kind.CURSOR) {
+            NaturalMetrics selected = measureNatural(node, textSize);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.argb(72, 35, 105, 190));
+            canvas.drawRoundRect(left - dp(2), baseline - selected.top - dp(2),
+                    left + selected.width + dp(2), baseline + selected.bottom + dp(2),
+                    dp(2), dp(2), paint);
+        }
         switch (node.kind()) {
             case TEXT -> {
                 paint.setColor(LCD_INK);
@@ -1100,12 +1108,21 @@ public final class CalculatorView extends View {
     }
 
     private void showClipboardMenu() {
-        new AlertDialog.Builder(getContext())
-                .setItems(new String[]{"复制计算过程", "复制计算结果", "粘贴"}, (dialog, which) -> {
-                    if (which == 0) copyText(cleanClipboardText(state.expression()), "已复制计算过程");
-                    else if (which == 1) copyText(decimalResult(state.result()), "已复制十进制结果");
-                    else pasteClipboardText();
-                }).show();
+        boolean hasSelection = state.selectionActive();
+        String[] items = hasSelection
+                ? new String[]{"复制选中内容", "复制计算过程", "复制计算结果", "粘贴"}
+                : new String[]{"复制计算过程", "复制计算结果", "粘贴"};
+        new AlertDialog.Builder(getContext()).setItems(items, (dialog, which) -> {
+            if (hasSelection && which == 0) {
+                copyText(cleanClipboardText(machine.selectedText()), "已复制选中内容");
+            } else if (which == (hasSelection ? 1 : 0)) {
+                copyText(cleanClipboardText(state.expression()), "已复制计算过程");
+            } else if (which == (hasSelection ? 2 : 1)) {
+                copyText(decimalResult(state.result()), "已复制十进制结果");
+            } else {
+                pasteClipboardText();
+            }
+        }).show();
     }
 
     private String cleanClipboardText(String text) {
