@@ -438,19 +438,6 @@ public final class ScalarExpressionEngine {
                 return ManualFunctions.toDecimalDegrees(sign, (long) Math.abs(degrees),
                         (int) minutes, seconds);
             }
-            if (lower.equals("mixed")) {
-                requireCount(3);
-                double whole = value(0, context, depth);
-                double numerator = value(1, context, depth);
-                double denominator = value(2, context, depth);
-                if (whole != Math.rint(whole) || numerator < 0.0
-                        || numerator != Math.rint(numerator) || denominator <= 0.0
-                        || denominator != Math.rint(denominator)) {
-                    throw argument("Mixed fraction arguments", position);
-                }
-                return whole < 0.0 ? whole - numerator / denominator
-                        : whole + numerator / denominator;
-            }
             if (lower.equals("log")) {
                 requireRange(1, 2);
                 if (arguments.size() == 1) {

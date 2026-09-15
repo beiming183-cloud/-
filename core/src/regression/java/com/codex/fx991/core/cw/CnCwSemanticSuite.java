@@ -21,6 +21,9 @@ public final class CnCwSemanticSuite {
         shiftSevenIsPiAndOneShot();
         shiftDivideIsDerivative();
         shiftedMixedFractionEvaluates();
+        calculateScientificKeysEvaluate();
+        calculateAnsChainsAndHistory();
+        calculateDivisionErrorIsVisible();
         shiftFormatInsertsAns();
         relationDoesNotExecute();
         navigationConsumesShiftAndClosesOverlay();
@@ -112,6 +115,67 @@ public final class CnCwSemanticSuite {
         machine.dispatch(CnCwKey.EXE);
         near(1.5, machine.state().ans(), 1e-12,
                 "SHIFT+fraction evaluates mixed number");
+    }
+
+    private void calculateScientificKeysEvaluate() {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        machine.dispatch(CnCwKey.OK);
+        machine.dispatch(CnCwKey.DIGIT_2);
+        machine.dispatch(CnCwKey.POWER);
+        machine.dispatch(CnCwKey.DIGIT_3);
+        machine.dispatch(CnCwKey.EXE);
+        near(8.0, machine.state().ans(), 1e-12, "power key evaluates");
+
+        machine.dispatch(CnCwKey.AC);
+        machine.dispatch(CnCwKey.SQRT);
+        machine.dispatch(CnCwKey.DIGIT_9);
+        machine.dispatch(CnCwKey.CLOSE_PAREN);
+        machine.dispatch(CnCwKey.EXE);
+        near(3.0, machine.state().ans(), 1e-12, "square-root key evaluates");
+
+        machine.dispatch(CnCwKey.AC);
+        machine.dispatch(CnCwKey.SIN);
+        machine.dispatch(CnCwKey.DIGIT_9);
+        machine.dispatch(CnCwKey.DIGIT_0);
+        machine.dispatch(CnCwKey.CLOSE_PAREN);
+        machine.dispatch(CnCwKey.EXE);
+        near(1.0, machine.state().ans(), 1e-12, "degree sine key evaluates");
+
+        machine.dispatch(CnCwKey.AC);
+        machine.dispatch(CnCwKey.LOG);
+        machine.dispatch(CnCwKey.DIGIT_1);
+        machine.dispatch(CnCwKey.DIGIT_0);
+        machine.dispatch(CnCwKey.DIGIT_0);
+        machine.dispatch(CnCwKey.CLOSE_PAREN);
+        machine.dispatch(CnCwKey.EXE);
+        near(2.0, machine.state().ans(), 1e-12, "log key evaluates");
+    }
+
+    private void calculateAnsChainsAndHistory() {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        machine.dispatch(CnCwKey.OK);
+        machine.dispatch(CnCwKey.DIGIT_2);
+        machine.dispatch(CnCwKey.ADD);
+        machine.dispatch(CnCwKey.DIGIT_3);
+        machine.dispatch(CnCwKey.EXE);
+        machine.dispatch(CnCwKey.ADD);
+        machine.dispatch(CnCwKey.DIGIT_4);
+        machine.dispatch(CnCwKey.EXE);
+        near(9.0, machine.state().ans(), 1e-12, "binary key chains from Ans");
+        machine.dispatch(CnCwKey.UP);
+        check(machine.state().displayText().contains("4"),
+                "UP recalls the latest calculation");
+    }
+
+    private void calculateDivisionErrorIsVisible() {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        machine.dispatch(CnCwKey.OK);
+        machine.dispatch(CnCwKey.DIGIT_1);
+        machine.dispatch(CnCwKey.DIVIDE);
+        machine.dispatch(CnCwKey.DIGIT_0);
+        machine.dispatch(CnCwKey.EXE);
+        equal("Math ERROR", machine.state().result(),
+                "division by zero reports a visible calculation error");
     }
 
     private void navigationConsumesShiftAndClosesOverlay() {
