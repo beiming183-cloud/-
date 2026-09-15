@@ -43,6 +43,8 @@ public final class CalculatorView extends View {
     private final android.os.Handler gestureHandler = new android.os.Handler();
     private Runnable displayLongPress;
     private boolean displayPressed;
+    private float displayDownX;
+    private float displayDownY;
     private static final int BODY_EDGE = Color.rgb(48, 55, 52);
     /* A warm neutral shell keeps the calculator from looking washed out while
        the cool LCD and ochre function layer remain immediately scannable. */
@@ -978,6 +980,8 @@ public final class CalculatorView extends View {
                 if (event.getActionMasked() == MotionEvent.ACTION_DOWN
                         && displayBounds(getWidth()).contains(event.getX(), event.getY())) {
                     displayPressed = true;
+                    displayDownX = event.getX();
+                    displayDownY = event.getY();
                     displayLongPress = () -> {
                         if (displayPressed) copyDisplayText();
                     };
@@ -995,6 +999,11 @@ public final class CalculatorView extends View {
                 if (displayPressed && event.getActionMasked() == MotionEvent.ACTION_UP) {
                     displayPressed = false;
                     if (displayLongPress != null) gestureHandler.removeCallbacks(displayLongPress);
+                    float dx = event.getX() - displayDownX;
+                    float dy = event.getY() - displayDownY;
+                    if (Math.abs(dx) > dp(28) && Math.abs(dx) > Math.abs(dy) * 1.25f) {
+                        dispatchKey(dx < 0 ? CnCwKey.RIGHT : CnCwKey.LEFT);
+                    }
                     return true;
                 }
                 touchRouter.pointerUp(pointerId);
