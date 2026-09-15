@@ -179,7 +179,7 @@ public final class PhysicalKeyLayout {
         // The geometric screen center makes the left and right breathing room uneven.
         float dpadX = width * 0.53f;
         float dpadY = controlTop + controlHeight * 0.52f;
-        float d = radius * 1.42f;
+        float d = radius * 1.56f;
         float offset = d * 1.35f;
         addCircle(hits, circle(CnCwKey.OK, "OK", "", Kind.OK), dpadX, dpadY, d);
         addCircle(hits, circle(CnCwKey.LEFT, "‹", "", Kind.NAV), dpadX - offset, dpadY, d);

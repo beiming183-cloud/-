@@ -953,11 +953,11 @@ public final class CalculatorView extends View {
                 // the key above on compact phone layouts.
                 drawFittedCentered(canvas, hit.spec.secondary, visual.centerX(),
                         visual.top + dp(1), visual.top + visual.height() * 0.34f,
-                        hit.visual.secondaryTextSize(), visual.width() * 0.92f,
+                        scaledSecondarySize(hit), visual.width() * 0.92f,
                         dp(9), SHIFT_INK, FACE_MEDIUM);
                 drawFittedCentered(canvas, hit.spec.main, visual.centerX(),
                         visual.top + visual.height() * 0.27f, visual.bottom,
-                        hit.visual.mainTextSize(), visual.width() * 0.90f,
+                        scaledMainSize(hit), visual.width() * 0.90f,
                         dp(11), darkInk ? INK_DARK : INK_LIGHT, FACE_NORMAL);
             }
         }
@@ -1288,6 +1288,20 @@ public final class CalculatorView extends View {
         if (length == 4) return 0.90f;
         if (length == 5) return 0.84f;
         return 0.78f;
+    }
+
+    private float scaledSecondarySize(KeyHit hit) {
+        if (hit.spec.kind == KeyKind.SHIFT) return hit.visual.secondaryTextSize();
+        if (hit.spec.kind == KeyKind.STRIP || hit.spec.kind == KeyKind.FUNCTION) {
+            return hit.visual.secondaryTextSize() * 0.86f;
+        }
+        return hit.visual.secondaryTextSize();
+    }
+
+    private float scaledMainSize(KeyHit hit) {
+        if (hit.spec.kind == KeyKind.STRIP) return hit.visual.mainTextSize() * 0.90f;
+        if (hit.spec.kind == KeyKind.FUNCTION) return hit.visual.mainTextSize() * 0.94f;
+        return hit.visual.mainTextSize();
     }
 
     private static int colorFor(KeyKind kind) {
