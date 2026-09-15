@@ -705,7 +705,7 @@ public final class CnCwMachine {
                 int value = BaseNEngine.parse(plainSource, base);
                 formatted = BaseNEngine.format(value, base);
                 scalar = value;
-            } else if (application == ApplicationMode.COMPLEX) {
+            } else if (application == ApplicationMode.COMPLEX || containsImaginaryUnit(plainSource)) {
                 Map<String, ComplexValue> complexVariables = new HashMap<>();
                 for (Map.Entry<String, Double> entry : variables.entrySet()) {
                     complexVariables.put(entry.getKey(), new ComplexValue(entry.getValue(), 0.0));
@@ -2185,6 +2185,17 @@ public final class CnCwMachine {
 
     private String formatComplex(ComplexValue value) {
         return formatComplex(value, settings.complexMode() == CnCwSettings.ComplexMode.POLAR);
+    }
+
+    private static boolean containsImaginaryUnit(String source) {
+        if (source == null) return false;
+        for (int index = 0; index < source.length(); index++) {
+            if (source.charAt(index) != 'i') continue;
+            boolean before = index > 0 && Character.isLetter(source.charAt(index - 1));
+            boolean after = index + 1 < source.length() && Character.isLetter(source.charAt(index + 1));
+            if (!before && !after) return true;
+        }
+        return false;
     }
 
     private String formatComplex(ComplexValue value, boolean polar) {

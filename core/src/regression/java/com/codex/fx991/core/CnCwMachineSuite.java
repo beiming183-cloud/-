@@ -22,6 +22,7 @@ public final class CnCwMachineSuite {
         calculateUsesManualPrecedence();
         semanticTokensDoNotCollapseDuringEvaluation();
         calculateKeepsExactStandardResults();
+        imaginaryUnitWorksInCalculate();
         shiftedExeForcesDecimalResult();
         naturalConstantEUsesManualDisplayPrecision();
         percentUsesPostfixPrecedence();
@@ -134,6 +135,19 @@ public final class CnCwMachineSuite {
         press(machine, CnCwKey.SIN, CnCwKey.DIGIT_3, CnCwKey.DIGIT_0,
                 CnCwKey.CLOSE_PAREN, CnCwKey.EXE);
         equal("1/2", machine.state().result(), "special angle standard result");
+    }
+
+    private void imaginaryUnitWorksInCalculate() {
+        CnCwMachine machine = calculateMachine();
+        press(machine, CnCwKey.SHIFT, CnCwKey.DIGIT_9,
+                CnCwKey.POWER, CnCwKey.DIGIT_2, CnCwKey.EXE);
+        equal("-1", machine.state().result(), "i squared evaluates in Calculate mode");
+
+        machine = calculateMachine();
+        press(machine, CnCwKey.OPEN_PAREN, CnCwKey.DIGIT_1, CnCwKey.ADD,
+                CnCwKey.SHIFT, CnCwKey.DIGIT_9, CnCwKey.CLOSE_PAREN,
+                CnCwKey.POWER, CnCwKey.DIGIT_2, CnCwKey.EXE);
+        equal("2i", machine.state().result(), "complex power uses the complex engine");
     }
 
     private void shiftedExeForcesDecimalResult() {
