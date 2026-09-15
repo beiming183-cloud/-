@@ -1024,7 +1024,7 @@ public final class CalculatorView extends View {
     }
 
     private void copyDisplayText() {
-        String text = state.displayText();
+        String text = cleanClipboardText(state.displayText());
         if (text == null || text.isBlank() || text.equals("│")) return;
         ClipboardManager clipboard = (ClipboardManager) getContext()
                 .getSystemService(Context.CLIPBOARD_SERVICE);
@@ -1037,9 +1037,27 @@ public final class CalculatorView extends View {
 
     private void showClipboardMenu() {
         new AlertDialog.Builder(getContext())
-                .setItems(new String[]{"复制", "粘贴"}, (dialog, which) -> {
-                    if (which == 0) copyDisplayText(); else pasteClipboardText();
+                .setItems(new String[]{"复制计算过程", "复制计算结果", "粘贴"}, (dialog, which) -> {
+                    if (which == 0) copyText(cleanClipboardText(state.displayText()), "已复制计算过程");
+                    else if (which == 1) copyText(cleanClipboardText(state.displayText()), "已复制计算结果");
+                    else pasteClipboardText();
                 }).show();
+    }
+
+    private String cleanClipboardText(String text) {
+        if (text == null) return "";
+        return text.replace("│", "").replace("▌", "").trim();
+    }
+
+    private void copyText(String text, String message) {
+        if (text.isEmpty()) return;
+        ClipboardManager clipboard = (ClipboardManager) getContext()
+                .getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard != null) {
+            clipboard.setPrimaryClip(ClipData.newPlainText("计算器", text));
+            Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
+            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+        }
     }
 
     private void pasteClipboardText() {
