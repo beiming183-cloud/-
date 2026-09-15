@@ -175,7 +175,9 @@ public final class PhysicalKeyLayout {
                 margin + radius * 3.15f, controlTop + controlHeight * 0.74f, radius * 2f);
 
         // Direction pad is the interaction centre, not a tiny afterthought.
-        float dpadX = width * 0.50f;
+        // Center the pad in the actual space between the left controls and rocker.
+        // The geometric screen center makes the left and right breathing room uneven.
+        float dpadX = width * 0.53f;
         float dpadY = controlTop + controlHeight * 0.52f;
         float d = radius * 1.42f;
         float offset = d * 1.35f;
