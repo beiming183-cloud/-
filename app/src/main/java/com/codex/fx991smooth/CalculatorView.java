@@ -1,6 +1,8 @@
 package com.codex.fx991smooth;
 
 import android.content.Context;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -12,6 +14,7 @@ import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.widget.Toast;
 
 import com.codex.fx991.core.cw.CnCwCommand;
 import com.codex.fx991.core.cw.CnCwExpressionNode;
@@ -37,6 +40,9 @@ import java.util.concurrent.Future;
  * never be duplicated by crossed releases.</p>
  */
 public final class CalculatorView extends View {
+    private final android.os.Handler gestureHandler = new android.os.Handler();
+    private Runnable displayLongPress;
+    private boolean displayPressed;
     private static final int BODY_EDGE = Color.rgb(48, 55, 52);
     /* A warm neutral shell keeps the calculator from looking washed out while
        the cool LCD and ochre function layer remain immediately scannable. */
@@ -969,6 +975,15 @@ public final class CalculatorView extends View {
         int pointerId = event.getPointerId(actionIndex);
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN
+                        && displayBounds(getWidth()).contains(event.getX(), event.getY())) {
+                    displayPressed = true;
+                    displayLongPress = () -> {
+                        if (displayPressed) copyDisplayText();
+                    };
+                    gestureHandler.postDelayed(displayLongPress, 520);
+                    return true;
+                }
                 KeyHit hit = findHit(event.getX(actionIndex), event.getY(actionIndex));
                 if (hit != null && touchRouter.pointerDown(pointerId, hit.spec.key)) {
                     performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
@@ -977,17 +992,36 @@ public final class CalculatorView extends View {
                 return true;
             }
             case MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                if (displayPressed && event.getActionMasked() == MotionEvent.ACTION_UP) {
+                    displayPressed = false;
+                    if (displayLongPress != null) gestureHandler.removeCallbacks(displayLongPress);
+                    return true;
+                }
                 touchRouter.pointerUp(pointerId);
                 if (event.getActionMasked() == MotionEvent.ACTION_UP) performClick();
                 postInvalidateOnAnimation();
                 return true;
             }
             case MotionEvent.ACTION_CANCEL -> {
+                displayPressed = false;
+                if (displayLongPress != null) gestureHandler.removeCallbacks(displayLongPress);
                 touchRouter.cancelAll();
                 postInvalidateOnAnimation();
                 return true;
             }
             default -> { return true; }
+        }
+    }
+
+    private void copyDisplayText() {
+        String text = state.displayText();
+        if (text == null || text.isBlank() || text.equals("│")) return;
+        ClipboardManager clipboard = (ClipboardManager) getContext()
+                .getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard != null) {
+            clipboard.setPrimaryClip(ClipData.newPlainText("计算器", text));
+            Toast.makeText(getContext(), "已复制公式", Toast.LENGTH_SHORT).show();
+            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
         }
     }
 
