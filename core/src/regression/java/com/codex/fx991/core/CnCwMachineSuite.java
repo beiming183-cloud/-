@@ -510,6 +510,8 @@ public final class CnCwMachineSuite {
         machine.moveCursorTo(1);
         equal("1│sin(2", machine.state().displayText(),
                 "touch cursor lands between semantic tokens in one update");
+        check(machine.state().result().isEmpty() && !machine.state().resultShown(),
+                "moving touch cursor clears stale result state");
         machine.moveCursorTo(99);
         equal(3, machine.state().cursor(), "touch cursor clamps to expression end");
         machine.moveCursorTo(-10);

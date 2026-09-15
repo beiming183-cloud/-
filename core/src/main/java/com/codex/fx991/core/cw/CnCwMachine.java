@@ -213,7 +213,10 @@ public final class CnCwMachine {
         if (!poweredOn || !screen.isApplication() || applicationLanding) return state;
         cursor = Math.max(0, Math.min(tokens.size(), target));
         shiftArmed = false;
+        result = "";
         resultShown = false;
+        errorShown = false;
+        lastError = null;
         publish();
         return state;
     }
@@ -428,12 +431,18 @@ public final class CnCwMachine {
             case LEFT -> {
                 cursor = Math.max(0, cursor - 1);
                 shiftArmed = false;
+                result = "";
                 resultShown = false;
+                errorShown = false;
+                lastError = null;
             }
             case RIGHT -> {
                 cursor = Math.min(tokens.size(), cursor + 1);
                 shiftArmed = false;
+                result = "";
                 resultShown = false;
+                errorShown = false;
+                lastError = null;
             }
             case UP -> recallHistory(-1);
             case DOWN -> recallHistory(1);

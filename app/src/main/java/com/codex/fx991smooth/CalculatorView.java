@@ -382,7 +382,7 @@ public final class CalculatorView extends View {
         float available = lcd.width() - dp(12);
         drawNaturalExpression(canvas, state.naturalExpression(), lcd, contentTop,
                 contentBottom, available);
-        if (!state.result().isEmpty()) {
+        if (state.resultShown() && !state.result().isEmpty()) {
             String[] lines = decimalDisplayResult(state.result()).split("\\n", -1);
             paint.setTypeface(FACE_MEDIUM);
             paint.setTextAlign(Paint.Align.RIGHT);
