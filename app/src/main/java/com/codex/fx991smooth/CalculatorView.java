@@ -44,6 +44,9 @@ import java.math.BigDecimal;
 public final class CalculatorView extends View {
     private final android.os.Handler gestureHandler = new android.os.Handler();
     private Runnable displayLongPress;
+    private Runnable keyRepeat;
+    private CnCwKey repeatingKey;
+    private int repeatingPointerId = -1;
     private boolean displayPressed;
     private float displayDownX;
     private float displayDownY;
@@ -999,6 +1002,7 @@ public final class CalculatorView extends View {
                 if (hit != null && touchRouter.pointerDown(pointerId, hit.spec.key)) {
                     performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
                     dispatchKey(hit.spec.key);
+                    scheduleKeyRepeat(pointerId, hit.spec.key);
                 }
                 return true;
             }
@@ -1026,6 +1030,7 @@ public final class CalculatorView extends View {
                     return true;
                 }
                 touchRouter.pointerUp(pointerId);
+                if (pointerId == repeatingPointerId) stopKeyRepeat();
                 if (event.getActionMasked() == MotionEvent.ACTION_UP) performClick();
                 postInvalidateOnAnimation();
                 return true;
@@ -1033,12 +1038,49 @@ public final class CalculatorView extends View {
             case MotionEvent.ACTION_CANCEL -> {
                 displayPressed = false;
                 if (displayLongPress != null) gestureHandler.removeCallbacks(displayLongPress);
+                stopKeyRepeat();
                 touchRouter.cancelAll();
                 postInvalidateOnAnimation();
                 return true;
             }
             default -> { return true; }
         }
+    }
+
+    /**
+     * Basic phone-style repeat for the low-risk editing keys. The first tap
+     * has already been committed by pointer-down; repeat only starts after a
+     * long-press delay and is cancelled as soon as that pointer is released.
+     */
+    private void scheduleKeyRepeat(int pointerId, CnCwKey key) {
+        if (!isRepeatableKey(key)) return;
+        stopKeyRepeat();
+        repeatingPointerId = pointerId;
+        repeatingKey = key;
+        keyRepeat = new Runnable() {
+            @Override public void run() {
+                if (repeatingKey == null) return;
+                performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+                dispatchKey(repeatingKey);
+                gestureHandler.postDelayed(this, 72);
+            }
+        };
+        gestureHandler.postDelayed(keyRepeat, 420);
+    }
+
+    private void stopKeyRepeat() {
+        if (keyRepeat != null) gestureHandler.removeCallbacks(keyRepeat);
+        keyRepeat = null;
+        repeatingKey = null;
+        repeatingPointerId = -1;
+    }
+
+    private boolean isRepeatableKey(CnCwKey key) {
+        return switch (key) {
+            case DEL, DOT, DIGIT_0, DIGIT_1, DIGIT_2, DIGIT_3, DIGIT_4,
+                    DIGIT_5, DIGIT_6, DIGIT_7, DIGIT_8, DIGIT_9 -> true;
+            default -> false;
+        };
     }
 
     private void moveCursorToDisplayPosition(float x, boolean haptic) {
