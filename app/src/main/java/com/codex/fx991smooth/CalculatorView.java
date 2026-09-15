@@ -944,7 +944,7 @@ public final class CalculatorView extends View {
                 drawFittedCentered(canvas, hit.spec.main, visual.centerX(),
                         visual.top, visual.bottom, hit.visual.mainTextSize(),
                         visual.width() * 0.88f, dp(11), darkInk ? INK_DARK : INK_LIGHT,
-                        FACE_BOLD);
+                        FACE_MEDIUM);
             } else {
                 // Secondary legends get a real band inside their own keycap.
                 // This keeps them centered and prevents them from colliding with
@@ -956,7 +956,7 @@ public final class CalculatorView extends View {
                 drawFittedCentered(canvas, hit.spec.main, visual.centerX(),
                         visual.top + visual.height() * 0.27f, visual.bottom,
                         hit.visual.mainTextSize(), visual.width() * 0.90f,
-                        dp(11), darkInk ? INK_DARK : INK_LIGHT, FACE_BOLD);
+                        dp(11), darkInk ? INK_DARK : INK_LIGHT, FACE_MEDIUM);
             }
         }
         canvas.restore();
