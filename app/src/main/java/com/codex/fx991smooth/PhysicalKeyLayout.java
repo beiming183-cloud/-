@@ -196,11 +196,11 @@ public final class PhysicalKeyLayout {
         float contextGap = dp(7);
         float contextWidth = (width - margin * 2f - contextGap * 4f) / 5f;
         Definition[] context = {
-                circle(CnCwKey.SHIFT, "↑", "SHIFT", Kind.SHIFT),
-                circle(CnCwKey.VARIABLE, "⇄x", "变量", Kind.CONTEXT),
-                circle(CnCwKey.FUNCTION, "f(x)", "功能", Kind.CONTEXT),
-                circle(CnCwKey.CATALOG, "▤", "目录", Kind.CONTEXT),
-                circle(CnCwKey.TOOLS, "•••", "工具", Kind.CONTEXT)
+                key(CnCwKey.SHIFT, "↑", "SHIFT", Kind.SHIFT),
+                key(CnCwKey.VARIABLE, "⇄x", "变量", Kind.CONTEXT),
+                key(CnCwKey.FUNCTION, "f(x)", "功能", Kind.CONTEXT),
+                key(CnCwKey.CATALOG, "▤", "目录", Kind.CONTEXT),
+                key(CnCwKey.TOOLS, "•••", "工具", Kind.CONTEXT)
         };
         for (int i = 0; i < context.length; i++) {
             float left = margin + i * (contextWidth + contextGap);

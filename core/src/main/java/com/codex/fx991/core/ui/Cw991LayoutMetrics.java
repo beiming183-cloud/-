@@ -127,7 +127,8 @@ public final class Cw991LayoutMetrics {
     private static boolean isKeyboardRole(Role role) {
         return role == Role.NUMBER || role == Role.OPERATOR
                 || role == Role.FUNCTION || role == Role.ACTION
-                || role == Role.EXECUTE;
+                || role == Role.EXECUTE || role == Role.CONTEXT
+                || role == Role.SHIFT;
     }
 
     /**
