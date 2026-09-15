@@ -1004,6 +1004,8 @@ public final class CalculatorView extends View {
                     float dy = event.getY() - displayDownY;
                     if (Math.abs(dx) > dp(28) && Math.abs(dx) > Math.abs(dy) * 1.25f) {
                         dispatchKey(dx < 0 ? CnCwKey.RIGHT : CnCwKey.LEFT);
+                    } else if (Math.abs(dx) < dp(18) && Math.abs(dy) < dp(18)) {
+                        moveCursorToDisplayPosition(event.getX());
                     }
                     return true;
                 }
@@ -1021,6 +1023,20 @@ public final class CalculatorView extends View {
             }
             default -> { return true; }
         }
+    }
+
+    private void moveCursorToDisplayPosition(float x) {
+        String expression = cleanClipboardText(state.expression());
+        if (expression.isEmpty()) return;
+        RectF lcd = displayBounds(getWidth());
+        float left = lcd.left + dp(8);
+        float right = lcd.right - dp(8);
+        int target = Math.round(((x - left) / Math.max(1f, right - left)) * expression.length());
+        target = Math.max(0, Math.min(expression.length(), target));
+        int current = Math.max(0, Math.min(expression.length(), state.cursor()));
+        CnCwKey direction = target > current ? CnCwKey.RIGHT : CnCwKey.LEFT;
+        int steps = Math.abs(target - current);
+        for (int i = 0; i < steps; i++) dispatchKey(direction);
     }
 
     private void copyDisplayText() {
