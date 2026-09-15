@@ -20,6 +20,7 @@ public final class CnCwSemanticSuite {
         homeViewportIsStableFor991();
         shiftSevenIsPiAndOneShot();
         shiftDivideIsDerivative();
+        shiftedMixedFractionEvaluates();
         shiftFormatInsertsAns();
         relationDoesNotExecute();
         navigationConsumesShiftAndClosesOverlay();
@@ -95,6 +96,22 @@ public final class CnCwSemanticSuite {
         machine.dispatch(CnCwKey.FORMAT);
         equal("Ans", machine.state().expression(), "SHIFT+Format inserts Ans");
         check(!machine.state().shiftArmed(), "SHIFT consumed by Format/Ans");
+    }
+
+    private void shiftedMixedFractionEvaluates() {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        machine.dispatch(CnCwKey.OK);
+        machine.dispatch(CnCwKey.SHIFT);
+        machine.dispatch(CnCwKey.FRACTION);
+        machine.dispatch(CnCwKey.DIGIT_1);
+        machine.dispatch(CnCwKey.COMMA);
+        machine.dispatch(CnCwKey.DIGIT_1);
+        machine.dispatch(CnCwKey.COMMA);
+        machine.dispatch(CnCwKey.DIGIT_2);
+        machine.dispatch(CnCwKey.CLOSE_PAREN);
+        machine.dispatch(CnCwKey.EXE);
+        near(1.5, machine.state().ans(), 1e-12,
+                "SHIFT+fraction evaluates mixed number");
     }
 
     private void navigationConsumesShiftAndClosesOverlay() {

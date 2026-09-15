@@ -412,6 +412,20 @@ public final class ScalarExpressionEngine {
                 double radicand = value(1, context, depth);
                 return bounded(nthRoot(radicand, degree, position), position);
             }
+            if (lower.equals("mixed")) {
+                requireCount(3);
+                double whole = value(0, context, depth);
+                double numerator = value(1, context, depth);
+                double denominator = value(2, context, depth);
+                if (!Double.isFinite(whole) || whole != Math.rint(whole)
+                        || !Double.isFinite(numerator) || numerator != Math.rint(numerator)
+                        || !Double.isFinite(denominator) || denominator != Math.rint(denominator)
+                        || denominator <= 0.0) {
+                    throw argument("mixed requires integer terms", position);
+                }
+                double fraction = numerator / denominator;
+                return bounded(whole < 0.0 ? whole - fraction : whole + fraction, position);
+            }
             if (lower.equals("dms")) {
                 requireCount(3);
                 double degrees = value(0, context, depth);
