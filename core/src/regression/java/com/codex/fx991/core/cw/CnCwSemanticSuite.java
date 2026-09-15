@@ -24,6 +24,7 @@ public final class CnCwSemanticSuite {
         calculateScientificKeysEvaluate();
         calculatePostfixAndCombinatoricKeysEvaluate();
         calculateInverseAndNthRootKeysEvaluate();
+        calculateAnalysisKeysEvaluate();
         calculateAnsChainsAndHistory();
         calculateDivisionErrorIsVisible();
         shiftFormatInsertsAns();
@@ -208,6 +209,35 @@ public final class CnCwSemanticSuite {
         machine.dispatch(CnCwKey.RECIPROCAL);
         machine.dispatch(CnCwKey.EXE);
         near(0.25, machine.state().ans(), 1e-12, "reciprocal key evaluates");
+    }
+
+    private void calculateAnalysisKeysEvaluate() {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        machine.dispatch(CnCwKey.OK);
+        machine.dispatch(CnCwKey.SHIFT);
+        machine.dispatch(CnCwKey.MULTIPLY);
+        machine.dispatch(CnCwKey.SHIFT);
+        machine.dispatch(CnCwKey.DIGIT_0);
+        machine.dispatch(CnCwKey.COMMA);
+        machine.dispatch(CnCwKey.DIGIT_0);
+        machine.dispatch(CnCwKey.COMMA);
+        machine.dispatch(CnCwKey.DIGIT_1);
+        machine.dispatch(CnCwKey.CLOSE_PAREN);
+        machine.dispatch(CnCwKey.EXE);
+        near(0.5, machine.state().ans(), 1e-8, "integral key evaluates");
+
+        machine.dispatch(CnCwKey.AC);
+        machine.dispatch(CnCwKey.SHIFT);
+        machine.dispatch(CnCwKey.DIVIDE);
+        machine.dispatch(CnCwKey.SHIFT);
+        machine.dispatch(CnCwKey.DIGIT_0);
+        machine.dispatch(CnCwKey.POWER);
+        machine.dispatch(CnCwKey.DIGIT_2);
+        machine.dispatch(CnCwKey.COMMA);
+        machine.dispatch(CnCwKey.DIGIT_3);
+        machine.dispatch(CnCwKey.CLOSE_PAREN);
+        machine.dispatch(CnCwKey.EXE);
+        near(6.0, machine.state().ans(), 1e-6, "derivative key evaluates");
     }
 
     private void calculateAnsChainsAndHistory() {
