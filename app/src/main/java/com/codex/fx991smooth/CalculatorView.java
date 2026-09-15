@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.math.BigDecimal;
 
 /**
  * Retained single-canvas Android adapter for the clean-room CN CW state machine.
@@ -984,9 +985,12 @@ public final class CalculatorView extends View {
                     displayDownX = event.getX();
                     displayDownY = event.getY();
                     displayLongPress = () -> {
-                        if (displayPressed) showClipboardMenu();
+                        if (displayPressed) {
+                            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                            showClipboardMenu();
+                        }
                     };
-                    gestureHandler.postDelayed(displayLongPress, 520);
+                    gestureHandler.postDelayed(displayLongPress, 360);
                     return true;
                 }
                 KeyHit hit = findHit(event.getX(actionIndex), event.getY(actionIndex));
@@ -1055,7 +1059,7 @@ public final class CalculatorView extends View {
         new AlertDialog.Builder(getContext())
                 .setItems(new String[]{"复制计算过程", "复制计算结果", "粘贴"}, (dialog, which) -> {
                     if (which == 0) copyText(cleanClipboardText(state.expression()), "已复制计算过程");
-                    else if (which == 1) copyText(cleanClipboardText(state.result()), "已复制计算结果");
+                    else if (which == 1) copyText(decimalResult(state.result()), "已复制十进制结果");
                     else pasteClipboardText();
                 }).show();
     }
@@ -1063,6 +1067,16 @@ public final class CalculatorView extends View {
     private String cleanClipboardText(String text) {
         if (text == null) return "";
         return text.replace("│", "").replace("▌", "").trim();
+    }
+
+    private String decimalResult(String text) {
+        String clean = cleanClipboardText(text);
+        if (clean.isEmpty()) return clean;
+        try {
+            return BigDecimal.valueOf(Double.parseDouble(clean)).stripTrailingZeros().toPlainString();
+        } catch (NumberFormatException ignored) {
+            return clean;
+        }
     }
 
     private void copyText(String text, String message) {
