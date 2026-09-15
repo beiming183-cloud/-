@@ -28,6 +28,8 @@ public final class CnCwUiState {
     private final String displayText;
     private final CnCwExpressionNode naturalExpression;
     private final int cursor;
+    private final int selectionStart;
+    private final int selectionEnd;
     private final String result;
     private final double ans;
     private final boolean hasAns;
@@ -59,9 +61,11 @@ public final class CnCwUiState {
                 List<CnCwCommand> modeCommands,
                 String expression,
                 String displayText,
-                CnCwExpressionNode naturalExpression,
-                int cursor,
-                String result,
+                 CnCwExpressionNode naturalExpression,
+                 int cursor,
+                 int selectionStart,
+                 int selectionEnd,
+                 String result,
                 double ans,
                 boolean hasAns,
                 String status,
@@ -93,6 +97,8 @@ public final class CnCwUiState {
         this.displayText = displayText == null ? "" : displayText;
         this.naturalExpression = Objects.requireNonNull(naturalExpression, "naturalExpression");
         this.cursor = Math.max(0, cursor);
+        this.selectionStart = Math.max(0, Math.min(selectionStart, selectionEnd));
+        this.selectionEnd = Math.max(this.selectionStart, selectionEnd);
         this.result = result == null ? "" : result;
         this.ans = ans;
         this.hasAns = hasAns;
@@ -158,6 +164,9 @@ public final class CnCwUiState {
     public String displayText() { return displayText; }
     public CnCwExpressionNode naturalExpression() { return naturalExpression; }
     public int cursor() { return cursor; }
+    public int selectionStart() { return selectionStart; }
+    public int selectionEnd() { return selectionEnd; }
+    public boolean selectionActive() { return selectionEnd > selectionStart; }
     public String result() { return result; }
     public double ans() { return ans; }
     public boolean hasAns() { return hasAns; }

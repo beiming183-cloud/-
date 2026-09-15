@@ -49,6 +49,11 @@ public final class CnCwExpressionNode {
                 com.codex.fx991.core.Compat.list(), false);
     }
 
+    static CnCwExpressionNode cursor(boolean selected) {
+        return new CnCwExpressionNode(Kind.CURSOR, "",
+                com.codex.fx991.core.Compat.list(), selected);
+    }
+
     static CnCwExpressionNode compound(Kind kind, List<CnCwExpressionNode> children,
                                        boolean selected) {
         return new CnCwExpressionNode(kind, "", children, selected);

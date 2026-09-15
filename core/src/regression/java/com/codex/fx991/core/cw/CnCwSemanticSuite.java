@@ -37,6 +37,8 @@ public final class CnCwSemanticSuite {
         resetRequiresConfirmation();
         displayFormatUsesSubmenu();
         randomIntegerUsesScalarSpelling();
+        semanticCursorSkipsCompoundFunction();
+        semanticSelectionReplacesAndDeletesTokens();
     }
 
     private void keyVocabularySeparatesExecuteAndRelation() {
@@ -356,6 +358,36 @@ public final class CnCwSemanticSuite {
         machine.dispatch(CnCwKey.EXE);
         check(!"Syntax ERROR".equals(machine.state().result()),
                 "RanInt token is accepted by scalar engine");
+    }
+
+    private void semanticCursorSkipsCompoundFunction() {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        machine.dispatch(CnCwKey.OK);
+        machine.dispatch(CnCwKey.SIN);
+        machine.dispatch(CnCwKey.DIGIT_9);
+        machine.dispatch(CnCwKey.DIGIT_0);
+        machine.dispatch(CnCwKey.CLOSE_PAREN);
+        equal(0, machine.moveCursorSemantic(-1).cursor(),
+                "semantic LEFT skips a complete function call");
+        equal(4, machine.moveCursorSemantic(1).cursor(),
+                "semantic RIGHT skips a complete function call");
+    }
+
+    private void semanticSelectionReplacesAndDeletesTokens() {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        machine.dispatch(CnCwKey.OK);
+        machine.dispatch(CnCwKey.DIGIT_1);
+        machine.dispatch(CnCwKey.ADD);
+        machine.dispatch(CnCwKey.DIGIT_2);
+        machine.moveCursorTo(0);
+        machine.dispatch(CnCwKey.SHIFT);
+        machine.dispatch(CnCwKey.RIGHT);
+        check(machine.state().selectionActive(), "SHIFT+RIGHT creates semantic selection");
+        equal("1", machine.selectedText(), "selection follows token boundaries");
+        check(machine.state().naturalExpression().children().get(0).selected(),
+                "natural display marks selected token");
+        machine.dispatch(CnCwKey.DEL);
+        equal("+2", machine.state().expression(), "DEL removes selected semantic range");
     }
 
     private void resetRequiresConfirmation() {
