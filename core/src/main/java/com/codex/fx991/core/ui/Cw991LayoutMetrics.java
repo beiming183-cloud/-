@@ -26,6 +26,18 @@ public final class Cw991LayoutMetrics {
 
     public static KeyVisual forKey(Role role, float touchWidth, float touchHeight,
                                    float viewportWidth, float density) {
+        return forKey(role, touchWidth, touchHeight, viewportWidth, density, true);
+    }
+
+    /**
+     * Returns a key visual while allowing the Android adapter to choose the
+     * compact rectangular key language used by the reference keyboard.
+     * Circular controls keep their old diameter; main calculator keys use a
+     * wide, shorter cap with the same two legend bands.
+     */
+    public static KeyVisual forKey(Role role, float touchWidth, float touchHeight,
+                                   float viewportWidth, float density,
+                                   boolean circular) {
         float safeDensity = Math.max(0.75f, density);
         float width = Math.max(safeDensity * 20f, touchWidth);
         float height = Math.max(safeDensity * 20f, touchHeight);
@@ -98,8 +110,24 @@ public final class Cw991LayoutMetrics {
         if (role == Role.OK) mainSize = Math.max(mainSize, safeDensity * 14f);
         float secondarySize = Math.max(safeDensity * 15f,
                 Math.min(safeDensity * 17f, diameter * secondaryRatio));
+        if (!circular && isKeyboardRole(role)) {
+            float keyWidth = width * 0.96f;
+            float keyHeight = Math.min(height * 0.82f, width * 0.72f);
+            float textHeight = Math.max(safeDensity * 28f, keyHeight);
+            mainSize = textHeight * mainRatio;
+            secondarySize = Math.max(safeDensity * 13f,
+                    Math.min(safeDensity * 17f, textHeight * secondaryRatio));
+            return new KeyVisual(keyWidth, keyHeight, mainSize, secondarySize,
+                    verticalBias, false);
+        }
         return new KeyVisual(diameter, diameter, mainSize,
-                secondarySize, verticalBias, true);
+                secondarySize, verticalBias, circular);
+    }
+
+    private static boolean isKeyboardRole(Role role) {
+        return role == Role.NUMBER || role == Role.OPERATOR
+                || role == Role.FUNCTION || role == Role.ACTION
+                || role == Role.EXECUTE;
     }
 
     /**

@@ -20,6 +20,8 @@ public final class Cw991LayoutMetricsSuite {
                 Cw991LayoutMetrics.Role.NUMBER, 162f, 230f, viewportWidth, density);
         Cw991LayoutMetrics.KeyVisual function = Cw991LayoutMetrics.forKey(
                 Cw991LayoutMetrics.Role.FUNCTION, 136f, 158f, viewportWidth, density);
+        Cw991LayoutMetrics.KeyVisual rectangularFunction = Cw991LayoutMetrics.forKey(
+                Cw991LayoutMetrics.Role.FUNCTION, 136f, 158f, viewportWidth, density, false);
         Cw991LayoutMetrics.KeyVisual shift = Cw991LayoutMetrics.forKey(
                 Cw991LayoutMetrics.Role.SHIFT, 159f, 128f, viewportWidth, density);
 
@@ -33,6 +35,9 @@ public final class Cw991LayoutMetricsSuite {
                 "number keycap does not fill its touch target");
         check(function.area() / (136f * 158f) <= 0.70f,
                 "function keycap does not fill its touch target");
+        check(!rectangularFunction.circular()
+                        && rectangularFunction.width() > rectangularFunction.height(),
+                "calculation keyboard exposes a wide rectangular keycap variant");
         check(Math.abs(shift.width() / shift.height() - 1f) <= 0.03f,
                 "SHIFT is visually circular");
         check(Math.abs(number.height() - tallNumber.height()) <= 8.0f,

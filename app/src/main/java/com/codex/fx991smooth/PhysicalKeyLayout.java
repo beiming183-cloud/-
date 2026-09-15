@@ -59,9 +59,10 @@ public final class PhysicalKeyLayout {
 
     private static Definition key(CnCwKey key, String primary, String secondary,
                                   Kind kind) {
-        // Math and numeric keys on the physical 991 are all individual round
-        // caps, even though their touch cells are laid out on a rectangular grid.
-        return new Definition(key, primary, secondary, kind, true);
+        // The calculation keyboard follows the compact rectangular key
+        // language of the reference app.  The reducer and all key semantics
+        // remain the same; only the cap shape changes.
+        return new Definition(key, primary, secondary, kind, false);
     }
 
     private static Definition circle(CnCwKey key, String primary, String secondary,
@@ -249,7 +250,7 @@ public final class PhysicalKeyLayout {
         RectF touch = new RectF(left, top, right, bottom);
         Cw991LayoutMetrics.KeyVisual visual = Cw991LayoutMetrics.forKey(
                 metricsRole(definition.kind), touch.width(), touch.height(),
-                viewportWidth, density);
+                viewportWidth, density, definition.circular);
         float visualWidth = visual.width();
         float visualHeight = visual.height();
         float centerX = touch.centerX();
