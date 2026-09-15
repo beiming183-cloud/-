@@ -1,5 +1,6 @@
 package com.codex.fx991.core.cw;
 
+import com.codex.fx991.core.AngleUnit;
 import com.codex.fx991.core.mode.CnCwModel;
 
 /**
@@ -25,6 +26,8 @@ public final class CnCwSemanticSuite {
         calculatePostfixAndCombinatoricKeysEvaluate();
         calculateInverseAndNthRootKeysEvaluate();
         calculateAnalysisKeysEvaluate();
+        physicalShiftOperatorLegendsEvaluate();
+        calculationSettingsAffectEvaluation();
         calculateAnsChainsAndHistory();
         calculateDivisionErrorIsVisible();
         shiftFormatInsertsAns();
@@ -238,6 +241,47 @@ public final class CnCwSemanticSuite {
         machine.dispatch(CnCwKey.CLOSE_PAREN);
         machine.dispatch(CnCwKey.EXE);
         near(6.0, machine.state().ans(), 1e-6, "derivative key evaluates");
+    }
+
+    private void physicalShiftOperatorLegendsEvaluate() {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        machine.dispatch(CnCwKey.OK);
+        machine.dispatch(CnCwKey.DIGIT_5);
+        machine.dispatch(CnCwKey.SHIFT);
+        machine.dispatch(CnCwKey.ADD);
+        machine.dispatch(CnCwKey.DIGIT_2);
+        machine.dispatch(CnCwKey.EXE);
+        near(20.0, machine.state().ans(), 1e-12, "SHIFT plus inserts nPr");
+
+        machine.dispatch(CnCwKey.AC);
+        machine.dispatch(CnCwKey.DIGIT_5);
+        machine.dispatch(CnCwKey.SHIFT);
+        machine.dispatch(CnCwKey.SUBTRACT);
+        machine.dispatch(CnCwKey.DIGIT_2);
+        machine.dispatch(CnCwKey.EXE);
+        near(10.0, machine.state().ans(), 1e-12, "SHIFT minus inserts nCr");
+    }
+
+    private void calculationSettingsAffectEvaluation() {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        machine.dispatch(CnCwKey.SETTINGS);
+        machine.dispatch(CnCwKey.OK);      // 计算设置
+        machine.dispatch(CnCwKey.DOWN);    // 角度单位
+        machine.dispatch(CnCwKey.EXE);     // 角度单位选项
+        machine.dispatch(CnCwKey.DOWN);    // 弧度
+        machine.dispatch(CnCwKey.EXE);
+        equal(AngleUnit.RAD, machine.state().settings().angleUnit(),
+                "settings store radian angle unit");
+        machine.dispatch(CnCwKey.BACK);    // 返回设置根
+        machine.dispatch(CnCwKey.BACK);    // 返回 HOME
+        machine.dispatch(CnCwKey.OK);      // 进入计算
+        machine.dispatch(CnCwKey.SIN);
+        machine.dispatch(CnCwKey.PI);
+        machine.dispatch(CnCwKey.DIVIDE);
+        machine.dispatch(CnCwKey.DIGIT_2);
+        machine.dispatch(CnCwKey.CLOSE_PAREN);
+        machine.dispatch(CnCwKey.EXE);
+        near(1.0, machine.state().ans(), 1e-12, "radian setting reaches sine evaluation");
     }
 
     private void calculateAnsChainsAndHistory() {
