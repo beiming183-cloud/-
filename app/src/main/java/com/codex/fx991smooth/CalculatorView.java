@@ -382,7 +382,7 @@ public final class CalculatorView extends View {
         drawNaturalExpression(canvas, state.naturalExpression(), lcd, contentTop,
                 contentBottom, available);
         if (!state.result().isEmpty()) {
-            String[] lines = state.result().split("\\n", -1);
+            String[] lines = decimalDisplayResult(state.result()).split("\\n", -1);
             paint.setTypeface(FACE_MEDIUM);
             paint.setTextAlign(Paint.Align.RIGHT);
             if (lines.length == 1) {
@@ -1077,6 +1077,11 @@ public final class CalculatorView extends View {
         } catch (NumberFormatException ignored) {
             return clean;
         }
+    }
+
+    private String decimalDisplayResult(String text) {
+        if (text == null || text.contains("\n") || text.contains("=")) return text;
+        return decimalResult(text);
     }
 
     private void copyText(String text, String message) {
