@@ -160,7 +160,9 @@ public final class PhysicalKeyLayout {
         // radius made ON/HOME and the direction pad look undersized beside
         // the function caps.  Keep the deck compact, but give it the same
         // visual weight as the keypad on a 20:9 phone.
-        float radius = clamp(Math.min(dp(25), width * 0.060f), dp(17), dp(32));
+        // Keep the four utility keys visually balanced with the navigation pad.
+        // The previous caps were noticeably undersized on the tall X100s Pro viewport.
+        float radius = clamp(Math.min(dp(31), width * 0.072f), dp(21), dp(38));
 
         // Left-side controls on the real unit: power/home above settings/back.
         addCircle(hits, key(CnCwKey.ON, "ON", "", Kind.CONTROL),
