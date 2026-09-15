@@ -63,6 +63,9 @@ public final class CnCwMachine {
     private CnCwSettings settings = CnCwSettings.defaults();
     private int selectedIndex;
     private int cursor;
+    /** Inclusive anchor and exclusive focus for semantic token selection. */
+    private int selectionAnchor = -1;
+    private int selectionFocus = -1;
     private boolean shiftArmed;
     private boolean poweredOn = true;
     private boolean overwriteMode;
@@ -122,6 +125,8 @@ public final class CnCwMachine {
         settings = source.settings;
         selectedIndex = source.selectedIndex;
         cursor = source.cursor;
+        selectionAnchor = source.selectionAnchor;
+        selectionFocus = source.selectionFocus;
         shiftArmed = source.shiftArmed;
         poweredOn = source.poweredOn;
         overwriteMode = source.overwriteMode;
@@ -212,6 +217,7 @@ public final class CnCwMachine {
     public CnCwUiState moveCursorTo(int target) {
         if (!poweredOn || !screen.isApplication() || applicationLanding) return state;
         cursor = Math.max(0, Math.min(tokens.size(), target));
+        clearSelection();
         shiftArmed = false;
         result = "";
         resultShown = false;
@@ -237,6 +243,7 @@ public final class CnCwMachine {
         settings = CnCwSettings.defaults();
         selectedIndex = 0;
         cursor = 0;
+        clearSelection();
         shiftArmed = false;
         poweredOn = true;
         overwriteMode = false;
@@ -437,7 +444,11 @@ public final class CnCwMachine {
 
         switch (key) {
             case LEFT -> {
-                cursor = Math.max(0, cursor - 1);
+                if (shiftArmed) extendSelection(-1);
+                else {
+                    collapseSelection(-1);
+                    cursor = Math.max(0, cursor - 1);
+                }
                 shiftArmed = false;
                 result = "";
                 resultShown = false;
@@ -445,7 +456,11 @@ public final class CnCwMachine {
                 lastError = null;
             }
             case RIGHT -> {
-                cursor = Math.min(tokens.size(), cursor + 1);
+                if (shiftArmed) extendSelection(1);
+                else {
+                    collapseSelection(1);
+                    cursor = Math.min(tokens.size(), cursor + 1);
+                }
                 shiftArmed = false;
                 result = "";
                 resultShown = false;
@@ -533,6 +548,7 @@ public final class CnCwMachine {
 
         rememberUndo();
         if (prepareContinuousVerification(token)) return;
+        deleteSelectionIfPresent();
         if (resultShown) {
             if (token.binary && hasAns) {
                 tokens.clear();
@@ -597,6 +613,7 @@ public final class CnCwMachine {
 
     private void deleteBeforeCursor() {
         shiftArmed = false;
+        if (deleteSelectionIfPresent()) return;
         if (cursor <= 0 || tokens.isEmpty()) return;
         resetStatementSequence();
         rememberUndo();
@@ -611,6 +628,79 @@ public final class CnCwMachine {
         lastError = null;
         lastExactResult = null;
     }
+
+    /** Moves the active end of a semantic token selection by one token. */
+    private void extendSelection(int direction) {
+        if (selectionAnchor < 0) selectionAnchor = cursor;
+        int next = Math.max(0, Math.min(tokens.size(), cursor + direction));
+        cursor = next;
+        selectionFocus = cursor;
+        result = "";
+        resultShown = false;
+        errorShown = false;
+        lastError = null;
+    }
+
+    /** Collapses an existing selection toward the requested movement side. */
+    private void collapseSelection(int direction) {
+        if (!selectionActive()) return;
+        cursor = direction < 0 ? selectionStart() : selectionEnd();
+        clearSelection();
+    }
+
+    private boolean selectionActive() {
+        return selectionAnchor >= 0 && selectionFocus >= 0
+                && selectionAnchor != selectionFocus;
+    }
+
+    private int selectionStart() {
+        return Math.min(selectionAnchor, selectionFocus);
+    }
+
+    private int selectionEnd() {
+        return Math.max(selectionAnchor, selectionFocus);
+    }
+
+    private void clearSelection() {
+        selectionAnchor = -1;
+        selectionFocus = -1;
+    }
+
+    /** Deletes the selected semantic token range and places the cursor at its start. */
+    private boolean deleteSelectionIfPresent() {
+        if (!selectionActive()) return false;
+        rememberUndo();
+        int start = selectionStart();
+        int end = selectionEnd();
+        tokens.subList(start, end).clear();
+        cursor = start;
+        clearSelection();
+        resetStatementSequence();
+        formatConverted = false;
+        engineeringMode = false;
+        originalResult = "";
+        result = "";
+        resultShown = false;
+        errorShown = false;
+        lastError = null;
+        lastExactResult = null;
+        status = applicationStatus();
+        return true;
+    }
+
+    /** Returns the selected semantic source without the cursor marker. */
+    public String selectedExpression() {
+        if (!selectionActive()) return "";
+        StringBuilder text = new StringBuilder();
+        for (int index = selectionStart(); index < selectionEnd(); index++) {
+            text.append(tokens.get(index).display);
+        }
+        return text.toString();
+    }
+
+    public boolean hasSelection() { return selectionActive(); }
+    public int selectionStartIndex() { return selectionActive() ? selectionStart() : cursor; }
+    public int selectionEndIndex() { return selectionActive() ? selectionEnd() : cursor; }
 
     private void rememberUndo() {
         undoTokens = com.codex.fx991.core.Compat.copyList(tokens);
@@ -1078,6 +1168,7 @@ public final class CnCwMachine {
         resetStatementSequence();
         tokens.clear();
         cursor = 0;
+        clearSelection();
         shiftArmed = false;
         result = "";
         resultShown = false;
@@ -1969,7 +2060,7 @@ public final class CnCwMachine {
         if (itemCount > 0) selectedIndex = Math.min(selectedIndex, itemCount - 1);
         state = new CnCwUiState(model, screen, application, selectedIndex,
                 menus, homeItems(), modeCommands(application), expression(), displayText(),
-                naturalExpression(), cursor,
+                naturalExpression(), cursor, selectionStartIndex(), selectionEndIndex(),
                 result, ans, hasAns, status, settings, shiftArmed, poweredOn, overwriteMode,
                 verificationMode, engineeringMode,
                 !statementSequence.isEmpty() && statementSequenceIndex < statementSequence.size(),
@@ -2055,7 +2146,7 @@ public final class CnCwMachine {
                 if (index < end && ")".equals(tokens.get(index).evaluation)) index++;
                 continue;
             }
-            children.add(CnCwExpressionNode.text(token.display, false));
+            children.add(CnCwExpressionNode.text(token.display, isTokenSelected(index)));
             index++;
         }
         if (cursor == end && cursor != cursorHandledAt) {
@@ -2066,6 +2157,10 @@ public final class CnCwMachine {
 
     private static boolean isFractionTemplate(Token token) {
         return "/".equals(token.evaluation) && "a/b".equals(token.display);
+    }
+
+    private boolean isTokenSelected(int index) {
+        return selectionActive() && index >= selectionStart() && index < selectionEnd();
     }
 
     /**

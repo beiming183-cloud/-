@@ -492,10 +492,19 @@ public final class CalculatorView extends View {
                                  float left, float baseline, float textSize) {
         switch (node.kind()) {
             case TEXT -> {
-                paint.setColor(LCD_INK);
                 paint.setTypeface(FACE_NORMAL);
                 paint.setTextAlign(Paint.Align.LEFT);
                 paint.setTextSize(textSize);
+                if (node.selected()) {
+                    paint.getFontMetrics(fontMetrics);
+                    float width = paint.measureText(node.text());
+                    paint.setColor(LCD_DARK);
+                    canvas.drawRect(left - dp(1), baseline + fontMetrics.ascent - dp(2),
+                            left + width + dp(1), baseline + fontMetrics.descent + dp(2), paint);
+                    paint.setColor(LCD);
+                } else {
+                    paint.setColor(LCD_INK);
+                }
                 canvas.drawText(node.text(), left, baseline, paint);
             }
             case CURSOR -> {
@@ -1135,12 +1144,21 @@ public final class CalculatorView extends View {
     }
 
     private void showClipboardMenu() {
-        new AlertDialog.Builder(getContext())
-                .setItems(new String[]{"复制计算过程", "复制计算结果", "粘贴"}, (dialog, which) -> {
-                    if (which == 0) copyText(cleanClipboardText(state.expression()), "已复制计算过程");
-                    else if (which == 1) copyText(decimalResult(state.result()), "已复制十进制结果");
-                    else pasteClipboardText();
-                }).show();
+        boolean hasSelection = state.hasSelection();
+        String[] items = hasSelection
+                ? new String[]{"复制选区", "复制计算过程", "复制计算结果", "粘贴"}
+                : new String[]{"复制计算过程", "复制计算结果", "粘贴"};
+        new AlertDialog.Builder(getContext()).setItems(items, (dialog, which) -> {
+            if (hasSelection && which == 0) {
+                copyText(cleanClipboardText(machine.selectedExpression()), "已复制选区");
+            } else if (which == (hasSelection ? 1 : 0)) {
+                copyText(cleanClipboardText(state.expression()), "已复制计算过程");
+            } else if (which == (hasSelection ? 2 : 1)) {
+                copyText(decimalResult(state.result()), "已复制十进制结果");
+            } else {
+                pasteClipboardText();
+            }
+        }).show();
     }
 
     private String cleanClipboardText(String text) {
