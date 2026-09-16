@@ -1,0 +1,34 @@
+name: Publish verified CN991 0.3.12 APK
+
+on:
+  push:
+    branches: [ chat/continue-20260916 ]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    if: "github.event.head_commit.message == 'ci: publish verified CN991 0.3.12 APK'"
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download exact verified APK artifact
+        shell: bash
+        run: |
+          mkdir -p release-apk
+          gh run download 35089731226 --repo beiming183-cloud/- --name cn991-debug-apk --dir release-apk
+          find release-apk -type f -name '*.apk' -print
+      - name: Publish normal GitHub Release
+        shell: bash
+        run: |
+          APK=$(find release-apk -type f -name '*.apk' | head -n 1)
+          test -n "$APK"
+          cp "$APK" CN991-0.3.12-debug.apk
+          gh release create chat-20260916-ans-process-0312 CN991-0.3.12-debug.apk \
+            --repo beiming183-cloud/- \
+            --target c84695f2c16bb5ef6d95368e51b6adde59c8fabb \
+            --title 'CN991 0.3.12 - Ans Process Expansion' \
+            --notes '真机核查增强版。内部 Ans 数值语义保持不变，但完成计算后用于检查的表达式会把 Ans 展开成产生该 Ans 的上一条计算过程；连续使用 Ans 时递归保留已展开过程。例如 2+3 后再 Ans×2 显示为 (2+3)×2，再 Ans+1 显示为 ((2+3)×2)+1。复制计算过程同样复制展开后的可读过程。正式 PR CI run 35089731226 通过完整核心回归（178 CN CW machine checks）、CN991 Debug APK 构建和 artifact 上传；固定签名 SHA-256 仍为 8427d60083951dc5bceab9663c851070145182c66c11a467b1d72a734434c688，可直接覆盖此前固定签名版本。versionCode 326。'
