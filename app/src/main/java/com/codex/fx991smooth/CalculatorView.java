@@ -698,7 +698,7 @@ public final class CalculatorView extends View {
                                                 float available) {
         if (value == null || value.isBlank()) return false;
         int marker = value.indexOf("\u00d710^");
-        int markerLength = 3;
+        int markerLength = 4;
         if (marker < 1) {
             int upper = value.lastIndexOf('E');
             int lower = value.lastIndexOf('e');
