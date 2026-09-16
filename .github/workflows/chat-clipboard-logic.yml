@@ -1,0 +1,42 @@
+name: Chat clipboard semantic patch
+
+on:
+  push:
+    branches: [ chat/continue-20260916 ]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-clipboard:
+    if: ${{ !contains(github.event.head_commit.message, '[chat-clipboard-logic]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout continuation branch
+        uses: actions/checkout@v4
+        with:
+          ref: chat/continue-20260916
+          fetch-depth: 0
+
+      - name: Apply semantic clipboard patch
+        run: python tools/chat_patch_clipboard_logic.py
+
+      - name: Run focused core regression
+        run: |
+          chmod +x gradlew
+          ./gradlew :core:regressionTest
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No patch needed"
+            exit 0
+          fi
+          git config user.name "chat-continuation"
+          git config user.email "actions@users.noreply.github.com"
+          git add core/src/main/java/com/codex/fx991/core/cw/CnCwMachine.java \
+                  app/src/main/java/com/codex/fx991smooth/CalculatorView.java \
+                  core/src/regression/java/com/codex/fx991/core/CnCwMachineSuite.java
+          git commit -m "fix: preserve clipboard expression semantics and haptics [chat-clipboard-logic]"
+          git push origin HEAD:chat/continue-20260916
