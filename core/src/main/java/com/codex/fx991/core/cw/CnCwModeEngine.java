@@ -29,10 +29,86 @@ import java.util.List;
 public final class CnCwModeEngine {
     private CnCwModeEngine() { }
 
-    public record ModeResult(String display, Double primaryValue) {
-        public ModeResult {
-            if (com.codex.fx991.core.Compat.isBlank(display)) throw new IllegalArgumentException("display");
+    public enum ResultLayout {
+        TEXT,
+        KEY_VALUE,
+        VECTOR,
+        MATRIX,
+        TABLE
+    }
+
+    /** One ordered label/value entry in a structured application result. */
+    public static final class ResultItem {
+        private final String label;
+        private final String value;
+
+        public ResultItem(String label, String value) {
+            if (com.codex.fx991.core.Compat.isBlank(label)) {
+                throw new IllegalArgumentException("label");
+            }
+            if (value == null) throw new IllegalArgumentException("value");
+            this.label = label;
+            this.value = value;
         }
+
+        public String label() { return label; }
+        public String value() { return value; }
+    }
+
+    /**
+     * Core-owned application result protocol.
+     *
+     * <p>`display()` and `primaryValue()` remain source-compatible with the
+     * Stage 2/3 bridge.  New renderers can instead consume layout/title/items
+     * without parsing presentation strings.</p>
+     */
+    public static final class ModeResult {
+        private final String display;
+        private final Double primaryValue;
+        private final ResultLayout layout;
+        private final String title;
+        private final List<ResultItem> items;
+
+        public ModeResult(String display, Double primaryValue) {
+            this(display, primaryValue, ResultLayout.TEXT, "",
+                    com.codex.fx991.core.Compat.list());
+        }
+
+        public ModeResult(String display, Double primaryValue,
+                          ResultLayout layout, String title, List<ResultItem> items) {
+            if (com.codex.fx991.core.Compat.isBlank(display)) {
+                throw new IllegalArgumentException("display");
+            }
+            if (layout == null) throw new IllegalArgumentException("layout");
+            this.display = display;
+            this.primaryValue = primaryValue;
+            this.layout = layout;
+            this.title = title == null ? "" : title;
+            this.items = com.codex.fx991.core.Compat.copyList(items);
+        }
+
+        public static ModeResult keyValue(String title, String display, Double primaryValue,
+                                          ResultItem... entries) {
+            List<ResultItem> items = new ArrayList<>();
+            if (entries != null) {
+                for (ResultItem entry : entries) {
+                    if (entry == null) throw new IllegalArgumentException("entry");
+                    items.add(entry);
+                }
+            }
+            return new ModeResult(display, primaryValue, ResultLayout.KEY_VALUE,
+                    title, items);
+        }
+
+        public String display() { return display; }
+        public Double primaryValue() { return primaryValue; }
+        public ResultLayout layout() { return layout; }
+        public String title() { return title; }
+        public List<ResultItem> items() { return items; }
+    }
+
+    private static ResultItem item(String label, double value) {
+        return new ResultItem(label, format(value));
     }
 
     public static ModeResult evaluate(ApplicationMode mode,
@@ -81,9 +157,14 @@ public final class CnCwModeEngine {
         double[] values = evaluateFields(fields, 0, context);
         if (command.equals("one")) {
             StatisticsEngine.OneVariableResults result = StatisticsEngine.oneVariable(values);
-            return new ModeResult("n=" + format(result.n()) + "  x̄=" + format(result.mean())
+            String display = "n=" + format(result.n()) + "  x̄=" + format(result.mean())
                     + "\nσx=" + format(result.populationStdDev())
-                    + "  sx=" + format(result.sampleStdDev()), result.mean());
+                    + "  sx=" + format(result.sampleStdDev());
+            return ModeResult.keyValue("一元统计", display, result.mean(),
+                    item("n", result.n()),
+                    item("x̄", result.mean()),
+                    item("σx", result.populationStdDev()),
+                    item("sx", result.sampleStdDev()));
         }
         if (values.length < 4 || values.length % 2 != 0) {
             throw new IllegalArgumentException("Enter x1,y1,x2,y2,...");
@@ -97,13 +178,22 @@ public final class CnCwModeEngine {
         if (command.equals("regression")) {
             StatisticsEngine.RegressionResult fit = StatisticsEngine.regression(
                     StatisticsEngine.RegressionType.LINEAR, x, y);
-            return new ModeResult("a=" + format(fit.a()) + "  b=" + format(fit.b())
-                    + "\nr=" + format(fit.r()), fit.r());
+            String display = "a=" + format(fit.a()) + "  b=" + format(fit.b())
+                    + "\nr=" + format(fit.r());
+            return ModeResult.keyValue("线性回归", display, fit.r(),
+                    item("a", fit.a()),
+                    item("b", fit.b()),
+                    item("r", fit.r()));
         }
         StatisticsEngine.TwoVariableResults result = StatisticsEngine.twoVariable(x, y);
-        return new ModeResult("x̄=" + format(result.meanX()) + "  ȳ=" + format(result.meanY())
+        String display = "x̄=" + format(result.meanX()) + "  ȳ=" + format(result.meanY())
                 + "\nσx=" + format(result.populationStdDevX())
-                + "  σy=" + format(result.populationStdDevY()), result.meanX());
+                + "  σy=" + format(result.populationStdDevY());
+        return ModeResult.keyValue("双变量统计", display, result.meanX(),
+                item("x̄", result.meanX()),
+                item("ȳ", result.meanY()),
+                item("σx", result.populationStdDevX()),
+                item("σy", result.populationStdDevY()));
     }
 
     private static ModeResult distribution(String command,

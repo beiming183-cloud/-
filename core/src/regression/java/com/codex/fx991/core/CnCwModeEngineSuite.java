@@ -33,10 +33,31 @@ public final class CnCwModeEngineSuite {
         var one = evaluate(ApplicationMode.STATISTICS, "one", "1,2,3,4");
         near(2.5, one.primaryValue(), 0.0, "one-variable mean");
         check(one.display().contains("n=4"), "one-variable count rendered");
+        equal(CnCwModeEngine.ResultLayout.KEY_VALUE, one.layout(),
+                "one-variable statistics publishes key/value layout");
+        equal("一元统计", one.title(), "one-variable result title");
+        equal(4, one.items().size(), "one-variable structured item count");
+        equal("n", one.items().get(0).label(), "one-variable first item label");
+        equal("4", one.items().get(0).value(), "one-variable count value");
+        equal("x̄", one.items().get(1).label(), "one-variable mean item label");
+        equal("2.5", one.items().get(1).value(), "one-variable mean item value");
 
         var regression = evaluate(ApplicationMode.STATISTICS, "regression", "1,3,2,5,3,7");
         near(1.0, regression.primaryValue(), 1e-12, "perfect linear correlation");
         check(regression.display().contains("a=2"), "linear slope rendered");
+        equal(CnCwModeEngine.ResultLayout.KEY_VALUE, regression.layout(),
+                "regression publishes key/value layout");
+        equal("线性回归", regression.title(), "regression result title");
+        equal(3, regression.items().size(), "regression structured item count");
+        equal("r", regression.items().get(2).label(), "regression correlation item label");
+
+        var two = evaluate(ApplicationMode.STATISTICS, "two", "1,2,3,4");
+        equal(CnCwModeEngine.ResultLayout.KEY_VALUE, two.layout(),
+                "two-variable statistics publishes key/value layout");
+        equal("双变量统计", two.title(), "two-variable result title");
+        equal(4, two.items().size(), "two-variable structured item count");
+        equal("x̄", two.items().get(0).label(), "two-variable x mean label");
+        equal("ȳ", two.items().get(1).label(), "two-variable y mean label");
     }
 
     private void distributionWorkflows() {
