@@ -107,7 +107,7 @@ Stage 3 不继续在 Android View 中堆光标补丁，而是把编辑位置从�
 7. 保留 Stage 2 的触摸选区行为：触摸拖选函数内部仍扩展为完整函数调用，不在 Step 5 抢先引入参数级触摸精细选区；参数级统一选择/替换留到 Step 6；
 8. `sin(30)` 与 `sum(x,1,3)` 求值回归继续通过；
 9. 开发过程中两次由旧回归拦住兼容性变化（裸函数 DEL、函数内部触摸选区），均按既有契约恢复后再通过；
-10. 一次性 Step 5 patch/compat workflow 与脚本已全部删除；清理后的正式 PR CI run `35097482012` 已通过完整核心回归、Android APK 构建、固定签名检查和 artifact 上传。
+10. 一次性 Step 5 patch/compat workflow 与脚本已全部删除；产品代码清理 head `625e897` 的正式 PR CI run `35097482012` 已通过完整核心回归、Android APK 构建、固定签名检查和 artifact 上传。
 
 下一步：
 
