@@ -125,10 +125,49 @@ public final class CnCwModeEngineSuite {
     private void matrixVectorAndRatioWorkflows() {
         var matrix = evaluate(ApplicationMode.MATRIX, "calculate", "2,2,2,1,1,1");
         near(1.0, matrix.primaryValue(), 0.0, "matrix determinant");
+        equal(CnCwModeEngine.ResultLayout.MATRIX, matrix.layout(),
+                "matrix publishes matrix layout");
+        equal("矩阵", matrix.title(), "matrix result title");
+        equal(2, matrix.rows(), "matrix row count");
+        equal(2, matrix.columns(), "matrix column count");
+        equal(4, matrix.cells().size(), "matrix cell count");
+        equal("2", matrix.cells().get(0), "matrix [1,1] structured cell");
+        equal("1", matrix.items().get(0).value(), "matrix determinant structured item");
+
+        var rectangular = evaluate(ApplicationMode.MATRIX, "calculate", "2,3,1,2,3,4,5,6");
+        equal(CnCwModeEngine.ResultLayout.MATRIX, rectangular.layout(),
+                "rectangular matrix keeps matrix layout");
+        equal(2, rectangular.rows(), "rectangular matrix rows");
+        equal(3, rectangular.columns(), "rectangular matrix columns");
+        equal("6", rectangular.cells().get(5), "rectangular matrix last cell");
+        equal(0, rectangular.items().size(), "rectangular matrix has no determinant item");
+
+        var singleVector = evaluate(ApplicationMode.VECTOR, "calculate", "3,4,0");
+        near(5.0, singleVector.primaryValue(), 0.0, "single-vector magnitude");
+        equal(CnCwModeEngine.ResultLayout.VECTOR, singleVector.layout(),
+                "single vector publishes vector layout");
+        equal(1, singleVector.rows(), "single vector uses one grid row");
+        equal(3, singleVector.columns(), "single vector dimension");
+        equal("3", singleVector.cells().get(0), "single vector first component");
+        equal("|v|", singleVector.items().get(0).label(), "single vector magnitude label");
+        equal("5", singleVector.items().get(0).value(), "single vector magnitude value");
+
         var vector = evaluate(ApplicationMode.VECTOR, "calculate", "1,2,3,4");
         near(11.0, vector.primaryValue(), 0.0, "two-dimensional dot product");
+        equal(CnCwModeEngine.ResultLayout.VECTOR, vector.layout(),
+                "two-vector operation publishes vector layout");
+        equal(2, vector.rows(), "two-vector operation uses two rows");
+        equal(2, vector.columns(), "two-vector operation dimension");
+        equal("dot", vector.items().get(0).label(), "dot-product item label");
+        equal("11", vector.items().get(0).value(), "dot-product item value");
+        equal("angle", vector.items().get(1).label(), "vector-angle item label");
+        check(vector.items().get(1).value().endsWith("°"), "vector angle keeps degree unit");
+
         var ratio = evaluate(ApplicationMode.RATIO, "a:b=x:d", "3,8,12");
         near(4.5, ratio.primaryValue(), 0.0, "ratio unknown");
+        equal(CnCwModeEngine.ResultLayout.TEXT, ratio.layout(),
+                "unmigrated ratio keeps text compatibility layout");
+        check(!ratio.hasGrid(), "text result does not expose a grid");
     }
 
     private CnCwModeEngine.ModeResult evaluate(ApplicationMode mode, String command, String source) {

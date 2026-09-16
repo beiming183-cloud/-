@@ -68,6 +68,10 @@ public final class CnCwModeEngine {
         private final ResultLayout layout;
         private final String title;
         private final List<ResultItem> items;
+        /** Optional row-major grid payload used by MATRIX/VECTOR/TABLE layouts. */
+        private final int rows;
+        private final int columns;
+        private final List<String> cells;
 
         public ModeResult(String display, Double primaryValue) {
             this(display, primaryValue, ResultLayout.TEXT, "",
@@ -76,15 +80,33 @@ public final class CnCwModeEngine {
 
         public ModeResult(String display, Double primaryValue,
                           ResultLayout layout, String title, List<ResultItem> items) {
+            this(display, primaryValue, layout, title, items,
+                    0, 0, com.codex.fx991.core.Compat.list());
+        }
+
+        public ModeResult(String display, Double primaryValue,
+                          ResultLayout layout, String title, List<ResultItem> items,
+                          int rows, int columns, List<String> cells) {
             if (com.codex.fx991.core.Compat.isBlank(display)) {
                 throw new IllegalArgumentException("display");
             }
             if (layout == null) throw new IllegalArgumentException("layout");
+            if (items == null) throw new IllegalArgumentException("items");
+            if (cells == null) throw new IllegalArgumentException("cells");
+            if (rows < 0 || columns < 0) throw new IllegalArgumentException("grid size");
+            if ((rows == 0) != (columns == 0)) throw new IllegalArgumentException("grid shape");
+            if (rows > 0 && cells.size() != rows * columns) {
+                throw new IllegalArgumentException("grid cells");
+            }
+            if (rows == 0 && !cells.isEmpty()) throw new IllegalArgumentException("grid cells");
             this.display = display;
             this.primaryValue = primaryValue;
             this.layout = layout;
             this.title = title == null ? "" : title;
             this.items = com.codex.fx991.core.Compat.copyList(items);
+            this.rows = rows;
+            this.columns = columns;
+            this.cells = com.codex.fx991.core.Compat.copyList(cells);
         }
 
         public static ModeResult keyValue(String title, String display, Double primaryValue,
@@ -100,11 +122,26 @@ public final class CnCwModeEngine {
                     title, items);
         }
 
+        public static ModeResult grid(ResultLayout layout, String title, String display,
+                                      Double primaryValue, int rows, int columns,
+                                      List<String> cells, List<ResultItem> items) {
+            if (layout != ResultLayout.MATRIX && layout != ResultLayout.VECTOR
+                    && layout != ResultLayout.TABLE) {
+                throw new IllegalArgumentException("grid layout");
+            }
+            return new ModeResult(display, primaryValue, layout, title, items,
+                    rows, columns, cells);
+        }
+
         public String display() { return display; }
         public Double primaryValue() { return primaryValue; }
         public ResultLayout layout() { return layout; }
         public String title() { return title; }
         public List<ResultItem> items() { return items; }
+        public int rows() { return rows; }
+        public int columns() { return columns; }
+        public List<String> cells() { return cells; }
+        public boolean hasGrid() { return rows > 0; }
     }
 
     private static ResultItem item(String label, double value) {
@@ -352,13 +389,25 @@ public final class CnCwModeEngine {
             for (int column = 0; column < columns; column++) data[row][column] = values[offset++];
         }
         MatrixValue matrix = new MatrixValue(data);
+        List<String> cells = new ArrayList<>();
+        for (int row = 0; row < rows; row++) {
+            for (int column = 0; column < columns; column++) {
+                cells.add(format(matrix.get(row, column)));
+            }
+        }
+        List<ResultItem> items = new ArrayList<>();
         if (rows == columns) {
             double determinant = matrix.determinant();
-            return new ModeResult(rows + "×" + columns + "  det=" + format(determinant)
-                    + "\n[1,1]=" + format(matrix.get(0, 0)), determinant);
+            items.add(item("det", determinant));
+            String display = rows + "×" + columns + "  det=" + format(determinant)
+                    + "\n[1,1]=" + format(matrix.get(0, 0));
+            return ModeResult.grid(ResultLayout.MATRIX, "矩阵", display, determinant,
+                    rows, columns, cells, items);
         }
-        return new ModeResult(rows + "×" + columns + " matrix\n[1,1]="
-                + format(matrix.get(0, 0)), matrix.get(0, 0));
+        String display = rows + "×" + columns + " matrix\n[1,1]="
+                + format(matrix.get(0, 0));
+        return ModeResult.grid(ResultLayout.MATRIX, "矩阵", display, matrix.get(0, 0),
+                rows, columns, cells, items);
     }
 
     private static ModeResult vector(List<String> fields,
@@ -366,8 +415,18 @@ public final class CnCwModeEngine {
         double[] values = evaluateFields(fields, 0, context);
         if (values.length == 2 || values.length == 3) {
             VectorValue vector = new VectorValue(values);
-            return new ModeResult("|v|=" + format(vector.magnitude())
-                    + "\nunit[1]=" + format(vector.unit().get(0)), vector.magnitude());
+            List<String> cells = new ArrayList<>();
+            for (double value : values) cells.add(format(value));
+            List<ResultItem> items = new ArrayList<>();
+            items.add(item("|v|", vector.magnitude()));
+            VectorValue unit = vector.unit();
+            for (int index = 0; index < values.length; index++) {
+                items.add(item("unit[" + (index + 1) + "]", unit.get(index)));
+            }
+            String display = "|v|=" + format(vector.magnitude())
+                    + "\nunit[1]=" + format(unit.get(0));
+            return ModeResult.grid(ResultLayout.VECTOR, "向量", display, vector.magnitude(),
+                    1, values.length, cells, items);
         }
         if (values.length == 4 || values.length == 6) {
             int dimension = values.length / 2;
@@ -377,8 +436,17 @@ public final class CnCwModeEngine {
             System.arraycopy(values, dimension, right, 0, dimension);
             VectorValue a = new VectorValue(left);
             VectorValue b = new VectorValue(right);
-            return new ModeResult("dot=" + format(a.dot(b))
-                    + "\nangle=" + format(Math.toDegrees(a.angleRadians(b))) + "°", a.dot(b));
+            double dot = a.dot(b);
+            double angle = Math.toDegrees(a.angleRadians(b));
+            List<String> cells = new ArrayList<>();
+            for (double value : left) cells.add(format(value));
+            for (double value : right) cells.add(format(value));
+            List<ResultItem> items = new ArrayList<>();
+            items.add(item("dot", dot));
+            items.add(item("angle", format(angle) + "°"));
+            String display = "dot=" + format(dot) + "\nangle=" + format(angle) + "°";
+            return ModeResult.grid(ResultLayout.VECTOR, "向量运算", display, dot,
+                    2, dimension, cells, items);
         }
         throw new IllegalArgumentException("Enter 2/3 values, or two equal vectors");
     }
