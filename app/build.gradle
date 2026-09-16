@@ -17,8 +17,8 @@ android {
         // dependency-free engines without requiring a desugared JDK bundle.
         minSdk 26
         targetSdk 34
-        versionCode 324
-        versionName '0.3.10'
+        versionCode 325
+        versionName '0.3.11'
         buildConfigField 'String', 'MODEL_ID', '"CN991_CW"'
         buildConfigField 'String', 'MODEL_PROFILE', '"FX_991_CN_CW"'
         buildConfigField 'String', 'MODEL_LABEL', '"CN Scientific 991"'

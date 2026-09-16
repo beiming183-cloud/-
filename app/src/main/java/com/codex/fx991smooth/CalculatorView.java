@@ -400,8 +400,8 @@ public final class CalculatorView extends View {
                         contentBottom, available)
                         && !drawNaturalFractionResult(canvas, lines[0], lcd, contentTop,
                         contentBottom, available)) {
-                    drawFittedResultText(canvas, lines[0], lcd.right - dp(6),
-                            contentTop + (contentBottom - contentTop) * 0.86f, available);
+                    drawFittedResultText(canvas, lines[0], lcd, contentTop,
+                            contentBottom, available);
                 }
             } else {
                 paint.setTextSize(sp(16f));
@@ -620,8 +620,10 @@ public final class CalculatorView extends View {
     }
 
     /** Draws a result without losing trailing digits to an ellipsis. */
-    private void drawFittedResultText(Canvas canvas, String value, float right,
-                                      float baseline, float available) {
+    private void drawFittedResultText(Canvas canvas, String value, RectF lcd,
+                                      float contentTop, float contentBottom, float available) {
+        float right = lcd.right - dp(6);
+        float baseline = contentTop + (contentBottom - contentTop) * 0.86f;
         String display = value == null ? "" : value;
         paint.setColor(LCD_INK);
         paint.setTypeface(FACE_MEDIUM);
@@ -637,7 +639,16 @@ public final class CalculatorView extends View {
 
         String scientific = compactScientificResult(display);
         if (!scientific.equals(display)) {
-            display = scientific;
+            // The long-number fallback is created only after the first natural-SCI
+            // pass, so route that newly-created E notation back through the natural
+            // mantissa × 10 + raised exponent renderer instead of ever drawing E.
+            if (drawNaturalScientificResult(canvas, scientific, lcd, contentTop,
+                    contentBottom, available)) {
+                return;
+            }
+            // Defensive fallback: even if the structured renderer rejects a future
+            // scientific spelling, never expose raw E notation to the calculator LCD.
+            display = scientific.replace("E", "×10^").replace("e", "×10^");
             for (float size = 24f; size >= 14f; size -= 1f) {
                 paint.setTextSize(sp(size));
                 if (paint.measureText(display) <= available) {
@@ -1166,6 +1177,17 @@ public final class CalculatorView extends View {
                         if (displayPressed) {
                             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
                             displayLongPressTriggered = true;
+                            if (state.resultShown() && state.hasAns()
+                                    && isResultBand(displayDownY)) {
+                                // A long-press on the lower result line must expose the
+                                // clipboard actions directly. Previously it tried to select
+                                // the expression above, making “复制 Ans” effectively unreachable.
+                                displaySelectionMode = false;
+                                selectionDragEdge = 0;
+                                postInvalidateOnAnimation();
+                                showClipboardMenu();
+                                return;
+                            }
                             if (machine.cursorLimit() == 0) {
                                 // There is nothing to select on an empty editor. Long-press
                                 // should still expose the standard phone action the user
@@ -1404,6 +1426,13 @@ public final class CalculatorView extends View {
         }
     }
 
+    private boolean isResultBand(float y) {
+        RectF lcd = displayBounds(getWidth());
+        float contentTop = lcd.top + lcd.height() * 0.145f;
+        float contentBottom = lcd.bottom - dp(3);
+        return y >= contentTop + (contentBottom - contentTop) * 0.58f;
+    }
+
     private void showPasteOnlyMenu() {
         new AlertDialog.Builder(getContext()).setItems(new String[]{"粘贴"}, (dialog, which) -> {
             performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
@@ -1439,7 +1468,7 @@ public final class CalculatorView extends View {
         if (!state.hasAns()) return "";
         String currentResult = cleanClipboardText(state.result());
         if (state.resultShown() && !currentResult.isEmpty()) {
-            return decimalResult(currentResult);
+            return currentResult;
         }
         return BigDecimal.valueOf(state.ans()).stripTrailingZeros().toPlainString();
     }
