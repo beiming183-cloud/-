@@ -23,6 +23,7 @@ public final class CnCwMachineSuite {
         semanticTokensDoNotCollapseDuringEvaluation();
         clipboardPastePreservesExpressionSemantics();
         ansTokenCanBeSelectedAndCopied();
+        ansProcessExpandsForInspection();
         calculateKeepsExactStandardResults();
         imaginaryUnitWorksInCalculate();
         shiftedExeForcesDecimalResult();
@@ -181,6 +182,27 @@ public final class CnCwMachineSuite {
         machine.selectTouchWord(0);
         check(machine.state().hasSelection(), "Ans token can be touch-selected");
         equal("Ans", machine.selectedExpression(), "selected Ans exports to clipboard source");
+    }
+
+    private void ansProcessExpandsForInspection() {
+        CnCwMachine machine = calculateMachine();
+        press(machine, CnCwKey.DIGIT_2, CnCwKey.ADD, CnCwKey.DIGIT_3, CnCwKey.EXE);
+        equal("2+3", machine.calculationProcessDisplay(),
+                "first result keeps its readable calculation process");
+
+        press(machine, CnCwKey.MULTIPLY, CnCwKey.DIGIT_2, CnCwKey.EXE);
+        equal("Ans*2", machine.state().expression(),
+                "Ans remains evaluator semantics internally");
+        equal("(2+3)×2", machine.calculationProcessDisplay(),
+                "inspection process expands Ans to previous calculation");
+        equal("10", machine.state().result(), "expanded inspection does not alter result");
+
+        press(machine, CnCwKey.ADD, CnCwKey.DIGIT_1, CnCwKey.EXE);
+        equal("Ans+1", machine.state().expression(),
+                "second continuation still keeps internal Ans token");
+        equal("((2+3)×2)+1", machine.calculationProcessDisplay(),
+                "Ans process expansion is recursive across calculations");
+        equal("11", machine.state().result(), "recursive display expansion does not alter arithmetic");
     }
 
     private void calculateKeepsExactStandardResults() {

@@ -386,8 +386,16 @@ public final class CalculatorView extends View {
         float contentTop = lcd.top + lcd.height() * 0.145f;
         float contentBottom = lcd.bottom - dp(3);
         float available = lcd.width() - dp(12);
-        drawNaturalExpression(canvas, state.naturalExpression(), lcd, contentTop,
-                contentBottom, available);
+        boolean showExpandedAnsProcess = state.resultShown()
+                && state.expression().contains("Ans")
+                && !machine.calculationProcessDisplay().isBlank();
+        if (showExpandedAnsProcess) {
+            drawInspectionProcess(canvas, machine.calculationProcessDisplay(), lcd,
+                    contentTop, contentBottom, available);
+        } else {
+            drawNaturalExpression(canvas, state.naturalExpression(), lcd, contentTop,
+                    contentBottom, available);
+        }
         if (state.hasSelection()) {
             drawSelectionHandles(canvas, lcd, contentTop, contentBottom);
         }
@@ -600,6 +608,31 @@ public final class CalculatorView extends View {
             offset += measureNatural(child, textSize).width;
         }
         return -1f;
+    }
+
+    /** Draws an Ans-expanded finished calculation without changing editor tokens. */
+    private void drawInspectionProcess(Canvas canvas, String value, RectF lcd,
+                                       float contentTop, float contentBottom, float available) {
+        String display = value == null ? "" : value;
+        float left = lcd.left + dp(6);
+        float baseline = contentTop + Math.min(dp(31), (contentBottom - contentTop) * 0.32f);
+        paint.setColor(LCD_INK);
+        paint.setTypeface(FACE_NORMAL);
+        paint.setTextAlign(Paint.Align.LEFT);
+        for (float size = 25f; size >= 12f; size -= 1f) {
+            paint.setTextSize(sp(size));
+            if (paint.measureText(display) <= available) {
+                canvas.drawText(display, left, baseline, paint);
+                return;
+            }
+        }
+        paint.setTextSize(sp(12f));
+        float width = Math.max(1f, paint.measureText(display));
+        float scale = Math.min(1f, available / width);
+        canvas.save();
+        canvas.scale(scale, 1f, left, baseline);
+        canvas.drawText(display, left, baseline, paint);
+        canvas.restore();
     }
 
     /** Draws phone-style handles at the two semantic selection boundaries. */
@@ -1456,7 +1489,7 @@ public final class CalculatorView extends View {
             String action = items[which];
             switch (action) {
                 case "复制选区" -> copyText(cleanClipboardText(machine.selectedExpression()), "已复制选区");
-                case "复制计算过程" -> copyText(cleanClipboardText(state.expression()), "已复制计算过程");
+                case "复制计算过程" -> copyText(cleanClipboardText(machine.calculationProcessDisplay()), "已复制展开后的计算过程");
                 case "复制计算结果" -> copyText(decimalResult(state.result()), "已复制十进制结果");
                 case "复制 Ans" -> copyText(ansClipboardText(), "已复制 Ans");
                 default -> pasteClipboardText();

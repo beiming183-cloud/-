@@ -78,6 +78,10 @@ public final class CnCwMachine {
     private String activeCommandId = "";
     private double ans;
     private boolean hasAns;
+    /** Human-readable calculation process that produced the current Ans value. */
+    private String ansProcessDisplay = "";
+    /** Human-readable calculation process associated with the currently shown result. */
+    private String resultProcessDisplay = "";
     private ExactValue exactAns;
     private ExactValue lastExactResult;
     private String originalResult = "";
@@ -139,6 +143,8 @@ public final class CnCwMachine {
         activeCommandId = source.activeCommandId;
         ans = source.ans;
         hasAns = source.hasAns;
+        ansProcessDisplay = source.ansProcessDisplay;
+        resultProcessDisplay = source.resultProcessDisplay;
         exactAns = source.exactAns;
         lastExactResult = source.lastExactResult;
         originalResult = source.originalResult;
@@ -181,6 +187,30 @@ public final class CnCwMachine {
     }
 
     public CnCwUiState state() { return state; }
+
+    /**
+     * Returns the human-readable calculation process for inspection/copying.
+     * Ans is expanded to the already-expanded process that produced its value;
+     * evaluator tokens themselves are never rewritten.
+     */
+    public String calculationProcessDisplay() {
+        if (resultShown && resultProcessDisplay != null && !resultProcessDisplay.isBlank()) {
+            return resultProcessDisplay;
+        }
+        return expandedProcessDisplay(tokens, ansProcessDisplay);
+    }
+
+    private String expandedProcessDisplay(List<Token> source, String ansSource) {
+        StringBuilder out = new StringBuilder(Math.max(8, source.size() * 2));
+        for (Token token : source) {
+            if ("Ans".equals(token.evaluation) && ansSource != null && !ansSource.isBlank()) {
+                out.append('(').append(ansSource).append(')');
+            } else {
+                out.append(token.display);
+            }
+        }
+        return out.toString();
+    }
 
     /**
      * Applies exactly one logical key intent and returns the new snapshot.
@@ -626,6 +656,8 @@ public final class CnCwMachine {
         activeCommandId = "";
         ans = 0.0;
         hasAns = false;
+        ansProcessDisplay = "";
+        resultProcessDisplay = "";
         exactAns = null;
         lastExactResult = null;
         originalResult = "";
@@ -1368,7 +1400,10 @@ public final class CnCwMachine {
                     formatted = BaseNEngine.format((int) scalar, BaseNEngine.Base.DECIMAL);
                 }
             }
+            String evaluatedProcessDisplay = expandedProcessDisplay(tokens, ansProcessDisplay);
+            resultProcessDisplay = evaluatedProcessDisplay;
             if (storeAnswer && application != ApplicationMode.INEQUALITY) {
+                ansProcessDisplay = evaluatedProcessDisplay;
                 ans = scalar;
                 hasAns = true;
                 exactAns = exactScalar;
@@ -1387,7 +1422,7 @@ public final class CnCwMachine {
                     : statementSequence.isEmpty() ? applicationStatus()
                     : "语句 " + Math.min(statementSequenceIndex, statementSequence.size())
                     + "/" + statementSequence.size();
-            history.add(new HistoryEntry(com.codex.fx991.core.Compat.copyList(tokens), result));
+            history.add(new HistoryEntry(com.codex.fx991.core.Compat.copyList(tokens), result, resultProcessDisplay));
             if (history.size() > 100) history.remove(0);
             historyIndex = history.size();
             if (spreadsheetGrid && application == ApplicationMode.SPREADSHEET
@@ -1642,6 +1677,7 @@ public final class CnCwMachine {
         tokens.addAll(entry.tokens);
         cursor = tokens.size();
         result = entry.result;
+        resultProcessDisplay = entry.processDisplay;
         resultShown = true;
         status = "历史 " + (historyIndex + 1) + "/" + history.size();
     }
@@ -1852,6 +1888,8 @@ public final class CnCwMachine {
         }
         ans = 0.0;
         hasAns = false;
+        ansProcessDisplay = "";
+        resultProcessDisplay = "";
         exactAns = null;
         clearFunctionDefinitions();
         history.clear();
@@ -3063,7 +3101,7 @@ public final class CnCwMachine {
 
     private record Token(String display, String evaluation, boolean binary) { }
     private record Navigation(CnCwScreen screen, int selectedIndex) { }
-    private record HistoryEntry(List<Token> tokens, String result) { }
+    private record HistoryEntry(List<Token> tokens, String result, String processDisplay) { }
     private record CoordinateCall(boolean polar, String first, String second) { }
     private record SelectionRange(int start, int end) { }
     private record SimplificationResult(long originalNumerator, long originalDenominator,
