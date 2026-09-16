@@ -65,6 +65,7 @@ public final class CnCwUiState {
                 String displayText,
                 CnCwExpressionNode naturalExpression,
                 int cursor,
+                CnCwCursorPath semanticCursor,
                 int selectionStart,
                 int selectionEnd,
                 String result,
@@ -99,7 +100,7 @@ public final class CnCwUiState {
         this.displayText = displayText == null ? "" : displayText;
         this.naturalExpression = Objects.requireNonNull(naturalExpression, "naturalExpression");
         this.cursor = Math.max(0, cursor);
-        this.semanticCursor = CnCwCursorPath.rootBoundary(this.cursor);
+        this.semanticCursor = Objects.requireNonNull(semanticCursor, "semanticCursor");
         this.selectionStart = Math.max(0, selectionStart);
         this.selectionEnd = Math.max(this.selectionStart, selectionEnd);
         this.result = result == null ? "" : result;

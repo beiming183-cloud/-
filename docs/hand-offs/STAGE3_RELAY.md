@@ -51,9 +51,13 @@ Stage 3 不继续在 Android View 中堆光标补丁，而是把编辑位置从�
 - semantic path 可以表达分数/幂/根号/函数的未来嵌套位置；
 - `:core:check` 必须包含 semantic cursor suite。
 
-## 下一步：Step 2 分数内部移动
+## Step 2：分数内部移动（已开始）
 
-Step 1 CI 通过后，下一项只做分数，不同时改幂和根号：
+Step 1 CI 已通过。Step 2 已进入第一子阶段，只做分数，不同时改幂和根号。
+
+当前正在接入：分子/分母语义 slot、上下切换和自然树内光标保持。DEL 与语义选区仍属于本 Step 的后续子阶段，不提前宣称完成。
+
+完整 Step 2 目标：
 
 1. 为自然表达式中的 `FRACTION` 建立 numerator / denominator 子路径；
 2. 定义左右移动规则：

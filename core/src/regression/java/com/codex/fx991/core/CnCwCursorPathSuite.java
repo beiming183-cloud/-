@@ -17,6 +17,7 @@ public final class CnCwCursorPathSuite {
         rootBoundaryKeepsLegacyCompatibility();
         nestedPathCarriesStructureWithoutLosingFallback();
         uiStatePublishesSemanticCursorFacade();
+        fractionPublishesNestedSlotsAndMovesVertically();
         System.out.println("PASS " + checks + " semantic cursor checks");
     }
 
@@ -57,6 +58,49 @@ public final class CnCwCursorPathSuite {
         equal(1, machine.state().cursor(), "legacy touch cursor still moves normally");
         equal(CnCwCursorPath.rootBoundary(1), machine.state().semanticCursor(),
                 "semantic facade follows existing cursor during migration");
+    }
+
+    private void fractionPublishesNestedSlotsAndMovesVertically() {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        machine.dispatch(CnCwKey.OK);
+        machine.dispatch(CnCwKey.DIGIT_5);
+        machine.dispatch(CnCwKey.FRACTION);
+        machine.dispatch(CnCwKey.DIGIT_6);
+
+        equal(CnCwCursorPath.Slot.FRACTION_DENOMINATOR,
+                machine.state().semanticCursor().slot(),
+                "fraction input ends inside denominator slot");
+        equal(1, machine.state().semanticCursor().childPath().get(0),
+                "fraction semantic path identifies template token");
+        equal(1, machine.state().semanticCursor().offset(),
+                "denominator cursor keeps local offset");
+
+        machine.dispatch(CnCwKey.UP);
+        equal(CnCwCursorPath.Slot.FRACTION_NUMERATOR,
+                machine.state().semanticCursor().slot(),
+                "UP moves denominator cursor into numerator");
+        equal(1, machine.state().semanticCursor().offset(),
+                "UP preserves nearest local offset");
+        check(machine.state().naturalExpression().containsCursor(),
+                "numerator semantic position remains visible in natural tree");
+
+        machine.dispatch(CnCwKey.DOWN);
+        equal(CnCwCursorPath.Slot.FRACTION_DENOMINATOR,
+                machine.state().semanticCursor().slot(),
+                "DOWN returns numerator cursor to denominator");
+        equal(1, machine.state().semanticCursor().offset(),
+                "DOWN restores denominator local offset");
+        check(machine.state().naturalExpression().containsCursor(),
+                "denominator semantic position remains visible in natural tree");
+
+        machine.moveCursorTo(2);
+        equal(0, machine.state().semanticCursor().offset(),
+                "denominator start has local offset zero");
+        machine.dispatch(CnCwKey.UP);
+        equal(0, machine.state().semanticCursor().offset(),
+                "vertical move also preserves start-of-slot position");
+        check(machine.state().naturalExpression().containsCursor(),
+                "fraction numerator start keeps cursor inside natural fraction tree");
     }
 
     private void check(boolean condition, String message) {

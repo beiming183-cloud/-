@@ -869,8 +869,12 @@ public final class CnCwMachine {
                 errorShown = false;
                 lastError = null;
             }
-            case UP -> recallHistory(-1);
-            case DOWN -> recallHistory(1);
+            case UP -> {
+                if (!moveFractionVertical(-1)) recallHistory(-1);
+            }
+            case DOWN -> {
+                if (!moveFractionVertical(1)) recallHistory(1);
+            }
             case PAGE_UP -> recallHistory(-6);
             case PAGE_DOWN -> recallHistory(6);
             case DEL -> {
@@ -2581,7 +2585,8 @@ public final class CnCwMachine {
         if (itemCount > 0) selectedIndex = Math.min(selectedIndex, itemCount - 1);
         state = new CnCwUiState(model, screen, application, selectedIndex,
                 menus, homeItems(), modeCommands(application), expression(), displayText(),
-                naturalExpression(), cursor, selectionStartIndex(), selectionEndIndex(),
+                naturalExpression(), cursor, semanticCursorPath(),
+                selectionStartIndex(), selectionEndIndex(),
                 result, ans, hasAns, status, settings, shiftArmed, poweredOn, overwriteMode,
                 verificationMode, engineeringMode,
                 !statementSequence.isEmpty() && statementSequenceIndex < statementSequence.size(),
@@ -2592,6 +2597,81 @@ public final class CnCwMachine {
                 spreadsheetGrid ? spreadsheetCellsSnapshot() : com.codex.fx991.core.Compat.list(),
                 spreadsheetGrid ? spreadsheet.input(spreadsheetAddress()) : "",
                 navigationPath());
+    }
+
+    /**
+     * Returns the best semantic position for the current legacy token boundary.
+     * Stage 3 currently upgrades fraction slots first; all other structures
+     * continue to publish a root boundary until their migration step lands.
+     */
+    private CnCwCursorPath semanticCursorPath() {
+        FractionCursor fraction = fractionCursorAt(cursor);
+        if (fraction == null) return CnCwCursorPath.rootBoundary(cursor);
+        return CnCwCursorPath.nested(
+                com.codex.fx991.core.Compat.list(fraction.templateIndex),
+                fraction.slot, fraction.offset, cursor);
+    }
+
+    /** Finds the smallest fraction structure owning the requested insertion boundary. */
+    private FractionCursor fractionCursorAt(int boundary) {
+        int safe = Math.max(0, Math.min(tokens.size(), boundary));
+        FractionCursor best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            if (!isFractionTemplate(tokens.get(template))) continue;
+            int numeratorStart = semanticAtomStart(template);
+            int numeratorEnd = template;
+            int denominatorStart = template + 1;
+            int denominatorEnd = naturalExponentEnd(denominatorStart, tokens.size(), false);
+            CnCwCursorPath.Slot slot = null;
+            int offset = 0;
+            if (safe >= numeratorStart && safe <= numeratorEnd) {
+                slot = CnCwCursorPath.Slot.FRACTION_NUMERATOR;
+                offset = safe - numeratorStart;
+            } else if (safe >= denominatorStart && safe <= denominatorEnd) {
+                slot = CnCwCursorPath.Slot.FRACTION_DENOMINATOR;
+                offset = safe - denominatorStart;
+            }
+            if (slot == null) continue;
+            int span = denominatorEnd - numeratorStart;
+            if (span < bestSpan) {
+                bestSpan = span;
+                best = new FractionCursor(template, numeratorStart, numeratorEnd,
+                        denominatorStart, denominatorEnd, slot, offset);
+            }
+        }
+        return best;
+    }
+
+    /**
+     * Moves between numerator and denominator without invoking history recall.
+     * Horizontal movement remains on the legacy token boundary for this step,
+     * so existing touch and selection behavior stays compatible.
+     */
+    private boolean moveFractionVertical(int direction) {
+        if (resultShown || errorShown || selectionActive()) return false;
+        FractionCursor fraction = fractionCursorAt(cursor);
+        if (fraction == null) return false;
+
+        int next = cursor;
+        if (direction < 0 && fraction.slot == CnCwCursorPath.Slot.FRACTION_DENOMINATOR) {
+            int length = fraction.numeratorEnd - fraction.numeratorStart;
+            next = fraction.numeratorStart + Math.min(fraction.offset, length);
+        } else if (direction > 0
+                && fraction.slot == CnCwCursorPath.Slot.FRACTION_NUMERATOR) {
+            int length = fraction.denominatorEnd - fraction.denominatorStart;
+            next = fraction.denominatorStart + Math.min(fraction.offset, length);
+        }
+
+        cursor = Math.max(0, Math.min(tokens.size(), next));
+        clearSelection();
+        shiftArmed = false;
+        result = "";
+        resultShown = false;
+        errorShown = false;
+        lastError = null;
+        status = applicationStatus();
+        return true;
     }
 
     private List<String> spreadsheetCellsSnapshot() {
@@ -2642,14 +2722,18 @@ public final class CnCwMachine {
                 index = exponentEnd;
                 continue;
             }
-            if (isFractionTemplate(token) && index != cursor && !children.isEmpty()) {
+            if (isFractionTemplate(token) && !children.isEmpty()) {
+                int numeratorStart = semanticAtomStart(index);
                 int denominatorEnd = naturalExponentEnd(index + 1, end, false);
-                CnCwExpressionNode numerator = children.remove(children.size() - 1);
+                CnCwExpressionNode prefix = naturalRow(start, numeratorStart);
+                CnCwExpressionNode numerator = naturalRow(numeratorStart, index);
                 CnCwExpressionNode denominator = naturalRow(index + 1, denominatorEnd);
+                children.clear();
+                children.addAll(prefix.children());
                 children.add(CnCwExpressionNode.compound(CnCwExpressionNode.Kind.FRACTION,
                         com.codex.fx991.core.Compat.list(numerator, denominator), false));
-                if (denominator.containsCursor() && cursor == denominatorEnd) {
-                    cursorHandledAt = denominatorEnd;
+                if (numerator.containsCursor() || denominator.containsCursor()) {
+                    cursorHandledAt = cursor;
                 }
                 index = denominatorEnd;
                 continue;
@@ -3103,6 +3187,9 @@ public final class CnCwMachine {
     private record Navigation(CnCwScreen screen, int selectedIndex) { }
     private record HistoryEntry(List<Token> tokens, String result, String processDisplay) { }
     private record CoordinateCall(boolean polar, String first, String second) { }
+    private record FractionCursor(int templateIndex, int numeratorStart, int numeratorEnd,
+                                  int denominatorStart, int denominatorEnd,
+                                  CnCwCursorPath.Slot slot, int offset) { }
     private record SelectionRange(int start, int end) { }
     private record SimplificationResult(long originalNumerator, long originalDenominator,
                                         long displayNumerator, long displayDenominator,
