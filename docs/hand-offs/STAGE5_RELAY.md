@@ -71,10 +71,20 @@ Stage 4 已经把统计、方程、矩阵、向量的结果升级为 core-owned 
 6. Android 新增统计表格、方程系数表、矩阵/向量网格输入渲染；
 7. LCD 上可直接点击单元格切换编辑位置；
 8. 旧逗号字符串输入仍可从模式首页直接输入，不被新页面强制替换；
-9. 一次性 patch/workflow 已清理；clean head `e2e66869b1894984055ec208e0e1c2abcf7c960c` 的正式 PR CI run `35163412828` 已通过完整 core regression、Android Debug 构建和 artifact 上传。
+9. 一次性 patch/workflow 已清理；产品代码 clean CI 已通过完整 core regression、Android Debug 构建和 artifact 上传。
+
+## 0.3.18 长期签名真机测试版
+
+- tag：`beibei-0.3.18`；
+- versionName：`0.3.18`；
+- versionCode：`332`；
+- Application ID：`com.beibei.calculator`；
+- APK：`beibei-calculator-0.3.18-release.apk`；
+- APK SHA-256：`48e18ab98ca01bb62abd71a6fd6a9ced0cd7264cd5b7552aea8fc5f8021af9a4`；
+- Release 构建已通过完整 core regression、R8、包名/版本/长期证书硬校验；
+- 临时 release workflow 已删除。
 
 ## 后续
 
-- 生成长期签名 `0.3.18` Stage 5 prerelease；
-- 真机检查 0.3.17 结果页 + 0.3.18 输入页一起集中进行；
+- 0.3.17 结果页 + 0.3.18 输入页后续一起集中真机验收；
 - PR #5 在用户明确要求合并前保持 Draft，不提前合并。
