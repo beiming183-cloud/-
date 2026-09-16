@@ -16,10 +16,10 @@
 - Stage 2 Step 2：completed
 - Stage 2 Step 3：completed
 - Step 3 后真机差分验证：passed
-- 当前阶段：Stage 2 收口 / branding finish
+- 当前阶段：Stage 2 已收口
 - 状态：`device validation passed`
 
-用户已在 vivo 真机持续验收本轮交互，并在 2026-09-16 确认目前没有明显问题。除品牌收口外，Stage 2 不再继续追加新交互功能。
+用户已在 vivo 真机持续验收本轮交互，并在 2026-09-16 确认目前没有明显问题。Stage 2 不再继续追加新交互功能。
 
 ## Stage 2 已完成并通过的重点
 
@@ -67,6 +67,9 @@
 - Android launcher `app_name`：`北北计算器`
 - 应用内 `app_model_name` / `MODEL_LABEL`：`北北计算器`
 - fallback description：`独立开发的 Android 科学计算器`
+- 正式 CI run：`35091421631`，完整核心回归、Android APK 构建、固定签名恢复和 artifact 上传全部通过；
+- Release：`beibei-0.3.13`
+- APK：`beibei-calculator-0.3.13-debug.apk`
 
 ## 下一阶段计划：Stage 3 语义编辑器
 
@@ -95,11 +98,13 @@ Stage 3 建议按以下顺序进行：
 
 ## 收口动作
 
-当前 Stage 2 可以进入合并准备：
+Stage 2 已具备合并条件：
 
-- 先确认 0.3.13 品牌版 CI 和覆盖安装正常；
-- 确认 Draft PR #2 无失败检查；
-- 由用户明确决定是否将 PR #2 合并到 `main`；
-- 合并后从 `main` 新建 Stage 3 分支，开始语义光标/语义编辑器改造。
+- 0.3.13 品牌版 CI 已通过；
+- 固定签名和覆盖安装链保持不变；
+- 真机差分验收已标记通过；
+- Draft PR #2 当前用于最终合并准备。
+
+下一步由用户明确决定是否将 PR #2 合并到 `main`。合并后从 `main` 新建 Stage 3 分支，开始语义光标/语义编辑器改造。
 
 在用户明确同意之前，不自动合并 PR #2。
