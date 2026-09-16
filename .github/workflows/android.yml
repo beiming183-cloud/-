@@ -27,14 +27,31 @@ jobs:
       - name: 配置 Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # GitHub Runner 每次都是新机器。若不保存 ~/.android/debug.keystore，
-      # 每次 debug APK 都会被不同证书签名，手机就无法覆盖安装。
-      # 这是专门给测试版使用的固定 debug 签名缓存，不用于正式商店发布。
+      # GitHub Runner 每次都是新机器。若每次都临时生成 debug 证书，
+      # Android 会把下一版视为不同开发者签名，无法直接覆盖安装。
       - name: 恢复固定测试签名
+        id: debug-signing-cache
         uses: actions/cache@v4
         with:
           path: ~/.android/debug.keystore
           key: cn991-debug-signing-v1
+
+      # 第一次没有缓存时主动生成一次；随后 actions/cache 会在任务结束时
+      # 保存这把测试签名。后续构建恢复同一个文件，因此签名保持一致。
+      - name: 首次初始化测试签名
+        if: steps.debug-signing-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.android"
+          keytool -genkeypair -noprompt \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
 
       - name: 添加 Gradle 执行权限
         run: chmod +x ./gradlew
