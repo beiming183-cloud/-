@@ -658,6 +658,9 @@ public final class CnCwMachine {
         }
         if (position >= tokens.size()) return tokens.size();
         int atomEnd = semanticAtomEnd(position);
+        if (atomEnd < tokens.size() && isFractionTemplate(tokens.get(atomEnd))) {
+            return semanticAtomEnd(atomEnd + 1);
+        }
         if (atomEnd < tokens.size() && "^".equals(tokens.get(atomEnd).evaluation)) {
             return semanticAtomEnd(atomEnd + 1);
         }
@@ -668,6 +671,11 @@ public final class CnCwMachine {
         int safe = Math.max(0, Math.min(tokens.size(), position));
         if (safe == 0) return 0;
         Token previous = tokens.get(safe - 1);
+        // The fraction-template separator belongs to the structure around it;
+        // never expose it as an independent selection unit.
+        if (isFractionTemplate(previous)) {
+            return semanticAtomStart(safe - 1);
+        }
         if (isNumericFragment(previous)) {
             int start = safe - 1;
             while (start > 0 && isNumericFragment(tokens.get(start - 1))) start--;
@@ -684,6 +692,9 @@ public final class CnCwMachine {
         int safe = Math.max(0, Math.min(tokens.size(), position));
         if (safe >= tokens.size()) return tokens.size();
         Token current = tokens.get(safe);
+        if (isFractionTemplate(current)) {
+            return semanticAtomEnd(safe + 1);
+        }
         if (isNumericFragment(current)) {
             int end = safe + 1;
             while (end < tokens.size() && isNumericFragment(tokens.get(end))) end++;
@@ -773,12 +784,15 @@ public final class CnCwMachine {
         return true;
     }
 
-    /** Returns the selected semantic source without the cursor marker. */
+    /** Returns the selected evaluable source without the cursor marker. */
     public String selectedExpression() {
         if (!selectionActive()) return "";
         StringBuilder text = new StringBuilder();
         for (int index = selectionStart(); index < selectionEnd(); index++) {
-            text.append(tokens.get(index).display);
+            // Clipboard/export must use the evaluator spelling, not keycap
+            // labels such as `a/b`, `√(`, or `π`.  The display spelling is
+            // intentionally visual and is not a valid pasted expression.
+            text.append(tokens.get(index).evaluation);
         }
         return text.toString();
     }

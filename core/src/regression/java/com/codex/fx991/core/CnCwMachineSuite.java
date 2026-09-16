@@ -564,6 +564,19 @@ public final class CnCwMachineSuite {
                 CnCwKey.SHIFT, CnCwKey.LEFT);
         equal("3^2", machine.selectedExpression(),
                 "selection treats a power as one unit");
+
+        machine = calculateMachine();
+        press(machine, CnCwKey.DIGIT_5, CnCwKey.FRACTION, CnCwKey.DIGIT_6,
+                CnCwKey.SHIFT, CnCwKey.LEFT);
+        equal("6", machine.selectedExpression(),
+                "fraction selection starts with the denominator atom");
+        press(machine, CnCwKey.SHIFT, CnCwKey.LEFT);
+        equal("5/6", machine.selectedExpression(),
+                "fraction selection expands to the complete numerator/denominator unit");
+        equal(0, machine.state().selectionStart(),
+                "fraction whole selection starts at numerator");
+        equal(3, machine.state().selectionEnd(),
+                "fraction whole selection ends after denominator");
     }
 
     private void directTouchCursorMovesAtomically() {
