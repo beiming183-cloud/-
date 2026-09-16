@@ -3,6 +3,7 @@ package com.codex.fx991.core;
 import com.codex.fx991.core.cw.CnCwCursorPath;
 import com.codex.fx991.core.cw.CnCwKey;
 import com.codex.fx991.core.cw.CnCwMachine;
+import com.codex.fx991.core.cw.CnCwSemanticSpan;
 import com.codex.fx991.core.mode.CnCwModel;
 
 /** Stage 3 bootstrap checks for semantic cursor positions. */
@@ -37,6 +38,7 @@ public final class CnCwCursorPathSuite {
         semanticSelectionPathsCoverEditableSlots();
         crossArgumentSelectionSnapsToWholeFunction();
         semanticSelectionDeleteAndPasteStayInFunctionArgument();
+        semanticTouchSpansAndPathsRoundTrip();
         System.out.println("PASS " + checks + " semantic cursor checks");
     }
 
@@ -715,6 +717,68 @@ public final class CnCwCursorPathSuite {
         machine.dispatch(CnCwKey.EXE);
         equal("6", machine.state().result(),
                 "multi-argument sum still evaluates after semantic editing support");
+    }
+
+    private void semanticTouchSpansAndPathsRoundTrip() {
+        CnCwMachine machine = fractionMachine();
+        CnCwSemanticSpan denominator = findSpan(machine,
+                CnCwCursorPath.Slot.FRACTION_DENOMINATOR, 0);
+        check(denominator != null, "fraction denominator publishes semantic touch span");
+        equal(1, denominator.length(), "fraction touch span keeps slot token length");
+        machine.moveCursorTo(denominator.position(0));
+        equal(CnCwCursorPath.Slot.FRACTION_DENOMINATOR,
+                machine.state().semanticCursor().slot(),
+                "semantic touch move enters denominator directly");
+        equal(0, machine.state().semanticCursor().offset(),
+                "semantic touch move keeps denominator-local offset");
+
+        machine = sinMachine(true);
+        CnCwSemanticSpan argument = findSpan(machine,
+                CnCwCursorPath.Slot.FUNCTION_ARGUMENT, 0);
+        check(argument != null, "function argument publishes semantic touch span");
+        equal(Compat.list(0, 0), argument.childPath(),
+                "function span identifies template and argument index");
+        machine.moveCursorTo(argument.position(1));
+        equal(CnCwCursorPath.Slot.FUNCTION_ARGUMENT,
+                machine.state().semanticCursor().slot(),
+                "semantic touch cursor enters function argument");
+        equal(1, machine.state().semanticCursor().offset(),
+                "function semantic touch keeps local offset");
+
+        machine.beginTouchSelection(argument.position(0));
+        machine.extendTouchSelection(argument.position(argument.length()));
+        equal("30", machine.selectedExpression(),
+                "semantic touch paths select only the function argument");
+        equal(CnCwCursorPath.Slot.FUNCTION_ARGUMENT,
+                machine.state().semanticSelectionAnchor().slot(),
+                "semantic path selection publishes argument anchor");
+        equal(CnCwCursorPath.Slot.FUNCTION_ARGUMENT,
+                machine.state().semanticSelectionFocus().slot(),
+                "semantic path selection publishes argument focus");
+
+        machine = nthRootMachine(true);
+        CnCwSemanticSpan rootIndex = findSpan(machine, CnCwCursorPath.Slot.ROOT_INDEX, 0);
+        CnCwSemanticSpan rootContent = findSpan(machine, CnCwCursorPath.Slot.ROOT_CONTENT, 0);
+        check(rootIndex != null && rootContent != null,
+                "nth root publishes independent index/content touch spans");
+        machine.moveCursorTo(rootIndex.position(1));
+        equal(CnCwCursorPath.Slot.ROOT_INDEX, machine.state().semanticCursor().slot(),
+                "semantic touch can land in root index");
+        machine.moveCursorTo(rootContent.position(1));
+        equal(CnCwCursorPath.Slot.ROOT_CONTENT, machine.state().semanticCursor().slot(),
+                "semantic touch can land in root content");
+    }
+
+    private CnCwSemanticSpan findSpan(CnCwMachine machine, CnCwCursorPath.Slot slot,
+                                      int childTail) {
+        for (CnCwSemanticSpan span : machine.state().semanticSpans()) {
+            if (span.slot() != slot) continue;
+            if (slot == CnCwCursorPath.Slot.FUNCTION_ARGUMENT
+                    && (span.childPath().size() < 2
+                    || span.childPath().get(1) != childTail)) continue;
+            return span;
+        }
+        return null;
     }
 
     private CnCwMachine sinMachine(boolean closed) {

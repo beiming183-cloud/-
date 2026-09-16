@@ -261,6 +261,85 @@ public final class CnCwMachine {
         return state;
     }
 
+    /**
+     * Semantic touch entry point used by Stage 3 platform adapters. Invalid or stale
+     * paths fail closed to their retained legacy boundary instead of corrupting a
+     * structure.
+     */
+    public CnCwUiState moveCursorTo(CnCwCursorPath target) {
+        if (!poweredOn || !screen.isApplication() || applicationLanding) return state;
+        if (!applySemanticTouchCursor(target)) {
+            semanticCursorOverride = null;
+            cursor = semanticTouchBoundary(target);
+        }
+        clearSelection();
+        shiftArmed = false;
+        result = "";
+        resultShown = false;
+        errorShown = false;
+        lastError = null;
+        publish();
+        return state;
+    }
+
+    /** Validates and installs one semantic insertion path. */
+    private boolean applySemanticTouchCursor(CnCwCursorPath target) {
+        if (target == null) return false;
+        if (target.isRootBoundary()) {
+            setRootCursor(target.legacyTokenBoundary());
+            return true;
+        }
+        if (target.childPath().isEmpty()) return false;
+        int template = target.childPath().get(0);
+        switch (target.slot()) {
+            case FRACTION_NUMERATOR, FRACTION_DENOMINATOR -> {
+                FractionBounds bounds = fractionBounds(template);
+                if (bounds == null) return false;
+                setFractionCursor(bounds, target.slot(), target.offset());
+                return true;
+            }
+            case SUPERSCRIPT_BASE, SUPERSCRIPT_EXPONENT -> {
+                PowerBounds bounds = powerBounds(template);
+                if (bounds == null) return false;
+                setPowerCursor(bounds, target.slot(), target.offset());
+                return true;
+            }
+            case RADICAL_CONTENT, ROOT_INDEX, ROOT_CONTENT -> {
+                RadicalBounds bounds = radicalBounds(template);
+                if (bounds == null) return false;
+                Token token = tokens.get(template);
+                if (target.slot() == CnCwCursorPath.Slot.ROOT_INDEX
+                        && !isGenericRootTemplate(token)) return false;
+                if (target.slot() == CnCwCursorPath.Slot.RADICAL_CONTENT
+                        && !isSquareRootTemplate(token)) return false;
+                if (target.slot() == CnCwCursorPath.Slot.ROOT_CONTENT
+                        && isSquareRootTemplate(token)) return false;
+                setRadicalCursor(bounds, target.slot(), target.offset());
+                return true;
+            }
+            case FUNCTION_ARGUMENT -> {
+                if (target.childPath().size() < 2) return false;
+                FunctionBounds bounds = functionBounds(template);
+                int argument = target.childPath().get(1);
+                if (bounds == null || argument < 0 || argument >= bounds.arguments.size()) {
+                    return false;
+                }
+                setFunctionCursor(bounds, argument, target.offset());
+                return true;
+            }
+            case ROW -> {
+                setRootCursor(target.legacyTokenBoundary());
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int semanticTouchBoundary(CnCwCursorPath target) {
+        if (target == null) return cursor;
+        return Math.max(0, Math.min(tokens.size(), target.legacyTokenBoundary()));
+    }
+
     /** Starts a touch-driven text selection at a semantic insertion boundary. */
     public CnCwUiState beginTouchSelection(int target) {
         if (!poweredOn || !screen.isApplication() || applicationLanding) return state;
@@ -374,6 +453,35 @@ public final class CnCwMachine {
         status = applicationStatus();
         publish();
         return state;
+    }
+
+    /** Semantic-path overloads used by the Android Stage 3 touch adapter. */
+    public CnCwUiState beginTouchSelection(CnCwCursorPath target) {
+        int boundary = semanticTouchBoundary(target);
+        CnCwUiState value = beginTouchSelection(boundary);
+        if (applySemanticTouchCursor(target)) {
+            selectionAnchor = cursor;
+            selectionFocus = cursor;
+            publish();
+            return state;
+        }
+        return value;
+    }
+
+    public CnCwUiState selectTouchWord(CnCwCursorPath target) {
+        return selectTouchWord(semanticTouchBoundary(target));
+    }
+
+    public CnCwUiState extendTouchSelection(CnCwCursorPath target) {
+        return extendTouchSelection(semanticTouchBoundary(target));
+    }
+
+    public CnCwUiState moveTouchSelectionStart(CnCwCursorPath target) {
+        return moveTouchSelectionStart(semanticTouchBoundary(target));
+    }
+
+    public CnCwUiState moveTouchSelectionEnd(CnCwCursorPath target) {
+        return moveTouchSelectionEnd(semanticTouchBoundary(target));
     }
 
     /**
@@ -2647,7 +2755,7 @@ public final class CnCwMachine {
         if (itemCount > 0) selectedIndex = Math.min(selectedIndex, itemCount - 1);
         state = new CnCwUiState(model, screen, application, selectedIndex,
                 menus, homeItems(), modeCommands(application), expression(), displayText(),
-                naturalExpression(), cursor, semanticCursorPath(),
+                naturalExpression(), cursor, semanticCursorPath(), semanticSpans(),
                 selectionStartIndex(), selectionEndIndex(),
                 semanticSelectionPath(selectionAnchor), semanticSelectionPath(selectionFocus),
                 result, ans, hasAns, status, settings, shiftArmed, poweredOn, overwriteMode,
@@ -3731,6 +3839,77 @@ public final class CnCwMachine {
         if (radical != null && selectionWithinRadicalSlot(start, end, radical)) return true;
         FunctionBounds function = functionContainingToken(tokenIndex);
         return function != null && selectionWithinFunctionArgument(start, end, function);
+    }
+
+    /**
+     * Publishes every currently editable nested slot. The Android adapter uses
+     * these spans for geometry-aware hit testing while legacy token boundaries
+     * remain available as a fallback.
+     */
+    private List<CnCwSemanticSpan> semanticSpans() {
+        List<CnCwSemanticSpan> spans = new ArrayList<>();
+        for (int template = 0; template < tokens.size(); template++) {
+            FractionBounds fraction = fractionBounds(template);
+            if (fraction != null) {
+                spans.add(new CnCwSemanticSpan(
+                        com.codex.fx991.core.Compat.list(template),
+                        CnCwCursorPath.Slot.FRACTION_NUMERATOR,
+                        fraction.numeratorStart, fraction.numeratorEnd,
+                        fraction.numeratorStart, fraction.denominatorEnd));
+                spans.add(new CnCwSemanticSpan(
+                        com.codex.fx991.core.Compat.list(template),
+                        CnCwCursorPath.Slot.FRACTION_DENOMINATOR,
+                        fraction.denominatorStart, fraction.denominatorEnd,
+                        fraction.numeratorStart, fraction.denominatorEnd));
+            }
+
+            PowerBounds power = powerBounds(template);
+            if (power != null) {
+                spans.add(new CnCwSemanticSpan(
+                        com.codex.fx991.core.Compat.list(template),
+                        CnCwCursorPath.Slot.SUPERSCRIPT_BASE,
+                        power.baseStart, power.baseEnd,
+                        power.baseStart, power.exponentEnd));
+                spans.add(new CnCwSemanticSpan(
+                        com.codex.fx991.core.Compat.list(template),
+                        CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT,
+                        power.exponentStart, power.exponentEnd,
+                        power.baseStart, power.exponentEnd));
+            }
+
+            RadicalBounds radical = radicalBounds(template);
+            if (radical != null) {
+                Token token = tokens.get(template);
+                if (radical.indexStart >= 0) {
+                    spans.add(new CnCwSemanticSpan(
+                            com.codex.fx991.core.Compat.list(template),
+                            CnCwCursorPath.Slot.ROOT_INDEX,
+                            radical.indexStart, radical.indexEnd,
+                            radical.templateIndex, radical.endExclusive));
+                }
+                CnCwCursorPath.Slot contentSlot = isSquareRootTemplate(token)
+                        ? CnCwCursorPath.Slot.RADICAL_CONTENT
+                        : CnCwCursorPath.Slot.ROOT_CONTENT;
+                spans.add(new CnCwSemanticSpan(
+                        com.codex.fx991.core.Compat.list(template), contentSlot,
+                        radical.contentStart, radical.contentEnd,
+                        radical.templateIndex, radical.endExclusive));
+            }
+
+            FunctionBounds function = functionBounds(template);
+            if (function != null) {
+                for (int argumentIndex = 0; argumentIndex < function.arguments.size();
+                     argumentIndex++) {
+                    FunctionArgumentBounds argument = function.arguments.get(argumentIndex);
+                    spans.add(new CnCwSemanticSpan(
+                            com.codex.fx991.core.Compat.list(template, argumentIndex),
+                            CnCwCursorPath.Slot.FUNCTION_ARGUMENT,
+                            argument.start, argument.end,
+                            function.templateIndex, function.endExclusive));
+                }
+            }
+        }
+        return com.codex.fx991.core.Compat.copyList(spans);
     }
 
     /** Smallest semantic slot containing the complete normalized selection. */

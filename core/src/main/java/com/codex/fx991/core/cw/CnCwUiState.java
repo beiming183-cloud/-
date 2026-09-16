@@ -30,6 +30,8 @@ public final class CnCwUiState {
     private final int cursor;
     /** Stage 3 compatibility view of the cursor as a semantic editor position. */
     private final CnCwCursorPath semanticCursor;
+    /** Editable semantic regions used by geometry-aware platform hit testing. */
+    private final List<CnCwSemanticSpan> semanticSpans;
     private final int selectionStart;
     private final int selectionEnd;
     /** Stage 3 semantic facade for the selection's directional anchor. */
@@ -70,6 +72,7 @@ public final class CnCwUiState {
                 CnCwExpressionNode naturalExpression,
                 int cursor,
                 CnCwCursorPath semanticCursor,
+                List<CnCwSemanticSpan> semanticSpans,
                 int selectionStart,
                 int selectionEnd,
                 CnCwCursorPath semanticSelectionAnchor,
@@ -107,6 +110,7 @@ public final class CnCwUiState {
         this.naturalExpression = Objects.requireNonNull(naturalExpression, "naturalExpression");
         this.cursor = Math.max(0, cursor);
         this.semanticCursor = Objects.requireNonNull(semanticCursor, "semanticCursor");
+        this.semanticSpans = com.codex.fx991.core.Compat.copyList(semanticSpans);
         this.selectionStart = Math.max(0, selectionStart);
         this.selectionEnd = Math.max(this.selectionStart, selectionEnd);
         this.semanticSelectionAnchor = Objects.requireNonNull(semanticSelectionAnchor,
@@ -187,6 +191,8 @@ public final class CnCwUiState {
      * </p>
      */
     public CnCwCursorPath semanticCursor() { return semanticCursor; }
+    /** Semantic editable regions for platform hit testing; immutable snapshot. */
+    public List<CnCwSemanticSpan> semanticSpans() { return semanticSpans; }
     public boolean hasSelection() { return selectionEnd > selectionStart; }
     public int selectionStart() { return selectionStart; }
     public int selectionEnd() { return selectionEnd; }
