@@ -19,8 +19,8 @@ android {
         applicationId 'com.beibei.calculator'
         minSdk 26
         targetSdk 34
-        versionCode 329
-        versionName '0.3.15'
+        versionCode 330
+        versionName '0.3.16'
         buildConfigField 'String', 'MODEL_ID', '"CN991_CW"'
         buildConfigField 'String', 'MODEL_PROFILE', '"FX_991_CN_CW"'
         buildConfigField 'String', 'MODEL_LABEL', '"北北计算器"'
