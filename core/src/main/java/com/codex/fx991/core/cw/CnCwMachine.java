@@ -227,6 +227,96 @@ public final class CnCwMachine {
         return state;
     }
 
+    /** Starts a touch-driven text selection at a semantic insertion boundary. */
+    public CnCwUiState beginTouchSelection(int target) {
+        if (!poweredOn || !screen.isApplication() || applicationLanding) return state;
+        cursor = Math.max(0, Math.min(tokens.size(), target));
+        selectionAnchor = cursor;
+        selectionFocus = cursor;
+        shiftArmed = false;
+        result = "";
+        resultShown = false;
+        errorShown = false;
+        lastError = null;
+        status = applicationStatus();
+        publish();
+        return state;
+    }
+
+    /** Moves the active touch-selection focus without clearing its anchor. */
+    public CnCwUiState extendTouchSelection(int target) {
+        if (!poweredOn || !screen.isApplication() || applicationLanding) return state;
+        if (selectionAnchor < 0) {
+            beginTouchSelection(cursor);
+        }
+        int clamped = Math.max(0, Math.min(tokens.size(), target));
+        SelectionRange range = normalizeTouchSelectionRange(selectionAnchor, clamped);
+        if (clamped >= selectionAnchor) {
+            selectionAnchor = range.start;
+            selectionFocus = range.end;
+            cursor = range.end;
+        } else {
+            selectionAnchor = range.end;
+            selectionFocus = range.start;
+            cursor = range.start;
+        }
+        result = "";
+        resultShown = false;
+        errorShown = false;
+        lastError = null;
+        status = applicationStatus();
+        publish();
+        return state;
+    }
+
+    /**
+     * Snaps a dragged selection around structures that must stay intact when
+     * copied or replaced. Touches may land inside a function, power, or
+     * fraction, but the resulting range always contains that complete unit.
+     */
+    private SelectionRange normalizeTouchSelectionRange(int anchor, int target) {
+        if (anchor == target) return new SelectionRange(anchor, target);
+        int start = Math.min(anchor, target);
+        int end = Math.max(anchor, target);
+        boolean changed;
+        do {
+            changed = false;
+            for (int index = start; index < end && index < tokens.size(); index++) {
+                Token token = tokens.get(index);
+                int unitStart = index;
+                int unitEnd = index + 1;
+                if (isFractionTemplate(token)) {
+                    unitStart = semanticAtomStart(index);
+                    unitEnd = semanticAtomEnd(index + 1);
+                } else if ("^".equals(token.evaluation)) {
+                    unitStart = semanticAtomStart(index);
+                    unitEnd = semanticAtomEnd(index + 1);
+                } else if (opensParenthesis(token)) {
+                    int close = matchingClose(index);
+                    unitEnd = close >= 0 ? close + 1 : unitEnd;
+                } else if (")".equals(token.evaluation)) {
+                    int open = matchingOpen(index);
+                    unitStart = open >= 0 ? open : unitStart;
+                } else {
+                    int enclosing = enclosingOpen(index);
+                    if (enclosing >= 0) {
+                        int close = matchingClose(enclosing);
+                        unitStart = enclosing;
+                        unitEnd = close >= 0 ? close + 1 : unitEnd;
+                    }
+                }
+                int nextStart = Math.min(start, unitStart);
+                int nextEnd = Math.max(end, unitEnd);
+                if (nextStart != start || nextEnd != end) {
+                    start = nextStart;
+                    end = nextEnd;
+                    changed = true;
+                }
+            }
+        } while (changed);
+        return new SelectionRange(start, end);
+    }
+
     /** Number of semantic insertion slots currently available. */
     public int cursorLimit() { return tokens.size(); }
 
@@ -728,6 +818,20 @@ public final class CnCwMachine {
             else if (")".equals(token.evaluation)) {
                 depth--;
                 if (depth == 0) return index;
+            }
+        }
+        return -1;
+    }
+
+    private int enclosingOpen(int index) {
+        int depth = 0;
+        for (int cursor = index - 1; cursor >= 0; cursor--) {
+            Token token = tokens.get(cursor);
+            if (")".equals(token.evaluation)) {
+                depth++;
+            } else if (opensParenthesis(token)) {
+                if (depth == 0) return cursor;
+                depth--;
             }
         }
         return -1;
@@ -2681,6 +2785,7 @@ public final class CnCwMachine {
     private record Navigation(CnCwScreen screen, int selectedIndex) { }
     private record HistoryEntry(List<Token> tokens, String result) { }
     private record CoordinateCall(boolean polar, String first, String second) { }
+    private record SelectionRange(int start, int end) { }
     private record SimplificationResult(long originalNumerator, long originalDenominator,
                                         long displayNumerator, long displayDenominator,
                                         boolean canContinue, double value) { }

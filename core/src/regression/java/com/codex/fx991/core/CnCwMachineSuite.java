@@ -47,6 +47,7 @@ public final class CnCwMachineSuite {
         unfinishedFunctionParenthesisIsCompleted();
         semanticDeleteAndCursor();
         semanticSelectionSupportsDeleteAndReplace();
+        touchSelectionCanAnchorAndExtend();
         directTouchCursorMovesAtomically();
         shiftedDeleteTogglesOverwriteAndOnIsDistinct();
         settingsAreMachineOwned();
@@ -592,6 +593,29 @@ public final class CnCwMachineSuite {
         equal(3, machine.state().cursor(), "touch cursor clamps to expression end");
         machine.moveCursorTo(-10);
         equal(0, machine.state().cursor(), "touch cursor clamps to expression start");
+    }
+
+    private void touchSelectionCanAnchorAndExtend() {
+        CnCwMachine machine = calculateMachine();
+        press(machine, CnCwKey.DIGIT_1, CnCwKey.ADD, CnCwKey.DIGIT_2,
+                CnCwKey.ADD, CnCwKey.DIGIT_3);
+        machine.beginTouchSelection(1);
+        machine.extendTouchSelection(4);
+        equal("+2+", machine.selectedExpression(),
+                "touch selection exports the exact dragged token range");
+        equal(1, machine.state().selectionStart(),
+                "touch selection preserves its anchor boundary");
+        equal(4, machine.state().selectionEnd(),
+                "touch selection updates its focus boundary");
+
+        machine = calculateMachine();
+        press(machine, CnCwKey.SIN, CnCwKey.DIGIT_2, CnCwKey.CLOSE_PAREN);
+        equal("sin(2)", machine.state().expression(),
+                "touch selection function fixture expression");
+        machine.beginTouchSelection(1);
+        machine.extendTouchSelection(2);
+        equal("sin(2)", machine.selectedExpression(),
+                "touch selection expands a partial function drag to the full call");
     }
 
     private void shiftedDeleteTogglesOverwriteAndOnIsDistinct() {

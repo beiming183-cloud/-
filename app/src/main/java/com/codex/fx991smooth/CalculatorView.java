@@ -48,6 +48,8 @@ public final class CalculatorView extends View {
     private CnCwKey repeatingKey;
     private int repeatingPointerId = -1;
     private boolean displayPressed;
+    private boolean displaySelectionMode;
+    private boolean displayLongPressTriggered;
     private float displayDownX;
     private float displayDownY;
     private int lastDragCursor = -1;
@@ -995,13 +997,20 @@ public final class CalculatorView extends View {
                 if (event.getActionMasked() == MotionEvent.ACTION_DOWN
                         && displayBounds(getWidth()).contains(event.getX(), event.getY())) {
                     displayPressed = true;
+                    displaySelectionMode = false;
+                    displayLongPressTriggered = false;
                     displayDownX = event.getX();
                     displayDownY = event.getY();
                     lastDragCursor = state.cursor();
                     displayLongPress = () -> {
                         if (displayPressed) {
                             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-                            showClipboardMenu();
+                            displayLongPressTriggered = true;
+                            int anchor = displayCursorPosition(displayDownX);
+                            state = machine.beginTouchSelection(anchor);
+                            lastDragCursor = anchor;
+                            displaySelectionMode = true;
+                            postInvalidateOnAnimation();
                         }
                     };
                     gestureHandler.postDelayed(displayLongPress, 360);
@@ -1017,6 +1026,10 @@ public final class CalculatorView extends View {
             }
             case MotionEvent.ACTION_MOVE -> {
                 if (displayPressed) {
+                    if (displaySelectionMode) {
+                        extendSelectionToDisplayPosition(event.getX());
+                        return true;
+                    }
                     float dx = event.getX() - displayDownX;
                     float dy = event.getY() - displayDownY;
                     if (Math.abs(dx) > dp(4) && Math.abs(dx) > Math.abs(dy)) {
@@ -1031,6 +1044,12 @@ public final class CalculatorView extends View {
                 if (displayPressed && event.getActionMasked() == MotionEvent.ACTION_UP) {
                     displayPressed = false;
                     if (displayLongPress != null) gestureHandler.removeCallbacks(displayLongPress);
+                    if (displaySelectionMode || displayLongPressTriggered) {
+                        displaySelectionMode = false;
+                        displayLongPressTriggered = false;
+                        showClipboardMenu();
+                        return true;
+                    }
                     float dx = event.getX() - displayDownX;
                     float dy = event.getY() - displayDownY;
                     if (Math.abs(dx) < dp(18) && Math.abs(dy) < dp(18)) {
@@ -1046,6 +1065,8 @@ public final class CalculatorView extends View {
             }
             case MotionEvent.ACTION_CANCEL -> {
                 displayPressed = false;
+                displaySelectionMode = false;
+                displayLongPressTriggered = false;
                 if (displayLongPress != null) gestureHandler.removeCallbacks(displayLongPress);
                 stopKeyRepeat();
                 touchRouter.cancelAll();
@@ -1093,8 +1114,13 @@ public final class CalculatorView extends View {
     }
 
     private void moveCursorToDisplayPosition(float x, boolean haptic) {
+        moveCursorAtomically(displayCursorPosition(x), haptic);
+    }
+
+    /** Converts a display x-coordinate into the nearest semantic boundary. */
+    private int displayCursorPosition(float x) {
         List<String> labels = machine.cursorTokenDisplays();
-        if (labels.isEmpty()) return;
+        if (labels.isEmpty()) return 0;
         RectF lcd = displayBounds(getWidth());
         float baseSize = sp(25f);
         NaturalMetrics natural = measureNatural(state.naturalExpression(), baseSize);
@@ -1119,7 +1145,16 @@ public final class CalculatorView extends View {
             if (x >= boundary + width * 0.5f) target = i + 1;
             boundary += width;
         }
-        moveCursorAtomically(target, haptic);
+        return Math.max(0, Math.min(machine.cursorLimit(), target));
+    }
+
+    private void extendSelectionToDisplayPosition(float x) {
+        int target = displayCursorPosition(x);
+        if (target == lastDragCursor) return;
+        state = machine.extendTouchSelection(target);
+        lastDragCursor = target;
+        performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+        postInvalidateOnAnimation();
     }
 
     private void moveCursorAtomically(int target, boolean haptic) {
