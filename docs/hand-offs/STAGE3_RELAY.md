@@ -61,16 +61,35 @@ Stage 3 不继续在 Android View 中堆光标补丁，而是把编辑位置从�
 5. 嵌套结构保持最内层结构保护，不允许生成破坏内部函数/根式语法的半结构选区；
 6. 参数精细选区可以直接 DEL、按键替换或粘贴替换，删除到空参数后和替换后都保持 `FUNCTION_ARGUMENT` 语义位置；
 7. 分数、幂、根号原有精细选择与整体结构选择继续通过；键盘 `SHIFT+方向键` 的既有结构选择习惯继续保留；
-8. legacy `selectionStart()` / `selectionEnd()` 仍保留供 Android Stage 2 抓手兼容，Step 7 再迁移 Android；
+8. legacy `selectionStart()` / `selectionEnd()` 仍保留供 Android Stage 2 抓手兼容；
 9. 一次性 Step 6 patch workflow/script 已删除；
 10. 产品代码清理 head `f827b90` 的正式 PR CI run `35098992722` 已通过完整核心回归、Android APK 构建、固定签名检查和 artifact 上传。
 
-## Step 7：Android 语义命中与渲染迁移（next）
+## Step 7：Android 语义命中与渲染迁移（code completed，pending device validation）
 
-下一步只迁移 Android 适配层，不再改变 Step 1–6 的核心数学编辑协议：
+1. 新增 `CnCwSemanticSpan`，由核心发布每个可编辑 semantic slot 的 `childPath`、slot 类型、槽边界和所属结构边界；Android 不需要重新解析分数、幂、根号或函数 token 语法；
+2. `CnCwUiState` 发布 `semanticSpans()`；legacy token boundary 继续保留为回退；
+3. `CnCwMachine` 新增 `moveCursorTo(CnCwCursorPath)` 和 touch-selection 语义路径重载；无效/过期路径 fail closed 到保留的 legacy boundary；
+4. Android `CalculatorView` 的点击光标、水平滑动、长按起始位置、选区抓手拖动都开始使用 `CnCwCursorPath`；
+5. 命中同时参考 x/y：分数分子与分母、幂指数、n 次根指数可以通过垂直位置区分；没有可靠 semantic span 时仍走 Stage 2 x-only token boundary 回退；
+6. 选区抓手绘制开始使用 `semanticSelectionAnchor()` / `semanticSelectionFocus()` 反投影到显示位置，而不是只使用平铺 token 下标；
+7. Step 7 新增 semantic touch round-trip 回归，semantic cursor suite 增至 243 checks；
+8. 开发临时 workflow 第一次因未恢复 debug keystore 在 `validateSigningCn991Debug` 停止，核心回归已经成功；随后改为签名无关的 Android Java 编译验证并成功，产品 commit 为 `a09a0c8`；
+9. 一次性 Step 7 patch helper / workflow 已删除；清理 head `7964ed4` 的正式 PR CI run `35100905159` 已通过完整核心回归、APK 构建、固定签名检查和 artifact 上传；
+10. 为集中真机验收，验证版升级为 `0.3.14 / versionCode 328`，应用对外名称仍为“北北计算器”，包名与固定签名不变，可覆盖安装。
 
-1. 触摸点击与拖动命中逐步读取 `semanticCursor()` / `semanticSelectionAnchor()` / `semanticSelectionFocus()`；
-2. 自然表达式节点提供分子、分母、指数、根号内容、函数参数等可进入区域，不再只靠平铺 token 字符串宽度判断；
-3. legacy token boundary 暂时继续作为回退；
-4. 真机复验点击光标、水平滑动、上下结构移动、左右选区抓手、复制粘贴、DEL、长按连续输入/删除；
-5. Step 7 通过后，再决定 PR #3 是否从 Draft 收口并合并 Stage 3。
+### Stage 3 真机验收重点
+
+1. 普通表达式：点击移动、水平滑动、左右选区抓手手感不得比 Stage 2 退化；
+2. 分数：点击分子/分母能进入对应槽，↑/↓ 可切换，DEL 不拆坏分数；
+3. 幂：点击底数/指数能区分，指数区域不应误落到根级 token 边界；
+4. 根号 / n 次根：被开方数与根指数命中符合视觉位置；
+5. 函数：`sin(30)` 参数可精细选中；`sum(x,1,3)` 单参数可选，跨逗号仍吸附完整函数；
+6. 复制、粘贴、选区替换、长按连续输入/删除、Ans 展开、历史计算继续复验；
+7. 若命中区域在真机上偏高/偏低，优先调 Android semantic span 的 y 几何容差，不改核心编辑协议。
+
+## 下一步
+
+- 发布/安装 0.3.14 Stage 3 验证 APK并完成上述真机复验；
+- 真机通过后，把 PR #3 从 Draft 收口，最后再决定合并 Stage 3；
+- Stage 3 合并后再进入下一阶段的统计、方程、矩阵、向量等应用模式结果协议统一，不在当前分支继续扩任务。
