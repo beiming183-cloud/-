@@ -30,8 +30,8 @@ jobs:
       - name: 添加 Gradle 执行权限
         run: chmod +x ./gradlew
 
-      - name: 运行核心回归测试
-        run: ./gradlew :core:regressionTest
+      - name: 运行完整核心回归测试
+        run: ./gradlew :core:check
 
       - name: 构建 CN991 调试 APK
         run: ./gradlew :app:assembleCn991Debug
