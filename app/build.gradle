@@ -44,6 +44,14 @@ android {
         }
     }
 
+    // CI restores this exact file before building.  Override only the debug
+    // keystore path; Android's normal debug alias/password settings remain in use.
+    signingConfigs {
+        debug {
+            storeFile file("${System.getProperty('user.home')}/.android/debug.keystore")
+        }
+    }
+
     // AGP 8 can disable BuildConfig generation for new projects.  The
     // generated model constants above are part of the small UI/configuration
     // contract, so keep it explicit instead of relying on a plugin default.
