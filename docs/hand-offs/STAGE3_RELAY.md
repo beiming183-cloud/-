@@ -79,9 +79,23 @@ Stage 3 不继续在 Android View 中堆光标补丁，而是把编辑位置从�
 8. 触摸精细选区可独立选择/替换 exponent 或 base；键盘 `SHIFT+方向键` 继续遵守 Stage 2 协议，把幂整体视为一个选择单元；
 9. 分数语义优先级保持不变，旧 `int cursor` 和 Stage 2 触摸协议继续兼容。
 
+## Step 4：根号 / n 次根语义编辑（completed）
+
+根号结构已进入 semantic cursor：
+
+1. `sqrt(` 发布 `RADICAL_CONTENT`；
+2. 通用 `root(index, content)` 分别发布 `ROOT_INDEX` / `ROOT_CONTENT`；
+3. 固定三次根 `root(3,` 发布 `ROOT_CONTENT`，固定根指数不伪装成可编辑槽；
+4. 左右移动采用 `root-before → content → root-after`，n 次根采用 `root-before → index → content → root-after`；
+5. n 次根 `UP` 从 content 进入 index、`DOWN` 从 index 回到 content；简单根号/固定三次根会消费上下键，避免误触历史回溯；
+6. DEL 只删除 index/content 槽内容，不允许逐个破坏根号模板、参数分隔逗号或闭括号；从 root-after DEL 原子删除完整根结构；
+7. index/content 为空时仍保留语义槽和可见光标；
+8. 键盘结构选区继续把闭合根式视为整体；触摸精细选区可独立替换 radicand 或 n 次根 index；
+9. `sqrt(9)` 与 `root(3,8)` 的求值回归继续通过，未改 evaluator 参数顺序；
+10. 分数、幂语义优先级和 Stage 2 兼容协议保持不变。
+
 下一步：
 
-- Step 4：根号 / n 次根（next）；
-- Step 5：函数参数；
+- Step 5：函数参数（next）；
 - Step 6：语义选区、替换和删除统一；
 - Step 7：Android 命中测试与渲染全面切换到 semantic cursor。

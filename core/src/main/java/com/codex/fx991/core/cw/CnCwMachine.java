@@ -411,11 +411,14 @@ public final class CnCwMachine {
                     int open = matchingOpen(index);
                     unitStart = open >= 0 ? open : unitStart;
                 } else {
-                    int enclosing = enclosingOpen(index);
-                    if (enclosing >= 0) {
-                        int close = matchingClose(enclosing);
-                        unitStart = enclosing;
-                        unitEnd = close >= 0 ? close + 1 : unitEnd;
+                    RadicalBounds radical = radicalContainingToken(index);
+                    if (radical == null || !selectionWithinRadicalSlot(start, end, radical)) {
+                        int enclosing = enclosingOpen(index);
+                        if (enclosing >= 0) {
+                            int close = matchingClose(enclosing);
+                            unitStart = enclosing;
+                            unitEnd = close >= 0 ? close + 1 : unitEnd;
+                        }
                     }
                 }
                 int nextStart = Math.min(start, unitStart);
@@ -873,7 +876,8 @@ public final class CnCwMachine {
                     if (hadSelection) {
                         semanticCursorOverride = null;
                         cursor = Math.max(0, cursor - 1);
-                    } else if (!moveFractionHorizontal(-1) && !movePowerHorizontal(-1)) {
+                    } else if (!moveFractionHorizontal(-1) && !movePowerHorizontal(-1)
+                            && !moveRadicalHorizontal(-1)) {
                         semanticCursorOverride = null;
                         cursor = Math.max(0, cursor - 1);
                     }
@@ -894,7 +898,8 @@ public final class CnCwMachine {
                     if (hadSelection) {
                         semanticCursorOverride = null;
                         cursor = Math.min(tokens.size(), cursor + 1);
-                    } else if (!moveFractionHorizontal(1) && !movePowerHorizontal(1)) {
+                    } else if (!moveFractionHorizontal(1) && !movePowerHorizontal(1)
+                            && !moveRadicalHorizontal(1)) {
                         semanticCursorOverride = null;
                         cursor = Math.min(tokens.size(), cursor + 1);
                     }
@@ -906,10 +911,12 @@ public final class CnCwMachine {
                 lastError = null;
             }
             case UP -> {
-                if (!moveFractionVertical(-1) && !movePowerVertical(-1)) recallHistory(-1);
+                if (!moveFractionVertical(-1) && !movePowerVertical(-1)
+                        && !moveRadicalVertical(-1)) recallHistory(-1);
             }
             case DOWN -> {
-                if (!moveFractionVertical(1) && !movePowerVertical(1)) recallHistory(1);
+                if (!moveFractionVertical(1) && !movePowerVertical(1)
+                        && !moveRadicalVertical(1)) recallHistory(1);
             }
             case PAGE_UP -> recallHistory(-6);
             case PAGE_DOWN -> recallHistory(6);
@@ -1059,6 +1066,7 @@ public final class CnCwMachine {
         if (deleteSelectionIfPresent()) return;
         if (deleteFractionSemantic()) return;
         if (deletePowerSemantic()) return;
+        if (deleteRadicalSemantic()) return;
         if (cursor <= 0 || tokens.isEmpty()) return;
         semanticCursorOverride = null;
         resetStatementSequence();
@@ -1204,7 +1212,8 @@ public final class CnCwMachine {
     }
 
     private static boolean opensParenthesis(Token token) {
-        return token.evaluation.endsWith("(") || "(".equals(token.evaluation);
+        return token.evaluation.endsWith("(") || "(".equals(token.evaluation)
+                || isFixedRootTemplate(token);
     }
 
     /** Collapses an existing selection toward the requested movement side. */
@@ -2676,6 +2685,12 @@ public final class CnCwMachine {
                     com.codex.fx991.core.Compat.list(power.templateIndex),
                     power.slot, power.offset, cursor);
         }
+        RadicalCursor radical = radicalCursorAt(cursor);
+        if (radical != null) {
+            return CnCwCursorPath.nested(
+                    com.codex.fx991.core.Compat.list(radical.templateIndex),
+                    radical.slot, radical.offset, cursor);
+        }
         return CnCwCursorPath.rootBoundary(cursor);
     }
 
@@ -3219,6 +3234,357 @@ public final class CnCwMachine {
                 com.codex.fx991.core.Compat.list(power.templateIndex),
                 CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT,
                 Math.max(0, power.offset - 1), cursor);
+        finishSemanticEditMutation();
+        return true;
+    }
+
+    private static boolean isSquareRootTemplate(Token token) {
+        return "sqrt(".equals(token.evaluation);
+    }
+
+    private static boolean isGenericRootTemplate(Token token) {
+        return "root(".equals(token.evaluation);
+    }
+
+    private static boolean isFixedRootTemplate(Token token) {
+        return token.evaluation.startsWith("root(")
+                && token.evaluation.endsWith(",")
+                && !isGenericRootTemplate(token);
+    }
+
+    private static boolean isRadicalTemplate(Token token) {
+        return isSquareRootTemplate(token) || isGenericRootTemplate(token)
+                || isFixedRootTemplate(token);
+    }
+
+    /** Closing parenthesis owned by sqrt/root, or -1 for the live unclosed slot. */
+    private int radicalCloseIndex(int templateIndex) {
+        int depth = 0;
+        for (int index = templateIndex + 1; index < tokens.size(); index++) {
+            Token token = tokens.get(index);
+            if (")".equals(token.evaluation)) {
+                if (depth == 0) return index;
+                depth--;
+            } else if (opensParenthesis(token)) {
+                depth++;
+            }
+        }
+        return -1;
+    }
+
+    /** First top-level comma separating root(index, content). */
+    private int rootSeparatorIndex(int templateIndex, int innerEnd) {
+        int depth = 0;
+        for (int index = templateIndex + 1; index < innerEnd; index++) {
+            Token token = tokens.get(index);
+            if (")".equals(token.evaluation)) {
+                if (depth > 0) depth--;
+                continue;
+            }
+            if (depth == 0 && ",".equals(token.evaluation)) return index;
+            if (opensParenthesis(token)) depth++;
+        }
+        return -1;
+    }
+
+    private RadicalBounds radicalBounds(int templateIndex) {
+        if (templateIndex < 0 || templateIndex >= tokens.size()) return null;
+        Token template = tokens.get(templateIndex);
+        if (!isRadicalTemplate(template)) return null;
+        int close = radicalCloseIndex(templateIndex);
+        int innerEnd = close >= 0 ? close : tokens.size();
+        int endExclusive = close >= 0 ? close + 1 : innerEnd;
+        if (isGenericRootTemplate(template)) {
+            int separator = rootSeparatorIndex(templateIndex, innerEnd);
+            if (separator >= 0) {
+                return new RadicalBounds(templateIndex, templateIndex + 1, separator,
+                        separator, separator + 1, innerEnd, close, endExclusive);
+            }
+            return new RadicalBounds(templateIndex, templateIndex + 1, innerEnd,
+                    -1, innerEnd, innerEnd, close, endExclusive);
+        }
+        return new RadicalBounds(templateIndex, -1, -1, -1,
+                templateIndex + 1, innerEnd, close, endExclusive);
+    }
+
+    /** Finds the smallest root/radical slot owning an insertion boundary. */
+    private RadicalCursor radicalCursorAt(int boundary) {
+        int safe = Math.max(0, Math.min(tokens.size(), boundary));
+        RadicalCursor best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            RadicalBounds bounds = radicalBounds(template);
+            if (bounds == null) continue;
+            Token token = tokens.get(template);
+            CnCwCursorPath.Slot slot = null;
+            int offset = 0;
+            if (isGenericRootTemplate(token)) {
+                if (safe >= bounds.indexStart && safe <= bounds.indexEnd) {
+                    slot = CnCwCursorPath.Slot.ROOT_INDEX;
+                    offset = safe - bounds.indexStart;
+                } else if (bounds.separatorIndex >= 0
+                        && safe >= bounds.contentStart && safe <= bounds.contentEnd) {
+                    slot = CnCwCursorPath.Slot.ROOT_CONTENT;
+                    offset = safe - bounds.contentStart;
+                }
+            } else if (safe >= bounds.contentStart && safe <= bounds.contentEnd) {
+                slot = isSquareRootTemplate(token)
+                        ? CnCwCursorPath.Slot.RADICAL_CONTENT
+                        : CnCwCursorPath.Slot.ROOT_CONTENT;
+                offset = safe - bounds.contentStart;
+            }
+            if (slot == null) continue;
+            int span = bounds.endExclusive - bounds.templateIndex;
+            if (span < bestSpan) {
+                bestSpan = span;
+                best = new RadicalCursor(template, slot, offset);
+            }
+        }
+        return best;
+    }
+
+    private RadicalCursor radicalCursorFromPath(CnCwCursorPath path) {
+        if (path == null || path.isRootBoundary() || path.childPath().isEmpty()) return null;
+        CnCwCursorPath.Slot slot = path.slot();
+        if (slot != CnCwCursorPath.Slot.RADICAL_CONTENT
+                && slot != CnCwCursorPath.Slot.ROOT_INDEX
+                && slot != CnCwCursorPath.Slot.ROOT_CONTENT) return null;
+        int template = path.childPath().get(0);
+        RadicalBounds bounds = radicalBounds(template);
+        if (bounds == null) return null;
+        Token token = tokens.get(template);
+        int length;
+        if (slot == CnCwCursorPath.Slot.ROOT_INDEX) {
+            if (!isGenericRootTemplate(token)) return null;
+            length = bounds.indexEnd - bounds.indexStart;
+        } else {
+            if (slot == CnCwCursorPath.Slot.RADICAL_CONTENT
+                    && !isSquareRootTemplate(token)) return null;
+            if (slot == CnCwCursorPath.Slot.ROOT_CONTENT
+                    && isSquareRootTemplate(token)) return null;
+            if (isGenericRootTemplate(token) && bounds.separatorIndex < 0) return null;
+            length = bounds.contentEnd - bounds.contentStart;
+        }
+        return new RadicalCursor(template, slot,
+                Math.max(0, Math.min(length, path.offset())));
+    }
+
+    private RadicalBounds radicalStartingAtBoundary(int boundary) {
+        RadicalBounds best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            RadicalBounds value = radicalBounds(template);
+            if (value == null || value.templateIndex != boundary) continue;
+            int span = value.endExclusive - value.templateIndex;
+            if (span < bestSpan) { best = value; bestSpan = span; }
+        }
+        return best;
+    }
+
+    private RadicalBounds radicalEndingAtBoundary(int boundary) {
+        RadicalBounds best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            RadicalBounds value = radicalBounds(template);
+            if (value == null || value.endExclusive != boundary) continue;
+            int span = value.endExclusive - value.templateIndex;
+            if (span < bestSpan) { best = value; bestSpan = span; }
+        }
+        return best;
+    }
+
+    private RadicalBounds radicalContainingToken(int tokenIndex) {
+        RadicalBounds best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            RadicalBounds value = radicalBounds(template);
+            if (value == null) continue;
+            boolean inIndex = value.indexStart >= 0
+                    && tokenIndex >= value.indexStart && tokenIndex < value.indexEnd;
+            boolean inContent = tokenIndex >= value.contentStart && tokenIndex < value.contentEnd;
+            if (!inIndex && !inContent) continue;
+            int span = value.endExclusive - value.templateIndex;
+            if (span < bestSpan) { best = value; bestSpan = span; }
+        }
+        return best;
+    }
+
+    private boolean selectionWithinRadicalSlot(int start, int end, RadicalBounds bounds) {
+        boolean withinIndex = bounds.indexStart >= 0
+                && start >= bounds.indexStart && end <= bounds.indexEnd;
+        boolean withinContent = start >= bounds.contentStart && end <= bounds.contentEnd;
+        return withinIndex || withinContent;
+    }
+
+    private void setRadicalCursor(RadicalBounds radical, CnCwCursorPath.Slot slot, int offset) {
+        int start;
+        int length;
+        if (slot == CnCwCursorPath.Slot.ROOT_INDEX) {
+            start = radical.indexStart;
+            length = radical.indexEnd - radical.indexStart;
+        } else {
+            start = radical.contentStart;
+            length = radical.contentEnd - radical.contentStart;
+        }
+        int local = Math.max(0, Math.min(length, offset));
+        cursor = start + local;
+        semanticCursorOverride = CnCwCursorPath.nested(
+                com.codex.fx991.core.Compat.list(radical.templateIndex), slot, local, cursor);
+    }
+
+    /** root-before -> content, or root-before -> index -> content for n-th root. */
+    private boolean moveRadicalHorizontal(int direction) {
+        if (resultShown || errorShown || selectionActive()) return false;
+        CnCwCursorPath path = semanticCursorPath();
+        if (path.isRootBoundary()) {
+            RadicalBounds target = direction > 0
+                    ? radicalStartingAtBoundary(cursor) : radicalEndingAtBoundary(cursor);
+            if (target == null) return false;
+            Token template = tokens.get(target.templateIndex);
+            if (direction > 0) {
+                if (isGenericRootTemplate(template)) {
+                    setRadicalCursor(target, CnCwCursorPath.Slot.ROOT_INDEX, 0);
+                } else {
+                    setRadicalCursor(target,
+                            isSquareRootTemplate(template)
+                                    ? CnCwCursorPath.Slot.RADICAL_CONTENT
+                                    : CnCwCursorPath.Slot.ROOT_CONTENT,
+                            0);
+                }
+            } else if (isGenericRootTemplate(template) && target.separatorIndex < 0) {
+                setRadicalCursor(target, CnCwCursorPath.Slot.ROOT_INDEX,
+                        target.indexEnd - target.indexStart);
+            } else {
+                setRadicalCursor(target,
+                        isSquareRootTemplate(template)
+                                ? CnCwCursorPath.Slot.RADICAL_CONTENT
+                                : CnCwCursorPath.Slot.ROOT_CONTENT,
+                        target.contentEnd - target.contentStart);
+            }
+            finishSemanticCursorMove();
+            return true;
+        }
+
+        RadicalCursor radical = radicalCursorFromPath(path);
+        if (radical == null) return false;
+        RadicalBounds bounds = radicalBounds(radical.templateIndex);
+        if (bounds == null) return false;
+        Token template = tokens.get(bounds.templateIndex);
+
+        if (radical.slot == CnCwCursorPath.Slot.ROOT_INDEX) {
+            int length = bounds.indexEnd - bounds.indexStart;
+            if (direction < 0) {
+                if (radical.offset == 0) setRootCursor(bounds.templateIndex);
+                else setRadicalCursor(bounds, radical.slot, radical.offset - 1);
+            } else if (radical.offset < length) {
+                setRadicalCursor(bounds, radical.slot, radical.offset + 1);
+            } else if (bounds.separatorIndex >= 0) {
+                setRadicalCursor(bounds, CnCwCursorPath.Slot.ROOT_CONTENT, 0);
+            } else {
+                setRootCursor(bounds.endExclusive);
+            }
+            finishSemanticCursorMove();
+            return true;
+        }
+
+        int length = bounds.contentEnd - bounds.contentStart;
+        if (direction < 0) {
+            if (radical.offset > 0) {
+                setRadicalCursor(bounds, radical.slot, radical.offset - 1);
+            } else if (isGenericRootTemplate(template) && bounds.separatorIndex >= 0) {
+                setRadicalCursor(bounds, CnCwCursorPath.Slot.ROOT_INDEX,
+                        bounds.indexEnd - bounds.indexStart);
+            } else {
+                setRootCursor(bounds.templateIndex);
+            }
+        } else if (radical.offset < length) {
+            setRadicalCursor(bounds, radical.slot, radical.offset + 1);
+        } else {
+            setRootCursor(bounds.endExclusive);
+        }
+        finishSemanticCursorMove();
+        return true;
+    }
+
+    /** Root index is visually above content; simple/fixed roots consume arrows in-place. */
+    private boolean moveRadicalVertical(int direction) {
+        if (resultShown || errorShown || selectionActive()) return false;
+        CnCwCursorPath path = semanticCursorPath();
+        RadicalCursor radical = radicalCursorFromPath(path);
+        if (radical == null) return false;
+        RadicalBounds bounds = radicalBounds(radical.templateIndex);
+        if (bounds == null) return false;
+        Token template = tokens.get(bounds.templateIndex);
+        if (isGenericRootTemplate(template) && bounds.separatorIndex >= 0) {
+            if (direction < 0 && radical.slot == CnCwCursorPath.Slot.ROOT_CONTENT) {
+                setRadicalCursor(bounds, CnCwCursorPath.Slot.ROOT_INDEX,
+                        Math.min(radical.offset, bounds.indexEnd - bounds.indexStart));
+            } else if (direction > 0 && radical.slot == CnCwCursorPath.Slot.ROOT_INDEX) {
+                setRadicalCursor(bounds, CnCwCursorPath.Slot.ROOT_CONTENT,
+                        Math.min(radical.offset, bounds.contentEnd - bounds.contentStart));
+            }
+        }
+        finishSemanticCursorMove();
+        return true;
+    }
+
+    /** Never delete sqrt/root templates, commas, or their closing parenthesis piecemeal. */
+    private boolean deleteRadicalSemantic() {
+        if (tokens.isEmpty()) return false;
+        CnCwCursorPath path = semanticCursorPath();
+        if (path.isRootBoundary()) {
+            RadicalBounds radical = radicalEndingAtBoundary(cursor);
+            if (radical == null) return false;
+            rememberUndo();
+            tokens.subList(radical.templateIndex, radical.endExclusive).clear();
+            setRootCursor(radical.templateIndex);
+            finishSemanticEditMutation();
+            return true;
+        }
+
+        RadicalCursor radical = radicalCursorFromPath(path);
+        if (radical == null) return false;
+        RadicalBounds bounds = radicalBounds(radical.templateIndex);
+        if (bounds == null) return false;
+
+        if (radical.slot == CnCwCursorPath.Slot.ROOT_INDEX) {
+            if (radical.offset == 0) {
+                setRootCursor(bounds.templateIndex);
+                finishSemanticCursorMove();
+                return true;
+            }
+            int deleteIndex = cursor - 1;
+            if (deleteIndex < bounds.indexStart || deleteIndex >= bounds.indexEnd) return false;
+            rememberUndo();
+            tokens.remove(deleteIndex);
+            cursor--;
+            RadicalBounds updated = radicalBounds(radical.templateIndex);
+            if (updated == null) return false;
+            setRadicalCursor(updated, CnCwCursorPath.Slot.ROOT_INDEX,
+                    Math.max(0, radical.offset - 1));
+            finishSemanticEditMutation();
+            return true;
+        }
+
+        if (radical.offset == 0) {
+            Token template = tokens.get(bounds.templateIndex);
+            if (isGenericRootTemplate(template) && bounds.separatorIndex >= 0) {
+                setRadicalCursor(bounds, CnCwCursorPath.Slot.ROOT_INDEX,
+                        bounds.indexEnd - bounds.indexStart);
+            } else {
+                setRootCursor(bounds.templateIndex);
+            }
+            finishSemanticCursorMove();
+            return true;
+        }
+        int deleteIndex = cursor - 1;
+        if (deleteIndex < bounds.contentStart || deleteIndex >= bounds.contentEnd) return false;
+        rememberUndo();
+        tokens.remove(deleteIndex);
+        cursor--;
+        RadicalBounds updated = radicalBounds(radical.templateIndex);
+        if (updated == null) return false;
+        setRadicalCursor(updated, radical.slot, Math.max(0, radical.offset - 1));
         finishSemanticEditMutation();
         return true;
     }
@@ -3797,6 +4163,10 @@ public final class CnCwMachine {
     private record PowerCursor(int templateIndex, int baseStart, int baseEnd,
                                int exponentStart, int exponentEnd,
                                CnCwCursorPath.Slot slot, int offset) { }
+    private record RadicalBounds(int templateIndex, int indexStart, int indexEnd,
+                                 int separatorIndex, int contentStart, int contentEnd,
+                                 int closeIndex, int endExclusive) { }
+    private record RadicalCursor(int templateIndex, CnCwCursorPath.Slot slot, int offset) { }
     private record SelectionRange(int start, int end) { }
     private record SimplificationResult(long originalNumerator, long originalDenominator,
                                         long displayNumerator, long displayDenominator,

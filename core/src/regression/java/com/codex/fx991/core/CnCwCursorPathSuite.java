@@ -24,6 +24,11 @@ public final class CnCwCursorPathSuite {
         powerPublishesBaseExponentAndMovesSemantically();
         powerDeleteNeverBreaksTemplate();
         powerSelectionReplacementKeepsStructure();
+        radicalPublishesContentAndMovesSemantically();
+        nthRootPublishesIndexContentAndMovesSemantically();
+        radicalDeleteNeverBreaksStructure();
+        radicalSelectionReplacementKeepsStructure();
+        radicalEvaluationStillWorks();
         System.out.println("PASS " + checks + " semantic cursor checks");
     }
 
@@ -357,6 +362,212 @@ public final class CnCwCursorPathSuite {
                 "base replacement accepts one semantic token");
         equal("4^3", machine.state().expression(),
                 "replacing base preserves exponent and ^ template");
+    }
+
+    private void radicalPublishesContentAndMovesSemantically() {
+        CnCwMachine machine = squareRootMachine(false);
+        equal(CnCwCursorPath.Slot.RADICAL_CONTENT,
+                machine.state().semanticCursor().slot(),
+                "sqrt input ends inside RADICAL_CONTENT");
+        equal(0, machine.state().semanticCursor().childPath().get(0),
+                "sqrt semantic path identifies template token");
+        equal(1, machine.state().semanticCursor().offset(),
+                "sqrt content keeps local offset");
+        check(machine.state().naturalExpression().containsCursor(),
+                "sqrt content cursor stays visible in natural tree");
+
+        machine.dispatch(CnCwKey.RIGHT);
+        equal(CnCwCursorPath.Slot.ROW, machine.state().semanticCursor().slot(),
+                "RIGHT at sqrt content end exits to root row");
+        equal(2, machine.state().cursor(),
+                "unclosed sqrt root-after shares content-end legacy boundary");
+        machine.dispatch(CnCwKey.LEFT);
+        equal(CnCwCursorPath.Slot.RADICAL_CONTENT,
+                machine.state().semanticCursor().slot(),
+                "LEFT from root-after re-enters sqrt content");
+        machine.dispatch(CnCwKey.LEFT);
+        equal(0, machine.state().semanticCursor().offset(),
+                "LEFT moves to sqrt content start");
+        machine.dispatch(CnCwKey.LEFT);
+        equal(CnCwCursorPath.Slot.ROW, machine.state().semanticCursor().slot(),
+                "LEFT from sqrt content start exits to root-before");
+        equal(0, machine.state().cursor(),
+                "sqrt root-before is the template boundary");
+        machine.dispatch(CnCwKey.RIGHT);
+        equal(CnCwCursorPath.Slot.RADICAL_CONTENT,
+                machine.state().semanticCursor().slot(),
+                "RIGHT from root-before re-enters sqrt content start");
+
+        machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        machine.dispatch(CnCwKey.OK);
+        machine.dispatch(CnCwKey.SHIFT);
+        machine.dispatch(CnCwKey.SQRT);
+        machine.dispatch(CnCwKey.DIGIT_8);
+        equal(CnCwCursorPath.Slot.ROOT_CONTENT,
+                machine.state().semanticCursor().slot(),
+                "fixed cube root publishes ROOT_CONTENT");
+        machine.dispatch(CnCwKey.UP);
+        equal(CnCwCursorPath.Slot.ROOT_CONTENT,
+                machine.state().semanticCursor().slot(),
+                "fixed cube-root UP is consumed without history recall");
+    }
+
+    private void nthRootPublishesIndexContentAndMovesSemantically() {
+        CnCwMachine machine = nthRootMachine(false);
+        equal(CnCwCursorPath.Slot.ROOT_CONTENT,
+                machine.state().semanticCursor().slot(),
+                "n-th root input ends in ROOT_CONTENT");
+        equal(1, machine.state().semanticCursor().offset(),
+                "root content keeps local offset");
+
+        machine.dispatch(CnCwKey.UP);
+        equal(CnCwCursorPath.Slot.ROOT_INDEX,
+                machine.state().semanticCursor().slot(),
+                "UP moves root content into root index");
+        equal(1, machine.state().semanticCursor().offset(),
+                "UP preserves nearest index offset");
+        machine.dispatch(CnCwKey.DOWN);
+        equal(CnCwCursorPath.Slot.ROOT_CONTENT,
+                machine.state().semanticCursor().slot(),
+                "DOWN returns root index to content");
+
+        machine.dispatch(CnCwKey.LEFT);
+        equal(0, machine.state().semanticCursor().offset(),
+                "LEFT moves to root content start");
+        machine.dispatch(CnCwKey.LEFT);
+        equal(CnCwCursorPath.Slot.ROOT_INDEX,
+                machine.state().semanticCursor().slot(),
+                "LEFT from content start enters root index end");
+        equal(1, machine.state().semanticCursor().offset(),
+                "root index end keeps local offset");
+        machine.dispatch(CnCwKey.RIGHT);
+        equal(CnCwCursorPath.Slot.ROOT_CONTENT,
+                machine.state().semanticCursor().slot(),
+                "RIGHT from index end crosses structural comma into content");
+        equal(0, machine.state().semanticCursor().offset(),
+                "root content entry starts at offset zero");
+    }
+
+    private void radicalDeleteNeverBreaksStructure() {
+        CnCwMachine machine = squareRootMachine(false);
+        machine.dispatch(CnCwKey.DEL);
+        equal("sqrt(", machine.state().expression(),
+                "DEL removes sqrt content without deleting template");
+        equal(CnCwCursorPath.Slot.RADICAL_CONTENT,
+                machine.state().semanticCursor().slot(),
+                "empty sqrt content remains semantic");
+        check(machine.state().naturalExpression().containsCursor(),
+                "empty sqrt content still renders a cursor");
+        machine.dispatch(CnCwKey.DEL);
+        equal("sqrt(", machine.state().expression(),
+                "DEL at empty sqrt start exits instead of deleting template");
+        equal(CnCwCursorPath.Slot.ROW, machine.state().semanticCursor().slot(),
+                "sqrt content-start DEL exits to root row");
+
+        machine = squareRootMachine(false);
+        machine.dispatch(CnCwKey.RIGHT);
+        machine.dispatch(CnCwKey.DEL);
+        equal("", machine.state().expression(),
+                "DEL from sqrt root-after removes the whole radical atomically");
+
+        machine = nthRootMachine(false);
+        machine.dispatch(CnCwKey.DEL);
+        equal("root(3,", machine.state().expression(),
+                "DEL empties root content without deleting comma");
+        equal(CnCwCursorPath.Slot.ROOT_CONTENT,
+                machine.state().semanticCursor().slot(),
+                "empty root content remains semantic");
+        machine.dispatch(CnCwKey.DEL);
+        equal(CnCwCursorPath.Slot.ROOT_INDEX,
+                machine.state().semanticCursor().slot(),
+                "DEL at content start moves to root index end");
+        machine.dispatch(CnCwKey.DEL);
+        equal("root(,", machine.state().expression(),
+                "DEL can empty root index while preserving separator");
+        equal(CnCwCursorPath.Slot.ROOT_INDEX,
+                machine.state().semanticCursor().slot(),
+                "empty root index remains semantic");
+        machine.dispatch(CnCwKey.DEL);
+        equal("root(,", machine.state().expression(),
+                "DEL at empty root index exits instead of deleting root template");
+        equal(CnCwCursorPath.Slot.ROW, machine.state().semanticCursor().slot(),
+                "empty root index exits to root row");
+    }
+
+    private void radicalSelectionReplacementKeepsStructure() {
+        CnCwMachine machine = squareRootMachine(true);
+        machine.dispatch(CnCwKey.SHIFT);
+        machine.dispatch(CnCwKey.LEFT);
+        equal("sqrt(9)", machine.selectedExpression(),
+                "keyboard selection keeps closed sqrt as one structure");
+        machine.dispatch(CnCwKey.DIGIT_7);
+        equal("7", machine.state().expression(),
+                "keyboard replacement replaces the complete sqrt atomically");
+
+        machine = squareRootMachine(true);
+        machine.beginTouchSelection(1);
+        machine.extendTouchSelection(2);
+        equal("9", machine.selectedExpression(),
+                "touch fine-selection can select sqrt content only");
+        equal(1, machine.pasteExpression("4"),
+                "sqrt content accepts semantic replacement");
+        equal("sqrt(4)", machine.state().expression(),
+                "sqrt content replacement preserves template and close");
+        equal(CnCwCursorPath.Slot.RADICAL_CONTENT,
+                machine.state().semanticCursor().slot(),
+                "sqrt replacement cursor remains in radical content");
+
+        machine = nthRootMachine(true);
+        machine.beginTouchSelection(1);
+        machine.extendTouchSelection(2);
+        equal("3", machine.selectedExpression(),
+                "touch fine-selection can select root index only");
+        equal(1, machine.pasteExpression("4"),
+                "root index accepts semantic replacement");
+        equal("root(4,8)", machine.state().expression(),
+                "root index replacement preserves comma and radicand");
+
+        machine = nthRootMachine(true);
+        machine.beginTouchSelection(3);
+        machine.extendTouchSelection(4);
+        equal("8", machine.selectedExpression(),
+                "touch fine-selection can select root content only");
+        equal(1, machine.pasteExpression("9"),
+                "root content accepts semantic replacement");
+        equal("root(3,9)", machine.state().expression(),
+                "root content replacement preserves index and separator");
+    }
+
+    private void radicalEvaluationStillWorks() {
+        CnCwMachine machine = squareRootMachine(true);
+        machine.dispatch(CnCwKey.EXE);
+        equal("3", machine.state().result(),
+                "sqrt semantic editor still evaluates normally");
+
+        machine = nthRootMachine(true);
+        machine.dispatch(CnCwKey.EXE);
+        equal("2", machine.state().result(),
+                "root(index, content) semantic editor still evaluates normally");
+    }
+
+    private CnCwMachine squareRootMachine(boolean closed) {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        machine.dispatch(CnCwKey.OK);
+        machine.dispatch(CnCwKey.SQRT);
+        machine.dispatch(CnCwKey.DIGIT_9);
+        if (closed) machine.dispatch(CnCwKey.CLOSE_PAREN);
+        return machine;
+    }
+
+    private CnCwMachine nthRootMachine(boolean closed) {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        machine.dispatch(CnCwKey.OK);
+        machine.dispatch(CnCwKey.ROOT);
+        machine.dispatch(CnCwKey.DIGIT_3);
+        machine.dispatch(CnCwKey.COMMA);
+        machine.dispatch(CnCwKey.DIGIT_8);
+        if (closed) machine.dispatch(CnCwKey.CLOSE_PAREN);
+        return machine;
     }
 
     private CnCwMachine powerMachine() {
