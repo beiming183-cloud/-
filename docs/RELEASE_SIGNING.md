@@ -7,9 +7,10 @@
 - Application ID：`com.beibei.calculator`
 - Release key alias：`beibei-release`
 - Release certificate SHA-256：`DA6901B21ED9CCD8E33F4BFA6D2726183913F4E6C13910705E210184A17A5D33`
-- 0.3.15：versionCode `329`
+- 0.3.15：versionCode `329`，长期安装链起点
+- 0.3.16：versionCode `330`，当前 Stage 3 真机验收版
 
-0.3.15 已经通过长期签名 CI 并发布，是新的正式覆盖更新基线。后续 0.3.16、0.4.0、1.0.0 等正式版本必须沿用相同 Application ID 与相同 Release key。
+0.3.15 已经通过长期签名 CI 并发布，是新的正式覆盖更新基线；0.3.16 使用同一 Application ID 和同一 Release key 覆盖该链，并加入双变量统计 R8 兼容性修复。后续 0.3.17、0.4.0、1.0.0 等正式版本必须继续沿用相同身份。
 
 ## CI 规则
 
@@ -29,7 +30,7 @@
 
 0.3.15 的首次正式构建曾对 `StatisticsEngine.TwoVariableResults` 报出 R8 `Invalid stack map table` 警告。根因是大型 Java 17 record 的生成字节码与当前 R8 版本之间的兼容性问题，而不是统计公式错误。
 
-Stage 3 已将该结果载体改为保持相同构造参数与 `n()`、`meanX()`、`sampleVarianceX()` 等访问接口的普通不可变类。Release 专用构建在不使用额外 ProGuard keep 规则的情况下复验通过，警告已消失。长期发布 workflow 现在把同类 warning 作为 fail-closed 门禁。
+Stage 3 已将该结果载体改为保持相同构造参数与 `n()`、`meanX()`、`sampleVarianceX()` 等访问接口的普通不可变类。Release 专用构建在不使用额外 ProGuard keep 规则的情况下复验通过，警告已消失。长期发布 workflow 现在把同类 warning 作为 fail-closed 门禁。0.3.16 已用这套修复和门禁成功发布。
 
 ## 版本发布约定
 
