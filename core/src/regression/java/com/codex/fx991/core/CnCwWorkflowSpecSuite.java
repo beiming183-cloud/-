@@ -1,11 +1,15 @@
 package com.codex.fx991.core;
 
+import com.codex.fx991.core.cw.CnCwWorkflowSession;
 import com.codex.fx991.core.cw.CnCwWorkflowSpec;
+import com.codex.fx991.core.math.ScalarExpressionEngine;
 import com.codex.fx991.core.mode.ApplicationMode;
 
-/** Regression coverage for Stage 5 core-owned workflow input specifications. */
+/** Regression coverage for Stage 5 core-owned workflow input specifications/state. */
 public final class CnCwWorkflowSpecSuite {
     private int checks;
+    private final ScalarExpressionEngine.EvaluationContext context =
+            ScalarExpressionEngine.EvaluationContext.standard();
 
     public static void main(String[] args) {
         new CnCwWorkflowSpecSuite().run();
@@ -15,8 +19,9 @@ public final class CnCwWorkflowSpecSuite {
         statisticsSpecs();
         equationSpecs();
         matrixAndVectorSpecs();
+        statisticsSessions();
         unsupportedWorkflowReturnsNull();
-        System.out.println("PASS " + checks + " workflow-spec checks");
+        System.out.println("PASS " + checks + " workflow-spec/session checks");
     }
 
     private void statisticsSpecs() {
@@ -71,6 +76,50 @@ public final class CnCwWorkflowSpecSuite {
         equal(3, vector.maxColumns(), "3D maximum");
     }
 
+    private void statisticsSessions() {
+        var oneSpec = CnCwWorkflowSpec.forCommand(ApplicationMode.STATISTICS, "one");
+        var one = CnCwWorkflowSession.create(oneSpec);
+        equal(1, one.rows(), "one-variable session starts with one row");
+        equal(1, one.columns(), "one-variable session has one column");
+        one.setSelectedCell("1");
+        check(one.appendRow(), "one-variable adds second row");
+        one.setSelectedCell("2");
+        check(one.appendRow(), "one-variable adds third row");
+        one.setSelectedCell("3");
+        equal("1,2,3", one.legacySource(), "one-variable serializes row-major");
+        near(2.0, one.evaluate(context).primaryValue(), 0.0,
+                "one-variable session delegates to statistics engine");
+        check(one.move(-1, 0), "one-variable selection moves up");
+        equal(1, one.selectedRow(), "one-variable focus row after move");
+        check(one.removeSelectedRow(), "one-variable removes selected row");
+        equal(2, one.rows(), "one-variable row count after remove");
+
+        var pairedSpec = CnCwWorkflowSpec.forCommand(ApplicationMode.STATISTICS, "regression");
+        var paired = CnCwWorkflowSession.create(pairedSpec);
+        equal(2, paired.rows(), "paired session starts with required observations");
+        equal(2, paired.columns(), "paired session has x/y columns");
+        paired.setCell(0, 0, "1");
+        paired.setCell(0, 1, "3");
+        paired.setCell(1, 0, "2");
+        paired.setCell(1, 1, "5");
+        check(paired.appendRow(), "paired session can append observation");
+        paired.setCell(2, 0, "3");
+        paired.setCell(2, 1, "7");
+        equal("1,3,2,5,3,7", paired.legacySource(), "paired statistics serialization");
+        near(1.0, paired.evaluate(context).primaryValue(), 1e-12,
+                "paired session delegates to regression engine");
+
+        var incomplete = CnCwWorkflowSession.create(oneSpec);
+        check(!incomplete.isComplete(), "blank statistics row is incomplete");
+        boolean failedClosed = false;
+        try {
+            incomplete.legacySource();
+        } catch (IllegalStateException expected) {
+            failedClosed = true;
+        }
+        check(failedClosed, "incomplete statistics session cannot serialize silently");
+    }
+
     private void unsupportedWorkflowReturnsNull() {
         check(CnCwWorkflowSpec.forCommand(ApplicationMode.CALCULATE, "calculate") == null,
                 "ordinary calculate has no structured workflow spec");
@@ -86,6 +135,13 @@ public final class CnCwWorkflowSpecSuite {
     private void equal(Object expected, Object actual, String message) {
         checks++;
         if (!expected.equals(actual)) {
+            throw new AssertionError(message + ": expected " + expected + ", actual " + actual);
+        }
+    }
+
+    private void near(double expected, double actual, double tolerance, String message) {
+        checks++;
+        if (Math.abs(expected - actual) > tolerance) {
             throw new AssertionError(message + ": expected " + expected + ", actual " + actual);
         }
     }
