@@ -32,6 +32,10 @@ public final class CnCwUiState {
     private final CnCwCursorPath semanticCursor;
     private final int selectionStart;
     private final int selectionEnd;
+    /** Stage 3 semantic facade for the selection's directional anchor. */
+    private final CnCwCursorPath semanticSelectionAnchor;
+    /** Stage 3 semantic facade for the selection's active focus. */
+    private final CnCwCursorPath semanticSelectionFocus;
     private final String result;
     private final double ans;
     private final boolean hasAns;
@@ -68,6 +72,8 @@ public final class CnCwUiState {
                 CnCwCursorPath semanticCursor,
                 int selectionStart,
                 int selectionEnd,
+                CnCwCursorPath semanticSelectionAnchor,
+                CnCwCursorPath semanticSelectionFocus,
                 String result,
                 double ans,
                 boolean hasAns,
@@ -103,6 +109,10 @@ public final class CnCwUiState {
         this.semanticCursor = Objects.requireNonNull(semanticCursor, "semanticCursor");
         this.selectionStart = Math.max(0, selectionStart);
         this.selectionEnd = Math.max(this.selectionStart, selectionEnd);
+        this.semanticSelectionAnchor = Objects.requireNonNull(semanticSelectionAnchor,
+                "semanticSelectionAnchor");
+        this.semanticSelectionFocus = Objects.requireNonNull(semanticSelectionFocus,
+                "semanticSelectionFocus");
         this.result = result == null ? "" : result;
         this.ans = ans;
         this.hasAns = hasAns;
@@ -180,6 +190,8 @@ public final class CnCwUiState {
     public boolean hasSelection() { return selectionEnd > selectionStart; }
     public int selectionStart() { return selectionStart; }
     public int selectionEnd() { return selectionEnd; }
+    public CnCwCursorPath semanticSelectionAnchor() { return semanticSelectionAnchor; }
+    public CnCwCursorPath semanticSelectionFocus() { return semanticSelectionFocus; }
     public String result() { return result; }
     public double ans() { return ans; }
     public boolean hasAns() { return hasAns; }

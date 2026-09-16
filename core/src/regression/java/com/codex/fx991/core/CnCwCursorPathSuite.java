@@ -34,6 +34,9 @@ public final class CnCwCursorPathSuite {
         functionDeleteNeverBreaksStructure();
         functionSelectionReplacementKeepsStructure();
         functionEvaluationStillWorks();
+        semanticSelectionPathsCoverEditableSlots();
+        crossArgumentSelectionSnapsToWholeFunction();
+        semanticSelectionDeleteAndPasteStayInFunctionArgument();
         System.out.println("PASS " + checks + " semantic cursor checks");
     }
 
@@ -660,11 +663,22 @@ public final class CnCwCursorPathSuite {
         CnCwMachine machine = sinMachine(true);
         machine.beginTouchSelection(1);
         machine.extendTouchSelection(3);
-        equal("sin(30)", machine.selectedExpression(),
-                "Stage 2 touch selection still expands partial function drag to whole call");
+        equal("30", machine.selectedExpression(),
+                "Step 6 touch selection can keep one function argument fine-grained");
+        equal(CnCwCursorPath.Slot.FUNCTION_ARGUMENT,
+                machine.state().semanticSelectionAnchor().slot(),
+                "function selection anchor publishes argument semantics");
+        equal(CnCwCursorPath.Slot.FUNCTION_ARGUMENT,
+                machine.state().semanticSelectionFocus().slot(),
+                "function selection focus publishes argument semantics");
+        equal(2, machine.pasteExpression("45"),
+                "function argument accepts direct selection replacement");
+        equal("sin(45)", machine.state().expression(),
+                "function argument replacement preserves function structure");
+        equal(CnCwCursorPath.Slot.FUNCTION_ARGUMENT,
+                machine.state().semanticCursor().slot(),
+                "replacement cursor remains in function argument");
 
-        // Parameter-level replacement is already possible through the semantic
-        // cursor + DEL path; unified fine-selection is intentionally Step 6.
         machine = sinMachine(false);
         machine.dispatch(CnCwKey.DEL);
         machine.dispatch(CnCwKey.DEL);
@@ -719,6 +733,109 @@ public final class CnCwCursorPathSuite {
         equal(7, machine.pasteExpression("sum(x,1,3)"),
                 "sum helper imports full multi-argument function");
         return machine;
+    }
+
+    private void semanticSelectionPathsCoverEditableSlots() {
+        CnCwMachine machine = fractionMachine();
+        machine.beginTouchSelection(2);
+        machine.extendTouchSelection(3);
+        equal(CnCwCursorPath.Slot.FRACTION_DENOMINATOR,
+                machine.state().semanticSelectionAnchor().slot(),
+                "fraction fine selection anchor uses denominator slot");
+        equal(CnCwCursorPath.Slot.FRACTION_DENOMINATOR,
+                machine.state().semanticSelectionFocus().slot(),
+                "fraction fine selection focus uses denominator slot");
+        equal(0, machine.state().semanticSelectionAnchor().offset(),
+                "fraction selection anchor keeps slot-local offset");
+        equal(1, machine.state().semanticSelectionFocus().offset(),
+                "fraction selection focus keeps slot-local offset");
+
+        machine = powerMachine();
+        machine.beginTouchSelection(2);
+        machine.extendTouchSelection(3);
+        equal(CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT,
+                machine.state().semanticSelectionAnchor().slot(),
+                "power selection publishes exponent anchor");
+        equal(CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT,
+                machine.state().semanticSelectionFocus().slot(),
+                "power selection publishes exponent focus");
+
+        machine = squareRootMachine(true);
+        machine.beginTouchSelection(1);
+        machine.extendTouchSelection(2);
+        equal(CnCwCursorPath.Slot.RADICAL_CONTENT,
+                machine.state().semanticSelectionAnchor().slot(),
+                "sqrt selection publishes radical content anchor");
+        equal(CnCwCursorPath.Slot.RADICAL_CONTENT,
+                machine.state().semanticSelectionFocus().slot(),
+                "sqrt selection publishes radical content focus");
+
+        machine = nthRootMachine(true);
+        machine.beginTouchSelection(1);
+        machine.extendTouchSelection(2);
+        equal(CnCwCursorPath.Slot.ROOT_INDEX,
+                machine.state().semanticSelectionAnchor().slot(),
+                "nth-root index selection publishes root-index anchor");
+        machine.beginTouchSelection(3);
+        machine.extendTouchSelection(4);
+        equal(CnCwCursorPath.Slot.ROOT_CONTENT,
+                machine.state().semanticSelectionAnchor().slot(),
+                "nth-root content selection publishes root-content anchor");
+
+        machine = sinMachine(true);
+        machine.beginTouchSelection(1);
+        machine.extendTouchSelection(2);
+        equal(CnCwCursorPath.Slot.FUNCTION_ARGUMENT,
+                machine.state().semanticSelectionAnchor().slot(),
+                "function fine selection publishes argument anchor");
+        equal(Compat.list(0, 0), machine.state().semanticSelectionAnchor().childPath(),
+                "function selection path identifies template and argument index");
+    }
+
+    private void crossArgumentSelectionSnapsToWholeFunction() {
+        CnCwMachine machine = sumMachine();
+        machine.beginTouchSelection(3);
+        machine.extendTouchSelection(4);
+        equal("1", machine.selectedExpression(),
+                "one sum argument remains independently selectable");
+        equal(Compat.list(0, 1), machine.state().semanticSelectionAnchor().childPath(),
+                "second argument selection carries argument index one");
+
+        machine.beginTouchSelection(1);
+        machine.extendTouchSelection(4);
+        equal("sum(x,1,3)", machine.selectedExpression(),
+                "selection crossing a structural comma snaps to whole function");
+        equal(CnCwCursorPath.Slot.ROW, machine.state().semanticSelectionAnchor().slot(),
+                "whole function selection returns to root semantic boundaries");
+        equal(CnCwCursorPath.Slot.ROW, machine.state().semanticSelectionFocus().slot(),
+                "whole function focus is also root semantic boundary");
+    }
+
+    private void semanticSelectionDeleteAndPasteStayInFunctionArgument() {
+        CnCwMachine machine = sumMachine();
+        machine.beginTouchSelection(3);
+        machine.extendTouchSelection(4);
+        machine.dispatch(CnCwKey.DEL);
+        equal("sum(x,,3)", machine.state().expression(),
+                "DEL empties only the selected function argument");
+        equal(CnCwCursorPath.Slot.FUNCTION_ARGUMENT,
+                machine.state().semanticCursor().slot(),
+                "DEL leaves cursor in the emptied argument slot");
+        equal(Compat.list(0, 1), machine.state().semanticCursor().childPath(),
+                "emptied second argument keeps its semantic path");
+
+        machine = sumMachine();
+        machine.beginTouchSelection(3);
+        machine.extendTouchSelection(4);
+        equal(3, machine.pasteExpression("2+4"),
+                "paste replaces one selected argument atomically");
+        equal("sum(x,2+4,3)", machine.state().expression(),
+                "paste replacement preserves surrounding function arguments");
+        equal(CnCwCursorPath.Slot.FUNCTION_ARGUMENT,
+                machine.state().semanticCursor().slot(),
+                "paste replacement remains in the same function argument");
+        equal(Compat.list(0, 1), machine.state().semanticCursor().childPath(),
+                "paste replacement keeps second-argument semantic identity");
     }
 
     private CnCwMachine squareRootMachine(boolean closed) {

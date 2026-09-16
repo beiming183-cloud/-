@@ -410,15 +410,12 @@ public final class CnCwMachine {
                 } else if (")".equals(token.evaluation)) {
                     int open = matchingOpen(index);
                     unitStart = open >= 0 ? open : unitStart;
-                } else {
-                    RadicalBounds radical = radicalContainingToken(index);
-                    if (radical == null || !selectionWithinRadicalSlot(start, end, radical)) {
-                        int enclosing = enclosingOpen(index);
-                        if (enclosing >= 0) {
-                            int close = matchingClose(enclosing);
-                            unitStart = enclosing;
-                            unitEnd = close >= 0 ? close + 1 : unitEnd;
-                        }
+                } else if (!selectionWithinSemanticEditableSlot(start, end, index)) {
+                    int enclosing = enclosingOpen(index);
+                    if (enclosing >= 0) {
+                        int close = matchingClose(enclosing);
+                        unitStart = enclosing;
+                        unitEnd = close >= 0 ? close + 1 : unitEnd;
                     }
                 }
                 int nextStart = Math.min(start, unitStart);
@@ -2652,6 +2649,7 @@ public final class CnCwMachine {
                 menus, homeItems(), modeCommands(application), expression(), displayText(),
                 naturalExpression(), cursor, semanticCursorPath(),
                 selectionStartIndex(), selectionEndIndex(),
+                semanticSelectionPath(selectionAnchor), semanticSelectionPath(selectionFocus),
                 result, ans, hasAns, status, settings, shiftArmed, poweredOn, overwriteMode,
                 verificationMode, engineeringMode,
                 !statementSequence.isEmpty() && statementSequenceIndex < statementSequence.size(),
@@ -3722,6 +3720,115 @@ public final class CnCwMachine {
         return false;
     }
 
+
+    /**
+     * True when a touch range remains inside the smallest nested editable slot
+     * owning tokenIndex. This keeps fine selection inside radical/function
+     * content while still snapping across structural commas or parentheses.
+     */
+    private boolean selectionWithinSemanticEditableSlot(int start, int end, int tokenIndex) {
+        RadicalBounds radical = radicalContainingToken(tokenIndex);
+        if (radical != null && selectionWithinRadicalSlot(start, end, radical)) return true;
+        FunctionBounds function = functionContainingToken(tokenIndex);
+        return function != null && selectionWithinFunctionArgument(start, end, function);
+    }
+
+    /** Smallest semantic slot containing the complete normalized selection. */
+    private SemanticSelectionScope semanticSelectionScope(int start, int end) {
+        if (start < 0 || end < 0 || start == end) return null;
+        int lo = Math.min(start, end);
+        int hi = Math.max(start, end);
+        SemanticSelectionScope best = null;
+
+        for (int template = 0; template < tokens.size(); template++) {
+            FractionBounds fraction = fractionBounds(template);
+            if (fraction != null) {
+                best = preferSelectionScope(best, containedSelectionScope(lo, hi,
+                        com.codex.fx991.core.Compat.list(template),
+                        CnCwCursorPath.Slot.FRACTION_NUMERATOR,
+                        fraction.numeratorStart, fraction.numeratorEnd));
+                best = preferSelectionScope(best, containedSelectionScope(lo, hi,
+                        com.codex.fx991.core.Compat.list(template),
+                        CnCwCursorPath.Slot.FRACTION_DENOMINATOR,
+                        fraction.denominatorStart, fraction.denominatorEnd));
+            }
+
+            PowerBounds power = powerBounds(template);
+            if (power != null) {
+                best = preferSelectionScope(best, containedSelectionScope(lo, hi,
+                        com.codex.fx991.core.Compat.list(template),
+                        CnCwCursorPath.Slot.SUPERSCRIPT_BASE,
+                        power.baseStart, power.baseEnd));
+                best = preferSelectionScope(best, containedSelectionScope(lo, hi,
+                        com.codex.fx991.core.Compat.list(template),
+                        CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT,
+                        power.exponentStart, power.exponentEnd));
+            }
+
+            RadicalBounds radical = radicalBounds(template);
+            if (radical != null) {
+                if (radical.indexStart >= 0) {
+                    best = preferSelectionScope(best, containedSelectionScope(lo, hi,
+                            com.codex.fx991.core.Compat.list(template),
+                            CnCwCursorPath.Slot.ROOT_INDEX,
+                            radical.indexStart, radical.indexEnd));
+                }
+                CnCwCursorPath.Slot contentSlot = isSquareRootTemplate(tokens.get(template))
+                        ? CnCwCursorPath.Slot.RADICAL_CONTENT
+                        : CnCwCursorPath.Slot.ROOT_CONTENT;
+                best = preferSelectionScope(best, containedSelectionScope(lo, hi,
+                        com.codex.fx991.core.Compat.list(template), contentSlot,
+                        radical.contentStart, radical.contentEnd));
+            }
+
+            FunctionBounds function = functionBounds(template);
+            if (function != null) {
+                for (int argumentIndex = 0; argumentIndex < function.arguments.size(); argumentIndex++) {
+                    FunctionArgumentBounds argument = function.arguments.get(argumentIndex);
+                    best = preferSelectionScope(best, containedSelectionScope(lo, hi,
+                            com.codex.fx991.core.Compat.list(template, argumentIndex),
+                            CnCwCursorPath.Slot.FUNCTION_ARGUMENT,
+                            argument.start, argument.end));
+                }
+            }
+        }
+        return best;
+    }
+
+    private SemanticSelectionScope containedSelectionScope(int start, int end,
+                                                            List<Integer> childPath,
+                                                            CnCwCursorPath.Slot slot,
+                                                            int slotStart, int slotEnd) {
+        if (slotStart < 0 || slotEnd < slotStart || start < slotStart || end > slotEnd) {
+            return null;
+        }
+        return new SemanticSelectionScope(childPath, slot, slotStart, slotEnd);
+    }
+
+    private SemanticSelectionScope preferSelectionScope(SemanticSelectionScope current,
+                                                         SemanticSelectionScope candidate) {
+        if (candidate == null) return current;
+        if (current == null) return candidate;
+        int currentSpan = current.slotEnd - current.slotStart;
+        int candidateSpan = candidate.slotEnd - candidate.slotStart;
+        if (candidateSpan < currentSpan) return candidate;
+        if (candidateSpan == currentSpan
+                && candidate.childPath.size() > current.childPath.size()) return candidate;
+        return current;
+    }
+
+    /** Semantic facade for legacy selection anchor/focus boundaries. */
+    private CnCwCursorPath semanticSelectionPath(int boundary) {
+        if (!selectionActive()) return semanticCursorPath();
+        int safe = Math.max(0, Math.min(tokens.size(), boundary));
+        SemanticSelectionScope scope = semanticSelectionScope(selectionStart(), selectionEnd());
+        if (scope == null || safe < scope.slotStart || safe > scope.slotEnd) {
+            return CnCwCursorPath.rootBoundary(safe);
+        }
+        return CnCwCursorPath.nested(scope.childPath, scope.slot,
+                safe - scope.slotStart, safe);
+    }
+
     private void setFunctionCursor(FunctionBounds function, int argumentIndex, int offset) {
         if (function.arguments.isEmpty()) {
             setRootCursor(function.templateIndex);
@@ -4429,6 +4536,8 @@ public final class CnCwMachine {
     private record FunctionBounds(int templateIndex, List<FunctionArgumentBounds> arguments,
                                   int closeIndex, int endExclusive) { }
     private record FunctionCursor(int templateIndex, int argumentIndex, int offset) { }
+    private record SemanticSelectionScope(List<Integer> childPath, CnCwCursorPath.Slot slot,
+                                          int slotStart, int slotEnd) { }
     private record SelectionRange(int start, int end) { }
     private record SimplificationResult(long originalNumerator, long originalDenominator,
                                         long displayNumerator, long displayDenominator,

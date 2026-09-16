@@ -697,8 +697,8 @@ public final class CnCwMachineSuite {
                 "touch selection function fixture expression");
         machine.beginTouchSelection(1);
         machine.extendTouchSelection(2);
-        equal("sin(2)", machine.selectedExpression(),
-                "touch selection expands a partial function drag to the full call");
+        equal("2", machine.selectedExpression(),
+                "touch selection stays fine-grained inside one function argument");
 
         machine = calculateMachine();
         press(machine, CnCwKey.DIGIT_1, CnCwKey.DIGIT_2, CnCwKey.DIGIT_3);
