@@ -616,6 +616,12 @@ public final class CnCwMachineSuite {
         machine.extendTouchSelection(2);
         equal("sin(2)", machine.selectedExpression(),
                 "touch selection expands a partial function drag to the full call");
+
+        machine = calculateMachine();
+        press(machine, CnCwKey.DIGIT_1, CnCwKey.DIGIT_2, CnCwKey.DIGIT_3);
+        machine.selectTouchWord(1);
+        equal("123", machine.selectedExpression(),
+                "long-press selects the complete numeric word before dragging");
     }
 
     private void shiftedDeleteTogglesOverwriteAndOnIsDistinct() {

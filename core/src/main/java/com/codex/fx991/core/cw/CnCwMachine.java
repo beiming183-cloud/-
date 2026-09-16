@@ -243,6 +243,34 @@ public final class CnCwMachine {
         return state;
     }
 
+    /** Selects the semantic word/unit under a long-press before dragging. */
+    public CnCwUiState selectTouchWord(int target) {
+        if (!poweredOn || !screen.isApplication() || applicationLanding) return state;
+        int boundary = Math.max(0, Math.min(tokens.size(), target));
+        if (tokens.isEmpty()) return beginTouchSelection(boundary);
+        int start;
+        int end;
+        if (boundary < tokens.size()) {
+            start = semanticAtomStart(boundary);
+            end = semanticAtomEnd(boundary);
+        } else {
+            start = semanticAtomStart(boundary);
+            end = boundary;
+        }
+        SelectionRange range = normalizeTouchSelectionRange(start, end);
+        selectionAnchor = range.start;
+        selectionFocus = range.end;
+        cursor = range.end;
+        shiftArmed = false;
+        result = "";
+        resultShown = false;
+        errorShown = false;
+        lastError = null;
+        status = applicationStatus();
+        publish();
+        return state;
+    }
+
     /** Moves the active touch-selection focus without clearing its anchor. */
     public CnCwUiState extendTouchSelection(int target) {
         if (!poweredOn || !screen.isApplication() || applicationLanding) return state;

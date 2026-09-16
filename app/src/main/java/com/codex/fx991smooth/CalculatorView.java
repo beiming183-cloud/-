@@ -1007,8 +1007,8 @@ public final class CalculatorView extends View {
                             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
                             displayLongPressTriggered = true;
                             int anchor = displayCursorPosition(displayDownX);
-                            state = machine.beginTouchSelection(anchor);
-                            lastDragCursor = anchor;
+                            state = machine.selectTouchWord(anchor);
+                            lastDragCursor = state.cursor();
                             displaySelectionMode = true;
                             postInvalidateOnAnimation();
                         }
