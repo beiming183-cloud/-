@@ -63,7 +63,9 @@ jobs:
           APK=$(find app/build/outputs/apk/cn991/release -name '*.apk' | head -n 1)
           test -n "$APK"
           BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
-          ACTUAL_FP=$("$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | awk -F': ' '/certificate SHA-256 digest:/{print toupper($2); exit}' | tr -d ':')
+          CERT_OUTPUT=$("$BUILD_TOOLS/apksigner" verify --print-certs "$APK")
+          ACTUAL_FP=$(printf '%s\n' "$CERT_OUTPUT" | grep -i 'certificate SHA-256 digest' | grep -Eio '[0-9a-f]{64}' | head -n 1 | tr '[:lower:]' '[:upper:]')
+          test -n "$ACTUAL_FP" || { echo '无法解析签名指纹，禁止发布'; exit 1; }
           echo "Release certificate SHA-256: $ACTUAL_FP"
           test "$ACTUAL_FP" = "$EXPECTED_CERT_SHA256" || { echo '签名指纹不匹配，禁止发布'; exit 1; }
           ACTUAL_APP_ID=$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest application-id "$APK")
