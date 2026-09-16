@@ -27,6 +27,15 @@ jobs:
       - name: 配置 Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # GitHub Runner 每次都是新机器。若不保存 ~/.android/debug.keystore，
+      # 每次 debug APK 都会被不同证书签名，手机就无法覆盖安装。
+      # 这是专门给测试版使用的固定 debug 签名缓存，不用于正式商店发布。
+      - name: 恢复固定测试签名
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: cn991-debug-signing-v1
+
       - name: 添加 Gradle 执行权限
         run: chmod +x ./gradlew
 
@@ -35,6 +44,14 @@ jobs:
 
       - name: 构建 CN991 调试 APK
         run: ./gradlew :app:assembleCn991Debug
+
+      - name: 记录 APK 签名指纹
+        shell: bash
+        run: |
+          APK=$(find app/build/outputs/apk/cn991 -name '*.apk' | head -n 1)
+          test -n "$APK"
+          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
+          "$BUILD_TOOLS/apksigner" verify --print-certs "$APK"
 
       - name: 保存 APK 构建产物
         uses: actions/upload-artifact@v4
