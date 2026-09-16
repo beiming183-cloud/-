@@ -74,8 +74,15 @@ jobs:
       - name: 运行完整核心回归
         run: ./gradlew :core:check
 
-      - name: 构建正式 Release APK
-        run: ./gradlew :app:assembleCn991Release
+      - name: 构建正式 Release APK并校验R8
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleCn991Release 2>&1 | tee release-build.log
+          if grep -Fq 'Invalid stack map table' release-build.log; then
+            echo '检测到 R8 Invalid stack map table，禁止发布'
+            exit 1
+          fi
 
       - name: 硬校验包名、版本与签名
         shell: bash
