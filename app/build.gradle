@@ -17,11 +17,11 @@ android {
         // dependency-free engines without requiring a desugared JDK bundle.
         minSdk 26
         targetSdk 34
-        versionCode 326
-        versionName '0.3.12'
+        versionCode 327
+        versionName '0.3.13'
         buildConfigField 'String', 'MODEL_ID', '"CN991_CW"'
         buildConfigField 'String', 'MODEL_PROFILE', '"FX_991_CN_CW"'
-        buildConfigField 'String', 'MODEL_LABEL', '"CN Scientific 991"'
+        buildConfigField 'String', 'MODEL_LABEL', '"北北计算器"'
         buildConfigField 'boolean', 'MODEL_EXTENDED', 'false'
         buildConfigField 'boolean', 'HAS_DISTRIBUTION', 'false'
         buildConfigField 'boolean', 'HAS_SPREADSHEET', 'false'
@@ -31,16 +31,16 @@ android {
     productFlavors {
         cn991 {
             dimension 'model'
-            // Only the requested 991 profile is published in this release.
+            // Internal flavor/profile names are kept for compatibility; public branding is independent.
             buildConfigField 'String', 'MODEL_ID', '"CN991_CW"'
             buildConfigField 'String', 'MODEL_PROFILE', '"FX_991_CN_CW"'
-            buildConfigField 'String', 'MODEL_LABEL', '"CN Scientific 991"'
+            buildConfigField 'String', 'MODEL_LABEL', '"北北计算器"'
             buildConfigField 'boolean', 'MODEL_EXTENDED', 'false'
             buildConfigField 'boolean', 'HAS_DISTRIBUTION', 'false'
             buildConfigField 'boolean', 'HAS_SPREADSHEET', 'false'
             buildConfigField 'int', 'APPLICATION_COUNT', '10'
-            resValue 'string', 'app_name', 'CN Scientific 991'
-            resValue 'string', 'app_model_name', 'CN Scientific 991'
+            resValue 'string', 'app_name', '北北计算器'
+            resValue 'string', 'app_model_name', '北北计算器'
         }
     }
 
