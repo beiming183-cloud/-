@@ -877,7 +877,7 @@ public final class CnCwMachine {
                         semanticCursorOverride = null;
                         cursor = Math.max(0, cursor - 1);
                     } else if (!moveFractionHorizontal(-1) && !movePowerHorizontal(-1)
-                            && !moveRadicalHorizontal(-1)) {
+                            && !moveRadicalHorizontal(-1) && !moveFunctionHorizontal(-1)) {
                         semanticCursorOverride = null;
                         cursor = Math.max(0, cursor - 1);
                     }
@@ -899,7 +899,7 @@ public final class CnCwMachine {
                         semanticCursorOverride = null;
                         cursor = Math.min(tokens.size(), cursor + 1);
                     } else if (!moveFractionHorizontal(1) && !movePowerHorizontal(1)
-                            && !moveRadicalHorizontal(1)) {
+                            && !moveRadicalHorizontal(1) && !moveFunctionHorizontal(1)) {
                         semanticCursorOverride = null;
                         cursor = Math.min(tokens.size(), cursor + 1);
                     }
@@ -1067,6 +1067,7 @@ public final class CnCwMachine {
         if (deleteFractionSemantic()) return;
         if (deletePowerSemantic()) return;
         if (deleteRadicalSemantic()) return;
+        if (deleteFunctionSemantic()) return;
         if (cursor <= 0 || tokens.isEmpty()) return;
         semanticCursorOverride = null;
         resetStatementSequence();
@@ -2691,6 +2692,12 @@ public final class CnCwMachine {
                     com.codex.fx991.core.Compat.list(radical.templateIndex),
                     radical.slot, radical.offset, cursor);
         }
+        FunctionCursor function = functionCursorAt(cursor);
+        if (function != null) {
+            return CnCwCursorPath.nested(
+                    com.codex.fx991.core.Compat.list(function.templateIndex, function.argumentIndex),
+                    CnCwCursorPath.Slot.FUNCTION_ARGUMENT, function.offset, cursor);
+        }
         return CnCwCursorPath.rootBoundary(cursor);
     }
 
@@ -3589,6 +3596,257 @@ public final class CnCwMachine {
         return true;
     }
 
+    /** Ordinary parenthesized function; radicals keep their dedicated Step 4 semantics. */
+    private static boolean isFunctionTemplate(Token token) {
+        String value = token.evaluation;
+        if (!value.endsWith("(") || "(".equals(value) || isRadicalTemplate(token)) return false;
+        // These are exponent-entry templates rather than ordinary function calls.
+        return !"e^(".equals(value) && !"*10^(".equals(value);
+    }
+
+    private FunctionBounds functionBounds(int templateIndex) {
+        if (templateIndex < 0 || templateIndex >= tokens.size()
+                || !isFunctionTemplate(tokens.get(templateIndex))) return null;
+        int close = matchingClose(templateIndex);
+        int innerEnd = close >= 0 ? close : tokens.size();
+        int endExclusive = close >= 0 ? close + 1 : innerEnd;
+        List<FunctionArgumentBounds> arguments = new ArrayList<>();
+        int argumentStart = templateIndex + 1;
+        int depth = 0;
+        for (int index = argumentStart; index < innerEnd; index++) {
+            Token token = tokens.get(index);
+            if (")".equals(token.evaluation)) {
+                if (depth > 0) depth--;
+                continue;
+            }
+            if (depth == 0 && ",".equals(token.evaluation)) {
+                arguments.add(new FunctionArgumentBounds(argumentStart, index));
+                argumentStart = index + 1;
+                continue;
+            }
+            if (opensParenthesis(token)) depth++;
+        }
+        // Even an empty function owns one editable argument slot.
+        arguments.add(new FunctionArgumentBounds(argumentStart, innerEnd));
+        return new FunctionBounds(templateIndex,
+                com.codex.fx991.core.Compat.copyList(arguments), close, endExclusive);
+    }
+
+    /** Smallest ordinary function owning this insertion boundary. */
+    private FunctionCursor functionCursorAt(int boundary) {
+        int safe = Math.max(0, Math.min(tokens.size(), boundary));
+        FunctionCursor best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            FunctionBounds bounds = functionBounds(template);
+            if (bounds == null) continue;
+            for (int argumentIndex = 0; argumentIndex < bounds.arguments.size(); argumentIndex++) {
+                FunctionArgumentBounds argument = bounds.arguments.get(argumentIndex);
+                if (safe < argument.start || safe > argument.end) continue;
+                int span = bounds.endExclusive - bounds.templateIndex;
+                if (span < bestSpan) {
+                    bestSpan = span;
+                    best = new FunctionCursor(template, argumentIndex,
+                            safe - argument.start);
+                }
+            }
+        }
+        return best;
+    }
+
+    private FunctionCursor functionCursorFromPath(CnCwCursorPath path) {
+        if (path == null || path.isRootBoundary()
+                || path.slot() != CnCwCursorPath.Slot.FUNCTION_ARGUMENT
+                || path.childPath().size() < 2) return null;
+        int template = path.childPath().get(0);
+        int argumentIndex = path.childPath().get(1);
+        FunctionBounds bounds = functionBounds(template);
+        if (bounds == null || argumentIndex < 0 || argumentIndex >= bounds.arguments.size()) {
+            return null;
+        }
+        FunctionArgumentBounds argument = bounds.arguments.get(argumentIndex);
+        int length = argument.end - argument.start;
+        return new FunctionCursor(template, argumentIndex,
+                Math.max(0, Math.min(length, path.offset())));
+    }
+
+    private FunctionBounds functionStartingAtBoundary(int boundary) {
+        FunctionBounds best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            FunctionBounds value = functionBounds(template);
+            if (value == null || value.templateIndex != boundary) continue;
+            int span = value.endExclusive - value.templateIndex;
+            if (span < bestSpan) { best = value; bestSpan = span; }
+        }
+        return best;
+    }
+
+    private FunctionBounds functionEndingAtBoundary(int boundary) {
+        FunctionBounds best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            FunctionBounds value = functionBounds(template);
+            if (value == null || value.endExclusive != boundary) continue;
+            int span = value.endExclusive - value.templateIndex;
+            if (span < bestSpan) { best = value; bestSpan = span; }
+        }
+        return best;
+    }
+
+    /** Smallest function whose concrete argument token contains tokenIndex. */
+    private FunctionBounds functionContainingToken(int tokenIndex) {
+        FunctionBounds best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            FunctionBounds value = functionBounds(template);
+            if (value == null) continue;
+            boolean inArgument = false;
+            for (FunctionArgumentBounds argument : value.arguments) {
+                if (tokenIndex >= argument.start && tokenIndex < argument.end) {
+                    inArgument = true;
+                    break;
+                }
+            }
+            if (!inArgument) continue;
+            int span = value.endExclusive - value.templateIndex;
+            if (span < bestSpan) { best = value; bestSpan = span; }
+        }
+        return best;
+    }
+
+    private boolean selectionWithinFunctionArgument(int start, int end, FunctionBounds function) {
+        for (FunctionArgumentBounds argument : function.arguments) {
+            if (start >= argument.start && end <= argument.end) return true;
+        }
+        return false;
+    }
+
+    private void setFunctionCursor(FunctionBounds function, int argumentIndex, int offset) {
+        if (function.arguments.isEmpty()) {
+            setRootCursor(function.templateIndex);
+            return;
+        }
+        int safeArgument = Math.max(0, Math.min(function.arguments.size() - 1, argumentIndex));
+        FunctionArgumentBounds argument = function.arguments.get(safeArgument);
+        int length = argument.end - argument.start;
+        int local = Math.max(0, Math.min(length, offset));
+        cursor = argument.start + local;
+        semanticCursorOverride = CnCwCursorPath.nested(
+                com.codex.fx991.core.Compat.list(function.templateIndex, safeArgument),
+                CnCwCursorPath.Slot.FUNCTION_ARGUMENT, local, cursor);
+    }
+
+    /** root-before -> arg0 -> arg1 ... -> root-after, never landing on a separator comma. */
+    private boolean moveFunctionHorizontal(int direction) {
+        if (resultShown || errorShown || selectionActive()) return false;
+        CnCwCursorPath path = semanticCursorPath();
+        if (path.isRootBoundary()) {
+            FunctionBounds target = direction > 0
+                    ? functionStartingAtBoundary(cursor) : functionEndingAtBoundary(cursor);
+            if (target == null || target.arguments.isEmpty()) return false;
+            if (direction > 0) {
+                setFunctionCursor(target, 0, 0);
+            } else {
+                int last = target.arguments.size() - 1;
+                FunctionArgumentBounds argument = target.arguments.get(last);
+                setFunctionCursor(target, last, argument.end - argument.start);
+            }
+            finishSemanticCursorMove();
+            return true;
+        }
+
+        FunctionCursor function = functionCursorFromPath(path);
+        if (function == null) return false;
+        FunctionBounds bounds = functionBounds(function.templateIndex);
+        if (bounds == null || function.argumentIndex >= bounds.arguments.size()) return false;
+        FunctionArgumentBounds argument = bounds.arguments.get(function.argumentIndex);
+        int length = argument.end - argument.start;
+        if (direction < 0) {
+            if (function.offset > 0) {
+                setFunctionCursor(bounds, function.argumentIndex, function.offset - 1);
+            } else if (function.argumentIndex > 0) {
+                int previousIndex = function.argumentIndex - 1;
+                FunctionArgumentBounds previous = bounds.arguments.get(previousIndex);
+                setFunctionCursor(bounds, previousIndex, previous.end - previous.start);
+            } else {
+                setRootCursor(bounds.templateIndex);
+            }
+        } else {
+            if (function.offset < length) {
+                setFunctionCursor(bounds, function.argumentIndex, function.offset + 1);
+            } else if (function.argumentIndex + 1 < bounds.arguments.size()) {
+                setFunctionCursor(bounds, function.argumentIndex + 1, 0);
+            } else {
+                setRootCursor(bounds.endExclusive);
+            }
+        }
+        finishSemanticCursorMove();
+        return true;
+    }
+
+    /**
+     * DEL removes only the current function argument content. At an argument
+     * boundary it navigates over the structural comma/template instead of
+     * deleting it. From root-after a complete function is removed atomically.
+     */
+    private boolean deleteFunctionSemantic() {
+        if (tokens.isEmpty()) return false;
+        CnCwCursorPath path = semanticCursorPath();
+        if (path.isRootBoundary()) {
+            FunctionBounds function = functionEndingAtBoundary(cursor);
+            if (function == null) return false;
+            rememberUndo();
+            tokens.subList(function.templateIndex, function.endExclusive).clear();
+            setRootCursor(function.templateIndex);
+            finishSemanticEditMutation();
+            return true;
+        }
+
+        FunctionCursor function = functionCursorFromPath(path);
+        if (function == null) return false;
+        FunctionBounds bounds = functionBounds(function.templateIndex);
+        if (bounds == null || function.argumentIndex >= bounds.arguments.size()) return false;
+        FunctionArgumentBounds argument = bounds.arguments.get(function.argumentIndex);
+        if (function.offset == 0) {
+            if (function.argumentIndex > 0) {
+                int previousIndex = function.argumentIndex - 1;
+                FunctionArgumentBounds previous = bounds.arguments.get(previousIndex);
+                setFunctionCursor(bounds, previousIndex, previous.end - previous.start);
+                finishSemanticCursorMove();
+                return true;
+            }
+            // Stage 2 contract: a freshly inserted bare function token such as
+            // sin( is one semantic token, so DEL removes it in one press.
+            if (bounds.closeIndex < 0 && bounds.arguments.size() == 1
+                    && argument.start == argument.end
+                    && bounds.endExclusive == bounds.templateIndex + 1) {
+                rememberUndo();
+                tokens.remove(bounds.templateIndex);
+                setRootCursor(bounds.templateIndex);
+                finishSemanticEditMutation();
+                return true;
+            }
+            setRootCursor(bounds.templateIndex);
+            finishSemanticCursorMove();
+            return true;
+        }
+
+        int deleteIndex = cursor - 1;
+        if (deleteIndex < argument.start || deleteIndex >= argument.end) return false;
+        rememberUndo();
+        tokens.remove(deleteIndex);
+        cursor--;
+        FunctionBounds updated = functionBounds(function.templateIndex);
+        if (updated == null || function.argumentIndex >= updated.arguments.size()) {
+            setRootCursor(Math.min(cursor, tokens.size()));
+        } else {
+            setFunctionCursor(updated, function.argumentIndex, Math.max(0, function.offset - 1));
+        }
+        finishSemanticEditMutation();
+        return true;
+    }
+
     private List<String> spreadsheetCellsSnapshot() {
         List<String> values = new ArrayList<>(SpreadsheetModel.ROWS * SpreadsheetModel.COLUMNS);
         for (int row = 0; row < SpreadsheetModel.ROWS; row++) {
@@ -4167,6 +4425,10 @@ public final class CnCwMachine {
                                  int separatorIndex, int contentStart, int contentEnd,
                                  int closeIndex, int endExclusive) { }
     private record RadicalCursor(int templateIndex, CnCwCursorPath.Slot slot, int offset) { }
+    private record FunctionArgumentBounds(int start, int end) { }
+    private record FunctionBounds(int templateIndex, List<FunctionArgumentBounds> arguments,
+                                  int closeIndex, int endExclusive) { }
+    private record FunctionCursor(int templateIndex, int argumentIndex, int offset) { }
     private record SelectionRange(int start, int end) { }
     private record SimplificationResult(long originalNumerator, long originalDenominator,
                                         long displayNumerator, long displayDenominator,

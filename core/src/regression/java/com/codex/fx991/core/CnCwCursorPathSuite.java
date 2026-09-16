@@ -29,6 +29,11 @@ public final class CnCwCursorPathSuite {
         radicalDeleteNeverBreaksStructure();
         radicalSelectionReplacementKeepsStructure();
         radicalEvaluationStillWorks();
+        singleFunctionPublishesArgumentAndMovesSemantically();
+        multiFunctionArgumentsMoveWithoutTouchingCommas();
+        functionDeleteNeverBreaksStructure();
+        functionSelectionReplacementKeepsStructure();
+        functionEvaluationStillWorks();
         System.out.println("PASS " + checks + " semantic cursor checks");
     }
 
@@ -548,6 +553,172 @@ public final class CnCwCursorPathSuite {
         machine.dispatch(CnCwKey.EXE);
         equal("2", machine.state().result(),
                 "root(index, content) semantic editor still evaluates normally");
+    }
+
+    private void singleFunctionPublishesArgumentAndMovesSemantically() {
+        CnCwMachine machine = sinMachine(true);
+        equal(CnCwCursorPath.Slot.ROW, machine.state().semanticCursor().slot(),
+                "closed sin starts at root-after");
+
+        machine.dispatch(CnCwKey.LEFT);
+        equal(CnCwCursorPath.Slot.FUNCTION_ARGUMENT,
+                machine.state().semanticCursor().slot(),
+                "LEFT from root-after enters function argument");
+        equal(0, machine.state().semanticCursor().childPath().get(0),
+                "function path identifies opening token");
+        equal(0, machine.state().semanticCursor().childPath().get(1),
+                "single-argument function publishes argument zero");
+        equal(2, machine.state().semanticCursor().offset(),
+                "function re-entry lands at argument end");
+        check(machine.state().naturalExpression().containsCursor(),
+                "function argument cursor remains visible in natural tree");
+
+        machine.dispatch(CnCwKey.RIGHT);
+        equal(CnCwCursorPath.Slot.ROW, machine.state().semanticCursor().slot(),
+                "RIGHT at argument end exits function");
+
+        machine.moveCursorTo(0);
+        machine.dispatch(CnCwKey.RIGHT);
+        equal(CnCwCursorPath.Slot.FUNCTION_ARGUMENT,
+                machine.state().semanticCursor().slot(),
+                "RIGHT from root-before enters function argument start");
+        equal(0, machine.state().semanticCursor().offset(),
+                "root-before function entry starts at offset zero");
+        machine.dispatch(CnCwKey.LEFT);
+        equal(CnCwCursorPath.Slot.ROW, machine.state().semanticCursor().slot(),
+                "LEFT at first argument start exits to root-before");
+    }
+
+    private void multiFunctionArgumentsMoveWithoutTouchingCommas() {
+        CnCwMachine machine = sumMachine();
+        machine.dispatch(CnCwKey.LEFT);
+        equal(CnCwCursorPath.Slot.FUNCTION_ARGUMENT,
+                machine.state().semanticCursor().slot(),
+                "LEFT from sum root-after enters last argument");
+        equal(2, machine.state().semanticCursor().childPath().get(1),
+                "sum publishes third argument index");
+        equal(1, machine.state().semanticCursor().offset(),
+                "last argument entry lands at its end");
+
+        machine.dispatch(CnCwKey.LEFT);
+        equal(0, machine.state().semanticCursor().offset(),
+                "LEFT moves to third argument start");
+        machine.dispatch(CnCwKey.LEFT);
+        equal(1, machine.state().semanticCursor().childPath().get(1),
+                "LEFT crosses structural comma into second argument");
+        equal(1, machine.state().semanticCursor().offset(),
+                "previous argument entry lands at its end");
+        machine.dispatch(CnCwKey.RIGHT);
+        equal(2, machine.state().semanticCursor().childPath().get(1),
+                "RIGHT crosses separator directly into next argument");
+        equal(0, machine.state().semanticCursor().offset(),
+                "RIGHT separator crossing lands at next argument start");
+        equal("sum(x,1,3)", machine.state().expression(),
+                "argument navigation never edits function commas");
+    }
+
+    private void functionDeleteNeverBreaksStructure() {
+        CnCwMachine machine = sinMachine(false);
+        machine.dispatch(CnCwKey.DEL);
+        equal("sin(3", machine.state().expression(),
+                "DEL removes function argument content only");
+        equal(CnCwCursorPath.Slot.FUNCTION_ARGUMENT,
+                machine.state().semanticCursor().slot(),
+                "function cursor stays in argument after DEL");
+        machine.dispatch(CnCwKey.DEL);
+        equal("sin(", machine.state().expression(),
+                "DEL may empty argument without deleting function token");
+        equal(0, machine.state().semanticCursor().offset(),
+                "empty function argument remains an editable slot");
+        check(machine.state().naturalExpression().containsCursor(),
+                "empty function argument still renders a cursor");
+        machine.dispatch(CnCwKey.DEL);
+        equal("", machine.state().expression(),
+                "DEL on a bare empty function preserves Stage 2 whole-token deletion");
+        equal(CnCwCursorPath.rootBoundary(0), machine.state().semanticCursor(),
+                "bare function deletion returns to root boundary");
+
+        machine = sumMachine();
+        machine.moveCursorTo(3); // second argument start, just after first comma
+        equal(1, machine.state().semanticCursor().childPath().get(1),
+                "touch cursor identifies second sum argument");
+        machine.dispatch(CnCwKey.DEL);
+        equal("sum(x,1,3)", machine.state().expression(),
+                "DEL at argument start never deletes structural comma");
+        equal(0, machine.state().semanticCursor().childPath().get(1),
+                "argument-start DEL navigates to previous argument");
+
+        machine = sinMachine(true);
+        machine.dispatch(CnCwKey.DEL);
+        equal("", machine.state().expression(),
+                "DEL from closed function root-after removes whole function atomically");
+        equal(CnCwCursorPath.rootBoundary(0), machine.state().semanticCursor(),
+                "whole-function DEL returns to root boundary");
+    }
+
+    private void functionSelectionReplacementKeepsStructure() {
+        CnCwMachine machine = sinMachine(true);
+        machine.beginTouchSelection(1);
+        machine.extendTouchSelection(3);
+        equal("sin(30)", machine.selectedExpression(),
+                "Stage 2 touch selection still expands partial function drag to whole call");
+
+        // Parameter-level replacement is already possible through the semantic
+        // cursor + DEL path; unified fine-selection is intentionally Step 6.
+        machine = sinMachine(false);
+        machine.dispatch(CnCwKey.DEL);
+        machine.dispatch(CnCwKey.DEL);
+        equal("sin(", machine.state().expression(),
+                "semantic DEL can empty a single function argument");
+        equal(2, machine.pasteExpression("45"),
+                "empty function argument accepts semantic paste");
+        equal("sin(45", machine.state().expression(),
+                "single argument replacement preserves the function template");
+        equal(CnCwCursorPath.Slot.FUNCTION_ARGUMENT,
+                machine.state().semanticCursor().slot(),
+                "replacement cursor remains in function argument");
+
+        machine = sumMachine();
+        machine.moveCursorTo(4); // end of second argument
+        machine.dispatch(CnCwKey.DEL);
+        equal("sum(x,,3)", machine.state().expression(),
+                "DEL can empty a middle argument while preserving both commas");
+        equal(1, machine.state().semanticCursor().childPath().get(1),
+                "empty middle argument keeps its semantic argument index");
+        equal(1, machine.pasteExpression("2"),
+                "empty middle argument accepts replacement");
+        equal("sum(x,2,3)", machine.state().expression(),
+                "middle argument replacement preserves function structure");
+    }
+
+    private void functionEvaluationStillWorks() {
+        CnCwMachine machine = sinMachine(true);
+        machine.dispatch(CnCwKey.EXE);
+        equal("1/2", machine.state().result(),
+                "sin function semantic editor preserves evaluation");
+
+        machine = sumMachine();
+        machine.dispatch(CnCwKey.EXE);
+        equal("6", machine.state().result(),
+                "multi-argument sum still evaluates after semantic editing support");
+    }
+
+    private CnCwMachine sinMachine(boolean closed) {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        machine.dispatch(CnCwKey.OK);
+        machine.dispatch(CnCwKey.SIN);
+        machine.dispatch(CnCwKey.DIGIT_3);
+        machine.dispatch(CnCwKey.DIGIT_0);
+        if (closed) machine.dispatch(CnCwKey.CLOSE_PAREN);
+        return machine;
+    }
+
+    private CnCwMachine sumMachine() {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        machine.dispatch(CnCwKey.OK);
+        equal(7, machine.pasteExpression("sum(x,1,3)"),
+                "sum helper imports full multi-argument function");
+        return machine;
     }
 
     private CnCwMachine squareRootMachine(boolean closed) {
