@@ -23,6 +23,7 @@ import com.codex.fx991.core.cw.CnCwExpressionNode;
 import com.codex.fx991.core.cw.CnCwSemanticSpan;
 import com.codex.fx991.core.cw.CnCwKey;
 import com.codex.fx991.core.cw.CnCwMachine;
+import com.codex.fx991.core.cw.CnCwModeEngine;
 import com.codex.fx991.core.cw.CnCwScreen;
 import com.codex.fx991.core.cw.CnCwUiState;
 import com.codex.fx991.core.mode.CnCwModel;
@@ -402,7 +403,10 @@ public final class CalculatorView extends View {
         if (state.hasSelection()) {
             drawSelectionHandles(canvas, lcd, contentTop, contentBottom);
         }
-        if (state.resultShown() && !state.result().isEmpty()) {
+        if (state.resultShown() && state.hasStructuredApplicationResult()) {
+            drawStructuredApplicationResult(canvas, state.applicationResult(), lcd,
+                    contentTop, contentBottom, available);
+        } else if (state.resultShown() && !state.result().isEmpty()) {
             String[] lines = decimalDisplayResult(state.result()).split("\\n", -1);
             paint.setTypeface(FACE_MEDIUM);
             paint.setTextAlign(Paint.Align.RIGHT);
@@ -427,6 +431,121 @@ public final class CalculatorView extends View {
             paint.setTextSize(sp(14f));
             paint.setTextAlign(Paint.Align.RIGHT);
             canvas.drawText(ellipsize(state.status(), available * 0.8f), lcd.right - dp(6),
+                    contentBottom - dp(1), paint);
+        }
+    }
+
+    /** Renders core-owned application results without parsing display strings. */
+    private void drawStructuredApplicationResult(Canvas canvas, CnCwModeEngine.ModeResult result,
+                                                 RectF lcd, float contentTop,
+                                                 float contentBottom, float available) {
+        if (result == null || result.layout() == CnCwModeEngine.ResultLayout.TEXT) return;
+        switch (result.layout()) {
+            case KEY_VALUE -> drawKeyValueResult(canvas, result, lcd, contentTop, contentBottom, available);
+            case MATRIX, VECTOR -> drawGridResult(canvas, result, lcd, contentTop, contentBottom, available);
+            case TABLE -> drawKeyValueResult(canvas, result, lcd, contentTop, contentBottom, available);
+            case TEXT -> { }
+        }
+    }
+
+    private void drawKeyValueResult(Canvas canvas, CnCwModeEngine.ModeResult result,
+                                    RectF lcd, float contentTop, float contentBottom,
+                                    float available) {
+        float resultTop = contentTop + (contentBottom - contentTop) * 0.52f;
+        paint.setColor(LCD_INK);
+        paint.setTypeface(FACE_BOLD);
+        paint.setTextAlign(Paint.Align.LEFT);
+        paint.setTextSize(sp(10.5f));
+        canvas.drawText(ellipsize(result.title(), available * 0.48f),
+                lcd.left + dp(6), resultTop, paint);
+
+        List<CnCwModeEngine.ResultItem> items = result.items();
+        int count = Math.min(4, items.size());
+        if (count == 0) return;
+        int columns = count == 1 ? 1 : 2;
+        int rows = (count + columns - 1) / columns;
+        float top = resultTop + dp(4f);
+        float bottom = contentBottom - dp(1f);
+        float cellWidth = available / columns;
+        float rowHeight = Math.max(dp(14f), (bottom - top) / Math.max(1, rows));
+        for (int index = 0; index < count; index++) {
+            int row = index / columns;
+            int column = index % columns;
+            float left = lcd.left + dp(6) + column * cellWidth;
+            float centerY = top + row * rowHeight + rowHeight * 0.52f;
+            CnCwModeEngine.ResultItem item = items.get(index);
+            paint.setTypeface(FACE_NORMAL);
+            paint.setTextSize(sp(9.5f));
+            paint.setTextAlign(Paint.Align.LEFT);
+            canvas.drawText(item.label() + " =", left, centerY - dp(3f), paint);
+            paint.setTypeface(FACE_MEDIUM);
+            paint.setTextSize(sp(13.5f));
+            canvas.drawText(ellipsize(item.value(), cellWidth - dp(8f)),
+                    left, centerY + dp(8f), paint);
+        }
+    }
+
+    private void drawGridResult(Canvas canvas, CnCwModeEngine.ModeResult result,
+                                RectF lcd, float contentTop, float contentBottom,
+                                float available) {
+        int rows = result.rows();
+        int columns = result.columns();
+        if (rows <= 0 || columns <= 0 || result.cells().size() != rows * columns) {
+            drawKeyValueResult(canvas, result, lcd, contentTop, contentBottom, available);
+            return;
+        }
+        float resultTop = contentTop + (contentBottom - contentTop) * 0.48f;
+        float gridBottom = result.items().isEmpty()
+                ? contentBottom - dp(2f) : contentBottom - dp(20f);
+        float gridLeft = lcd.left + dp(14f);
+        float gridRight = lcd.right - dp(14f);
+        float gridTop = resultTop + dp(5f);
+        float cellWidth = (gridRight - gridLeft) / columns;
+        float cellHeight = Math.max(dp(10f), (gridBottom - gridTop) / rows);
+
+        paint.setColor(LCD_INK);
+        paint.setTypeface(FACE_BOLD);
+        paint.setTextAlign(Paint.Align.LEFT);
+        paint.setTextSize(sp(10.5f));
+        canvas.drawText(ellipsize(result.title(), available * 0.45f),
+                lcd.left + dp(6), resultTop, paint);
+
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(dp(0.8f));
+        float bracket = dp(4f);
+        canvas.drawLine(gridLeft - bracket, gridTop, gridLeft, gridTop, paint);
+        canvas.drawLine(gridLeft - bracket, gridTop, gridLeft - bracket, gridBottom, paint);
+        canvas.drawLine(gridLeft - bracket, gridBottom, gridLeft, gridBottom, paint);
+        canvas.drawLine(gridRight, gridTop, gridRight + bracket, gridTop, paint);
+        canvas.drawLine(gridRight + bracket, gridTop, gridRight + bracket, gridBottom, paint);
+        canvas.drawLine(gridRight, gridBottom, gridRight + bracket, gridBottom, paint);
+        paint.setStyle(Paint.Style.FILL);
+
+        float textSize = columns >= 4 || rows >= 4 ? 9.5f : 11.5f;
+        paint.setTypeface(FACE_MEDIUM);
+        paint.setTextSize(sp(textSize));
+        paint.setTextAlign(Paint.Align.CENTER);
+        for (int row = 0; row < rows; row++) {
+            for (int column = 0; column < columns; column++) {
+                String value = result.cells().get(row * columns + column);
+                float cx = gridLeft + (column + 0.5f) * cellWidth;
+                float cy = gridTop + (row + 0.5f) * cellHeight;
+                canvas.drawText(ellipsize(value, cellWidth - dp(2f)), cx,
+                        centeredBaseline(cy - cellHeight * 0.42f, cy + cellHeight * 0.42f), paint);
+            }
+        }
+
+        if (!result.items().isEmpty()) {
+            CnCwModeEngine.ResultItem first = result.items().get(0);
+            paint.setTextAlign(Paint.Align.RIGHT);
+            paint.setTypeface(FACE_MEDIUM);
+            paint.setTextSize(sp(11f));
+            String summary = first.label() + "=" + first.value();
+            if (result.items().size() > 1) {
+                CnCwModeEngine.ResultItem second = result.items().get(1);
+                summary += "   " + second.label() + "=" + second.value();
+            }
+            canvas.drawText(ellipsize(summary, available), lcd.right - dp(6),
                     contentBottom - dp(1), paint);
         }
     }

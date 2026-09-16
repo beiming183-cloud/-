@@ -39,6 +39,8 @@ public final class CnCwUiState {
     /** Stage 3 semantic facade for the selection's active focus. */
     private final CnCwCursorPath semanticSelectionFocus;
     private final String result;
+    /** Structured application result; null for ordinary/text-only results. */
+    private final CnCwModeEngine.ModeResult applicationResult;
     private final double ans;
     private final boolean hasAns;
     private final String status;
@@ -78,6 +80,7 @@ public final class CnCwUiState {
                 CnCwCursorPath semanticSelectionAnchor,
                 CnCwCursorPath semanticSelectionFocus,
                 String result,
+                CnCwModeEngine.ModeResult applicationResult,
                 double ans,
                 boolean hasAns,
                 String status,
@@ -118,6 +121,7 @@ public final class CnCwUiState {
         this.semanticSelectionFocus = Objects.requireNonNull(semanticSelectionFocus,
                 "semanticSelectionFocus");
         this.result = result == null ? "" : result;
+        this.applicationResult = applicationResult;
         this.ans = ans;
         this.hasAns = hasAns;
         this.status = status == null ? "" : status;
@@ -199,6 +203,11 @@ public final class CnCwUiState {
     public CnCwCursorPath semanticSelectionAnchor() { return semanticSelectionAnchor; }
     public CnCwCursorPath semanticSelectionFocus() { return semanticSelectionFocus; }
     public String result() { return result; }
+    public CnCwModeEngine.ModeResult applicationResult() { return applicationResult; }
+    public boolean hasStructuredApplicationResult() {
+        return applicationResult != null
+                && applicationResult.layout() != CnCwModeEngine.ResultLayout.TEXT;
+    }
     public double ans() { return ans; }
     public boolean hasAns() { return hasAns; }
     public String status() { return status; }

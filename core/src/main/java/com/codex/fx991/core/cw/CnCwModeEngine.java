@@ -29,10 +29,127 @@ import java.util.List;
 public final class CnCwModeEngine {
     private CnCwModeEngine() { }
 
-    public record ModeResult(String display, Double primaryValue) {
-        public ModeResult {
-            if (com.codex.fx991.core.Compat.isBlank(display)) throw new IllegalArgumentException("display");
+    public enum ResultLayout {
+        TEXT,
+        KEY_VALUE,
+        VECTOR,
+        MATRIX,
+        TABLE
+    }
+
+    /** One ordered label/value entry in a structured application result. */
+    public static final class ResultItem {
+        private final String label;
+        private final String value;
+
+        public ResultItem(String label, String value) {
+            if (com.codex.fx991.core.Compat.isBlank(label)) {
+                throw new IllegalArgumentException("label");
+            }
+            if (value == null) throw new IllegalArgumentException("value");
+            this.label = label;
+            this.value = value;
         }
+
+        public String label() { return label; }
+        public String value() { return value; }
+    }
+
+    /**
+     * Core-owned application result protocol.
+     *
+     * <p>`display()` and `primaryValue()` remain source-compatible with the
+     * Stage 2/3 bridge.  New renderers can instead consume layout/title/items
+     * without parsing presentation strings.</p>
+     */
+    public static final class ModeResult {
+        private final String display;
+        private final Double primaryValue;
+        private final ResultLayout layout;
+        private final String title;
+        private final List<ResultItem> items;
+        /** Optional row-major grid payload used by MATRIX/VECTOR/TABLE layouts. */
+        private final int rows;
+        private final int columns;
+        private final List<String> cells;
+
+        public ModeResult(String display, Double primaryValue) {
+            this(display, primaryValue, ResultLayout.TEXT, "",
+                    com.codex.fx991.core.Compat.list());
+        }
+
+        public ModeResult(String display, Double primaryValue,
+                          ResultLayout layout, String title, List<ResultItem> items) {
+            this(display, primaryValue, layout, title, items,
+                    0, 0, com.codex.fx991.core.Compat.list());
+        }
+
+        public ModeResult(String display, Double primaryValue,
+                          ResultLayout layout, String title, List<ResultItem> items,
+                          int rows, int columns, List<String> cells) {
+            if (com.codex.fx991.core.Compat.isBlank(display)) {
+                throw new IllegalArgumentException("display");
+            }
+            if (layout == null) throw new IllegalArgumentException("layout");
+            if (items == null) throw new IllegalArgumentException("items");
+            if (cells == null) throw new IllegalArgumentException("cells");
+            if (rows < 0 || columns < 0) throw new IllegalArgumentException("grid size");
+            if ((rows == 0) != (columns == 0)) throw new IllegalArgumentException("grid shape");
+            if (rows > 0 && cells.size() != rows * columns) {
+                throw new IllegalArgumentException("grid cells");
+            }
+            if (rows == 0 && !cells.isEmpty()) throw new IllegalArgumentException("grid cells");
+            this.display = display;
+            this.primaryValue = primaryValue;
+            this.layout = layout;
+            this.title = title == null ? "" : title;
+            this.items = com.codex.fx991.core.Compat.copyList(items);
+            this.rows = rows;
+            this.columns = columns;
+            this.cells = com.codex.fx991.core.Compat.copyList(cells);
+        }
+
+        public static ModeResult keyValue(String title, String display, Double primaryValue,
+                                          ResultItem... entries) {
+            List<ResultItem> items = new ArrayList<>();
+            if (entries != null) {
+                for (ResultItem entry : entries) {
+                    if (entry == null) throw new IllegalArgumentException("entry");
+                    items.add(entry);
+                }
+            }
+            return new ModeResult(display, primaryValue, ResultLayout.KEY_VALUE,
+                    title, items);
+        }
+
+        public static ModeResult grid(ResultLayout layout, String title, String display,
+                                      Double primaryValue, int rows, int columns,
+                                      List<String> cells, List<ResultItem> items) {
+            if (layout != ResultLayout.MATRIX && layout != ResultLayout.VECTOR
+                    && layout != ResultLayout.TABLE) {
+                throw new IllegalArgumentException("grid layout");
+            }
+            return new ModeResult(display, primaryValue, layout, title, items,
+                    rows, columns, cells);
+        }
+
+        public String display() { return display; }
+        public Double primaryValue() { return primaryValue; }
+        public ResultLayout layout() { return layout; }
+        public String title() { return title; }
+        public List<ResultItem> items() { return items; }
+        public int rows() { return rows; }
+        public int columns() { return columns; }
+        public List<String> cells() { return cells; }
+        public boolean hasGrid() { return rows > 0; }
+    }
+
+    private static ResultItem item(String label, double value) {
+        return new ResultItem(label, format(value));
+    }
+
+    private static ResultItem item(String label, String value) {
+        return new ResultItem(label, value);
     }
 
     public static ModeResult evaluate(ApplicationMode mode,
@@ -81,9 +198,14 @@ public final class CnCwModeEngine {
         double[] values = evaluateFields(fields, 0, context);
         if (command.equals("one")) {
             StatisticsEngine.OneVariableResults result = StatisticsEngine.oneVariable(values);
-            return new ModeResult("n=" + format(result.n()) + "  x̄=" + format(result.mean())
+            String display = "n=" + format(result.n()) + "  x̄=" + format(result.mean())
                     + "\nσx=" + format(result.populationStdDev())
-                    + "  sx=" + format(result.sampleStdDev()), result.mean());
+                    + "  sx=" + format(result.sampleStdDev());
+            return ModeResult.keyValue("一元统计", display, result.mean(),
+                    item("n", result.n()),
+                    item("x̄", result.mean()),
+                    item("σx", result.populationStdDev()),
+                    item("sx", result.sampleStdDev()));
         }
         if (values.length < 4 || values.length % 2 != 0) {
             throw new IllegalArgumentException("Enter x1,y1,x2,y2,...");
@@ -97,13 +219,22 @@ public final class CnCwModeEngine {
         if (command.equals("regression")) {
             StatisticsEngine.RegressionResult fit = StatisticsEngine.regression(
                     StatisticsEngine.RegressionType.LINEAR, x, y);
-            return new ModeResult("a=" + format(fit.a()) + "  b=" + format(fit.b())
-                    + "\nr=" + format(fit.r()), fit.r());
+            String display = "a=" + format(fit.a()) + "  b=" + format(fit.b())
+                    + "\nr=" + format(fit.r());
+            return ModeResult.keyValue("线性回归", display, fit.r(),
+                    item("a", fit.a()),
+                    item("b", fit.b()),
+                    item("r", fit.r()));
         }
         StatisticsEngine.TwoVariableResults result = StatisticsEngine.twoVariable(x, y);
-        return new ModeResult("x̄=" + format(result.meanX()) + "  ȳ=" + format(result.meanY())
+        String display = "x̄=" + format(result.meanX()) + "  ȳ=" + format(result.meanY())
                 + "\nσx=" + format(result.populationStdDevX())
-                + "  σy=" + format(result.populationStdDevY()), result.meanX());
+                + "  σy=" + format(result.populationStdDevY());
+        return ModeResult.keyValue("双变量统计", display, result.meanX(),
+                item("x̄", result.meanX()),
+                item("ȳ", result.meanY()),
+                item("σx", result.populationStdDevX()),
+                item("σy", result.populationStdDevY()));
     }
 
     private static ModeResult distribution(String command,
@@ -176,11 +307,16 @@ public final class CnCwModeEngine {
             double[] coefficients = evaluateFields(fields, 0, context);
             List<ComplexValue> roots = PolynomialEngine.roots(coefficients);
             StringBuilder text = new StringBuilder();
+            List<ResultItem> items = new ArrayList<>();
             for (int i = 0; i < roots.size(); i++) {
+                String label = "x" + (i + 1);
+                String value = formatComplex(roots.get(i));
                 if (i > 0) text.append(i == 1 ? "\n" : "  ");
-                text.append("x").append(i + 1).append("=").append(formatComplex(roots.get(i)));
+                text.append(label).append("=").append(value);
+                items.add(item(label, value));
             }
-            return new ModeResult(text.toString(), roots.get(0).real());
+            return new ModeResult(text.toString(), roots.get(0).real(),
+                    ResultLayout.KEY_VALUE, "多项式方程", items);
         }
         if (command.equals("simultaneous")) {
             double[] values = evaluateFields(fields, 0, context);
@@ -197,7 +333,12 @@ public final class CnCwModeEngine {
                 right[row] = values[offset++];
             }
             double[] solution = new MatrixValue(matrix).solve(right);
-            return new ModeResult(formatVector("x", solution), solution[0]);
+            List<ResultItem> items = new ArrayList<>();
+            for (int index = 0; index < solution.length; index++) {
+                items.add(item("x" + (index + 1), solution[index]));
+            }
+            return new ModeResult(formatVector("x", solution), solution[0],
+                    ResultLayout.KEY_VALUE, "联立方程", items);
         }
         if (fields.size() != 2) throw new IllegalArgumentException("Enter f(x),initial guess");
         ScalarExpressionEngine.CompiledExpression expression =
@@ -206,8 +347,11 @@ public final class CnCwModeEngine {
         NumericAnalysis.SolveResult solved = NumericAnalysis.solve(
                 x -> expression.evaluate(context.withX(x)), initial, 1e-12, 100);
         if (!solved.converged()) throw new ArithmeticException("Cannot Solve");
-        return new ModeResult("x=" + format(solved.solution())
-                + "\nL-R=" + format(solved.remainder()), solved.solution());
+        String display = "x=" + format(solved.solution())
+                + "\nL-R=" + format(solved.remainder());
+        return ModeResult.keyValue("SOLVE", display, solved.solution(),
+                item("x", solved.solution()),
+                item("L-R", solved.remainder()));
     }
 
     private static ModeResult inequality(List<String> fields,
@@ -245,13 +389,25 @@ public final class CnCwModeEngine {
             for (int column = 0; column < columns; column++) data[row][column] = values[offset++];
         }
         MatrixValue matrix = new MatrixValue(data);
+        List<String> cells = new ArrayList<>();
+        for (int row = 0; row < rows; row++) {
+            for (int column = 0; column < columns; column++) {
+                cells.add(format(matrix.get(row, column)));
+            }
+        }
+        List<ResultItem> items = new ArrayList<>();
         if (rows == columns) {
             double determinant = matrix.determinant();
-            return new ModeResult(rows + "×" + columns + "  det=" + format(determinant)
-                    + "\n[1,1]=" + format(matrix.get(0, 0)), determinant);
+            items.add(item("det", determinant));
+            String display = rows + "×" + columns + "  det=" + format(determinant)
+                    + "\n[1,1]=" + format(matrix.get(0, 0));
+            return ModeResult.grid(ResultLayout.MATRIX, "矩阵", display, determinant,
+                    rows, columns, cells, items);
         }
-        return new ModeResult(rows + "×" + columns + " matrix\n[1,1]="
-                + format(matrix.get(0, 0)), matrix.get(0, 0));
+        String display = rows + "×" + columns + " matrix\n[1,1]="
+                + format(matrix.get(0, 0));
+        return ModeResult.grid(ResultLayout.MATRIX, "矩阵", display, matrix.get(0, 0),
+                rows, columns, cells, items);
     }
 
     private static ModeResult vector(List<String> fields,
@@ -259,8 +415,18 @@ public final class CnCwModeEngine {
         double[] values = evaluateFields(fields, 0, context);
         if (values.length == 2 || values.length == 3) {
             VectorValue vector = new VectorValue(values);
-            return new ModeResult("|v|=" + format(vector.magnitude())
-                    + "\nunit[1]=" + format(vector.unit().get(0)), vector.magnitude());
+            List<String> cells = new ArrayList<>();
+            for (double value : values) cells.add(format(value));
+            List<ResultItem> items = new ArrayList<>();
+            items.add(item("|v|", vector.magnitude()));
+            VectorValue unit = vector.unit();
+            for (int index = 0; index < values.length; index++) {
+                items.add(item("unit[" + (index + 1) + "]", unit.get(index)));
+            }
+            String display = "|v|=" + format(vector.magnitude())
+                    + "\nunit[1]=" + format(unit.get(0));
+            return ModeResult.grid(ResultLayout.VECTOR, "向量", display, vector.magnitude(),
+                    1, values.length, cells, items);
         }
         if (values.length == 4 || values.length == 6) {
             int dimension = values.length / 2;
@@ -270,8 +436,17 @@ public final class CnCwModeEngine {
             System.arraycopy(values, dimension, right, 0, dimension);
             VectorValue a = new VectorValue(left);
             VectorValue b = new VectorValue(right);
-            return new ModeResult("dot=" + format(a.dot(b))
-                    + "\nangle=" + format(Math.toDegrees(a.angleRadians(b))) + "°", a.dot(b));
+            double dot = a.dot(b);
+            double angle = Math.toDegrees(a.angleRadians(b));
+            List<String> cells = new ArrayList<>();
+            for (double value : left) cells.add(format(value));
+            for (double value : right) cells.add(format(value));
+            List<ResultItem> items = new ArrayList<>();
+            items.add(item("dot", dot));
+            items.add(item("angle", format(angle) + "°"));
+            String display = "dot=" + format(dot) + "\nangle=" + format(angle) + "°";
+            return ModeResult.grid(ResultLayout.VECTOR, "向量运算", display, dot,
+                    2, dimension, cells, items);
         }
         throw new IllegalArgumentException("Enter 2/3 values, or two equal vectors");
     }

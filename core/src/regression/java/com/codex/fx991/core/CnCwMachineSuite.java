@@ -3,6 +3,7 @@ package com.codex.fx991.core;
 import com.codex.fx991.core.cw.CnCwExpressionNode;
 import com.codex.fx991.core.cw.CnCwKey;
 import com.codex.fx991.core.cw.CnCwMachine;
+import com.codex.fx991.core.cw.CnCwModeEngine;
 import com.codex.fx991.core.cw.CnCwScreen;
 import com.codex.fx991.core.cw.CnCwUiState;
 import com.codex.fx991.core.mode.CnCwModel;
@@ -103,6 +104,8 @@ public final class CnCwMachineSuite {
                 CnCwKey.MULTIPLY, CnCwKey.DIGIT_4, CnCwKey.EXE);
         near(14.0, machine.state().ans(), 0.0, "operator precedence");
         equal("14", machine.state().result(), "formatted result");
+        check(machine.state().applicationResult() == null,
+                "ordinary Calculate result does not publish application protocol");
 
         press(machine, CnCwKey.DIVIDE, CnCwKey.DIGIT_2, CnCwKey.EXE);
         near(7.0, machine.state().ans(), 0.0, "binary continuation starts from Ans");
@@ -821,6 +824,15 @@ public final class CnCwMachineSuite {
                 "statistics workflow delegates to StatisticsEngine");
         check(statistics.state().result().startsWith("n=3"),
                 "statistics workflow returns structured result");
+        check(statistics.state().hasStructuredApplicationResult(),
+                "statistics UiState carries structured application result");
+        equal(CnCwModeEngine.ResultLayout.KEY_VALUE,
+                statistics.state().applicationResult().layout(),
+                "statistics UiState exposes key/value layout");
+        equal("一元统计", statistics.state().applicationResult().title(),
+                "statistics UiState exposes result title");
+        equal("n", statistics.state().applicationResult().items().get(0).label(),
+                "statistics UiState preserves ordered result items");
 
         CnCwMachine distribution = homeApplication(CnCwModel.FX_999_CN_CW, 2);
         distribution.dispatch(CnCwKey.DOWN);
