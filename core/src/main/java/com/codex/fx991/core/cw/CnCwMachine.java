@@ -78,6 +78,8 @@ public final class CnCwMachine {
     private String result = "";
     /** Last core-owned application result; renderer sees it only while resultShown. */
     private CnCwModeEngine.ModeResult applicationResult;
+    /** Stage 5 structured input editor; null keeps the legacy expression bridge. */
+    private CnCwWorkflowSession workflowSession;
     private String status = "HOME";
     private String activeCommandId = "";
     private double ans;
@@ -145,6 +147,7 @@ public final class CnCwMachine {
         manualSimplification = source.manualSimplification;
         result = source.result;
         applicationResult = source.applicationResult;
+        workflowSession = source.workflowSession == null ? null : source.workflowSession.copy();
         status = source.status;
         activeCommandId = source.activeCommandId;
         ans = source.ans;
@@ -764,6 +767,8 @@ public final class CnCwMachine {
     }
 
     public CnCwUiState reset() {
+        workflowSession = null;
+        applicationResult = null;
         screen = CnCwScreen.HOME;
         application = null;
         settings = CnCwSettings.defaults();
@@ -917,6 +922,8 @@ public final class CnCwMachine {
             restoreOriginalFormat();
             return;
         }
+        if (workflowSession != null && handleWorkflowSessionKey(key)) return;
+
         switch (key) {
             case SETTINGS -> { openPopup(CnCwScreen.SETTINGS); return; }
             case CATALOG -> { openPopup(CnCwScreen.CATALOG); return; }
@@ -964,6 +971,7 @@ public final class CnCwMachine {
                 case OK, ENTER, EXE -> beginModeCommand(commands.get(selectedIndex));
                 default -> {
                     if (isEntryKey(key)) {
+                        workflowSession = null;
                         applicationLanding = false;
                         selectedIndex = 0;
                         insertKey(key);
@@ -1055,6 +1063,13 @@ public final class CnCwMachine {
         clearExpression();
         applicationLanding = false;
         activeCommandId = command.id();
+        CnCwWorkflowSpec.WorkflowSpec workflowSpec =
+                CnCwWorkflowSpec.forCommand(application, command.id());
+        workflowSession = workflowSpec == null ? null : CnCwWorkflowSession.create(workflowSpec);
+        if (workflowSession != null) {
+            status = workflowStatus();
+            return;
+        }
         status = workflowPrompt(application, command);
         if (application == ApplicationMode.SPREADSHEET && command.id().equals("sheet")) {
             spreadsheetGrid = true;
@@ -1067,6 +1082,203 @@ public final class CnCwMachine {
             result = "重新计算完成\n剩余 " + spreadsheet.remainingBytes() + " bytes";
             resultShown = true;
         }
+    }
+
+    /** Direct-touch entry point for a Stage 5 input-table cell. */
+    public CnCwUiState selectWorkflowCell(int row, int column) {
+        if (workflowSession == null || resultShown) return state;
+        commitWorkflowCell();
+        if (workflowSession.selectCell(row, column)) loadWorkflowCell();
+        status = workflowStatus();
+        publish();
+        return state;
+    }
+
+    private boolean handleWorkflowSessionKey(CnCwKey key) {
+        if (workflowSession == null) return false;
+
+        if (key == CnCwKey.BACK) {
+            if (resultShown) {
+                result = "";
+                resultShown = false;
+                applicationResult = null;
+                loadWorkflowCell();
+                status = workflowStatus();
+            } else if (!tokens.isEmpty()) {
+                tokens.clear();
+                cursor = 0;
+                semanticCursorOverride = null;
+                workflowSession.setSelectedCell("");
+                status = workflowStatus();
+            } else {
+                workflowSession = null;
+                activeCommandId = "";
+                applicationLanding = true;
+                status = applicationStatus();
+            }
+            return true;
+        }
+
+        if (key == CnCwKey.AC) {
+            if (shiftArmed) {
+                powerOff();
+            } else {
+                tokens.clear();
+                cursor = 0;
+                semanticCursorOverride = null;
+                workflowSession.setSelectedCell("");
+                result = "";
+                resultShown = false;
+                applicationResult = null;
+                status = workflowStatus();
+            }
+            shiftArmed = false;
+            return true;
+        }
+
+        if (shiftArmed && (key == CnCwKey.UP || key == CnCwKey.DOWN
+                || key == CnCwKey.LEFT || key == CnCwKey.RIGHT)) {
+            commitWorkflowCell();
+            boolean changed = resizeWorkflowFromShift(key);
+            shiftArmed = false;
+            if (changed) loadWorkflowCell();
+            status = changed ? workflowStatus() : "已到输入尺寸边界";
+            return true;
+        }
+
+        if (key == CnCwKey.UP || key == CnCwKey.DOWN) {
+            commitWorkflowCell();
+            if (workflowSession.move(key == CnCwKey.UP ? -1 : 1, 0)) loadWorkflowCell();
+            status = workflowStatus();
+            return true;
+        }
+
+        if (key == CnCwKey.LEFT && !selectionActive() && cursor == 0) {
+            commitWorkflowCell();
+            if (workflowSession.move(0, -1)) {
+                loadWorkflowCell();
+                status = workflowStatus();
+                return true;
+            }
+            return false;
+        }
+        if (key == CnCwKey.RIGHT && !selectionActive() && cursor == tokens.size()) {
+            commitWorkflowCell();
+            if (workflowSession.move(0, 1)) {
+                loadWorkflowCell();
+                status = workflowStatus();
+                return true;
+            }
+            return false;
+        }
+
+        if (key == CnCwKey.OK || key == CnCwKey.ENTER) {
+            commitWorkflowCell();
+            advanceWorkflowCell();
+            loadWorkflowCell();
+            status = workflowStatus();
+            return true;
+        }
+
+        if (key == CnCwKey.EXE) {
+            shiftArmed = false;
+            commitWorkflowCell();
+            if (!workflowSession.isComplete()) {
+                workflowSession.selectFirstBlank();
+                loadWorkflowCell();
+                status = "还有空白项 · " + workflowStatus();
+                return true;
+            }
+            String source = workflowSession.legacySource();
+            List<Token> imported = parsePastedTokens(source);
+            if (imported == null) {
+                status = "输入包含无法识别的内容";
+                return true;
+            }
+            tokens.clear();
+            tokens.addAll(imported);
+            cursor = tokens.size();
+            semanticCursorOverride = null;
+            clearSelection();
+            evaluate(false);
+            return true;
+        }
+        return false;
+    }
+
+    private void commitWorkflowCell() {
+        if (workflowSession == null || resultShown) return;
+        String source = evaluationSource().replace("\u2063", "");
+        workflowSession.setSelectedCell(source);
+    }
+
+    private void loadWorkflowCell() {
+        if (workflowSession == null) return;
+        tokens.clear();
+        semanticCursorOverride = null;
+        clearSelection();
+        String source = workflowSession.selectedCell();
+        if (!com.codex.fx991.core.Compat.isBlank(source)) {
+            List<Token> imported = parsePastedTokens(source);
+            if (imported != null) tokens.addAll(imported);
+        }
+        cursor = tokens.size();
+        result = "";
+        resultShown = false;
+        applicationResult = null;
+        errorShown = false;
+        lastError = null;
+    }
+
+    private void advanceWorkflowCell() {
+        int row = workflowSession.selectedRow();
+        int column = workflowSession.selectedColumn();
+        if (column + 1 < workflowSession.columns()) {
+            workflowSession.selectCell(row, column + 1);
+            return;
+        }
+        if (row + 1 < workflowSession.rows()) {
+            workflowSession.selectCell(row + 1, 0);
+            return;
+        }
+        CnCwWorkflowSpec.InputLayout layout = workflowSession.spec().layout();
+        if ((layout == CnCwWorkflowSpec.InputLayout.SERIES
+                || layout == CnCwWorkflowSpec.InputLayout.PAIRED_SERIES)
+                && workflowSession.appendRow()) {
+            workflowSession.selectCell(workflowSession.rows() - 1, 0);
+        }
+    }
+
+    private boolean resizeWorkflowFromShift(CnCwKey key) {
+        CnCwWorkflowSpec.InputLayout layout = workflowSession.spec().layout();
+        int rows = workflowSession.rows();
+        int columns = workflowSession.columns();
+        if (layout == CnCwWorkflowSpec.InputLayout.GRID
+                || layout == CnCwWorkflowSpec.InputLayout.VECTOR_SET) {
+            if (key == CnCwKey.UP) rows--;
+            else if (key == CnCwKey.DOWN) rows++;
+            else if (key == CnCwKey.LEFT) columns--;
+            else if (key == CnCwKey.RIGHT) columns++;
+            return workflowSession.resizeGrid(rows, columns);
+        }
+        if (layout == CnCwWorkflowSpec.InputLayout.COEFFICIENTS
+                && workflowSession.spec().mode() == ApplicationMode.EQUATION) {
+            if ("simultaneous".equals(workflowSession.spec().commandId())) {
+                if (key == CnCwKey.UP) return workflowSession.setEquationDimension(rows - 1);
+                if (key == CnCwKey.DOWN) return workflowSession.setEquationDimension(rows + 1);
+                return false;
+            }
+            if (key == CnCwKey.UP) return workflowSession.resizeGrid(rows - 1, columns);
+            if (key == CnCwKey.DOWN) return workflowSession.resizeGrid(rows + 1, columns);
+        }
+        return false;
+    }
+
+    private String workflowStatus() {
+        if (workflowSession == null) return applicationStatus();
+        return workflowSession.spec().title() + " · "
+                + (workflowSession.selectedRow() + 1) + ","
+                + (workflowSession.selectedColumn() + 1);
     }
 
     private void moveSpreadsheetCell(int rowDelta, int columnDelta) {
@@ -1864,6 +2076,7 @@ public final class CnCwMachine {
 
     private void clearExpression() {
         rememberUndo();
+        applicationResult = null;
         resetStatementSequence();
         tokens.clear();
         cursor = 0;
@@ -1898,6 +2111,8 @@ public final class CnCwMachine {
     }
 
     private void showHome() {
+        workflowSession = null;
+        applicationResult = null;
         navigation.clear();
         screen = CnCwScreen.HOME;
         application = null;
@@ -1913,6 +2128,8 @@ public final class CnCwMachine {
     }
 
     private void powerOff() {
+        workflowSession = null;
+        applicationResult = null;
         navigation.clear();
         screen = CnCwScreen.HOME;
         application = null;
@@ -1934,6 +2151,8 @@ public final class CnCwMachine {
     }
 
     private void openApplication(ApplicationMode mode) {
+        workflowSession = null;
+        applicationResult = null;
         application = mode;
         screen = CnCwScreen.forApplication(mode);
         selectedIndex = 0;
@@ -2767,6 +2986,7 @@ public final class CnCwMachine {
                 selectionStartIndex(), selectionEndIndex(),
                 semanticSelectionPath(selectionAnchor), semanticSelectionPath(selectionFocus),
                 result, resultShown ? applicationResult : null,
+                workflowSession == null ? null : workflowSession.snapshot(),
                 ans, hasAns, status, settings, shiftArmed, poweredOn, overwriteMode,
                 verificationMode, engineeringMode,
                 !statementSequence.isEmpty() && statementSequenceIndex < statementSequence.size(),

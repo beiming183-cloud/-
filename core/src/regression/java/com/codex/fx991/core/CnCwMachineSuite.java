@@ -60,6 +60,7 @@ public final class CnCwMachineSuite {
         menusCloseByAcAndHomeAlwaysWins();
         applicationLandingIsDeterministic();
         structuredModesReachCoreEngines();
+        structuredWorkflowInputPageRunsEndToEnd();
         spreadsheetCompactWorkflowPersistsCells();
         spreadsheetGridMovesAndCommitsSelectedCell();
         System.out.println("PASS " + checks + " CN CW machine checks");
@@ -850,6 +851,43 @@ public final class CnCwMachineSuite {
         near(4.5, ratio.state().ans(), 0.0,
                 "ratio workflow delegates to RatioEngine");
         equal("X=4.5", ratio.state().result(), "ratio workflow display");
+    }
+
+    private void structuredWorkflowInputPageRunsEndToEnd() {
+        CnCwMachine statistics = homeApplication(CnCwModel.FX_991_CN_CW, 1);
+        statistics.dispatch(CnCwKey.OK); // One-variable structured command.
+        check(statistics.state().hasWorkflowInput(),
+                "selecting statistics command opens structured input page");
+        equal(1, statistics.state().workflowInput().rows(),
+                "one-variable input starts with one row");
+        press(statistics, CnCwKey.DIGIT_1, CnCwKey.OK,
+                CnCwKey.DIGIT_2, CnCwKey.OK,
+                CnCwKey.DIGIT_3, CnCwKey.EXE);
+        near(2.0, statistics.state().ans(), 0.0,
+                "structured statistics input evaluates through existing engine");
+        check(statistics.state().hasStructuredApplicationResult(),
+                "structured input keeps Stage 4 result protocol");
+        statistics.dispatch(CnCwKey.BACK);
+        check(statistics.state().hasWorkflowInput() && !statistics.state().resultShown(),
+                "BACK from result restores structured input page");
+        equal("3", statistics.state().workflowInput().cell(2, 0),
+                "structured input data survives result inspection");
+
+        CnCwMachine touch = homeApplication(CnCwModel.FX_991_CN_CW, 1);
+        touch.dispatch(CnCwKey.OK);
+        press(touch, CnCwKey.DIGIT_4, CnCwKey.OK, CnCwKey.DIGIT_5);
+        touch.selectWorkflowCell(0, 0);
+        equal("4", touch.state().displayText().replace("│", ""),
+                "direct cell selection restores the selected cell editor");
+        CnCwMachine isolated = touch.copyForEvaluation();
+        isolated.selectWorkflowCell(1, 0);
+        equal(0, touch.state().workflowInput().selectedRow(),
+                "evaluation snapshot owns a deep workflow-session copy");
+
+        CnCwMachine legacy = homeApplication(CnCwModel.FX_991_CN_CW, 1);
+        legacy.dispatch(CnCwKey.DIGIT_1); // Direct typing from landing is compatibility path.
+        check(!legacy.state().hasWorkflowInput(),
+                "direct typing from application landing preserves legacy bridge");
     }
 
     private void spreadsheetCompactWorkflowPersistsCells() {

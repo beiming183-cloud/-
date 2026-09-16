@@ -26,6 +26,8 @@ import com.codex.fx991.core.cw.CnCwMachine;
 import com.codex.fx991.core.cw.CnCwModeEngine;
 import com.codex.fx991.core.cw.CnCwScreen;
 import com.codex.fx991.core.cw.CnCwUiState;
+import com.codex.fx991.core.cw.CnCwWorkflowSession;
+import com.codex.fx991.core.cw.CnCwWorkflowSpec;
 import com.codex.fx991.core.mode.CnCwModel;
 import com.codex.fx991.core.ui.Cw991LayoutMetrics;
 
@@ -387,6 +389,10 @@ public final class CalculatorView extends View {
             drawModeLanding(canvas, lcd);
             return;
         }
+        if (state.hasWorkflowInput() && !state.resultShown()) {
+            drawWorkflowInput(canvas, lcd, state.workflowInput());
+            return;
+        }
         float contentTop = lcd.top + lcd.height() * 0.145f;
         float contentBottom = lcd.bottom - dp(3);
         float available = lcd.width() - dp(12);
@@ -433,6 +439,148 @@ public final class CalculatorView extends View {
             canvas.drawText(ellipsize(state.status(), available * 0.8f), lcd.right - dp(6),
                     contentBottom - dp(1), paint);
         }
+    }
+
+    /** Draws a Stage 5 core-owned structured input editor. */
+    private void drawWorkflowInput(Canvas canvas, RectF lcd,
+                                   CnCwWorkflowSession.Snapshot input) {
+        RectF grid = workflowGridBounds(lcd);
+        int visibleRows = Math.min(5, input.rows());
+        int startRow = Math.max(0, Math.min(input.selectedRow() - visibleRows / 2,
+                input.rows() - visibleRows));
+        float rowHeader = dp(24f);
+        float headerHeight = dp(18f);
+        float cellWidth = (grid.width() - rowHeader) / input.columns();
+        float cellHeight = (grid.height() - headerHeight) / visibleRows;
+
+        paint.setColor(LCD_INK);
+        paint.setTypeface(FACE_BOLD);
+        paint.setTextAlign(Paint.Align.LEFT);
+        paint.setTextSize(sp(11f));
+        canvas.drawText(input.spec().title(), grid.left, grid.top - dp(6f), paint);
+
+        for (int column = 0; column < input.columns(); column++) {
+            float left = grid.left + rowHeader + column * cellWidth;
+            paint.setTypeface(FACE_MEDIUM);
+            paint.setTextAlign(Paint.Align.CENTER);
+            paint.setTextSize(sp(9.5f));
+            canvas.drawText(workflowColumnLabel(input, column), left + cellWidth * 0.5f,
+                    centeredBaseline(grid.top, grid.top + headerHeight), paint);
+        }
+
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(dp(0.65f));
+        paint.setColor(Color.argb(115, 24, 58, 45));
+        for (int vr = 0; vr < visibleRows; vr++) {
+            int row = startRow + vr;
+            float top = grid.top + headerHeight + vr * cellHeight;
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(LCD_INK);
+            paint.setTypeface(FACE_NORMAL);
+            paint.setTextAlign(Paint.Align.CENTER);
+            paint.setTextSize(sp(8.5f));
+            canvas.drawText(workflowRowLabel(input, row), grid.left + rowHeader * 0.45f,
+                    centeredBaseline(top, top + cellHeight), paint);
+            for (int column = 0; column < input.columns(); column++) {
+                float left = grid.left + rowHeader + column * cellWidth;
+                boolean selected = row == input.selectedRow() && column == input.selectedColumn();
+                scratch.set(left, top, left + cellWidth, top + cellHeight);
+                paint.setStyle(Paint.Style.FILL);
+                paint.setColor(selected ? Color.argb(56, 24, 58, 45)
+                        : Color.argb(12, 24, 58, 45));
+                canvas.drawRect(scratch, paint);
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(dp(selected ? 1.1f : 0.55f));
+                paint.setColor(Color.argb(selected ? 190 : 85, 24, 58, 45));
+                canvas.drawRect(scratch, paint);
+                paint.setStyle(Paint.Style.FILL);
+                paint.setColor(LCD_INK);
+                paint.setTypeface(selected ? FACE_MEDIUM : FACE_NORMAL);
+                paint.setTextAlign(Paint.Align.CENTER);
+                paint.setTextSize(sp(10.5f));
+                String value = selected ? cleanClipboardText(state.displayText())
+                        : input.cell(row, column);
+                canvas.drawText(ellipsize(value, cellWidth - dp(5f)),
+                        scratch.centerX(), centeredBaseline(top, top + cellHeight), paint);
+            }
+        }
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(LCD_INK);
+        paint.setTypeface(FACE_NORMAL);
+        paint.setTextAlign(Paint.Align.RIGHT);
+        paint.setTextSize(sp(8f));
+        String hint = workflowShapeAdjustable(input)
+                ? "SHIFT+方向 调整尺寸 · OK 下一格 · EXE 计算"
+                : "OK 下一格 · EXE 计算";
+        canvas.drawText(ellipsize(hint, lcd.width() - dp(12)), lcd.right - dp(6),
+                lcd.bottom - dp(3), paint);
+    }
+
+    private RectF workflowGridBounds(RectF lcd) {
+        float top = lcd.top + lcd.height() * 0.22f;
+        float bottom = lcd.bottom - dp(18f);
+        return new RectF(lcd.left + dp(6f), top, lcd.right - dp(6f), bottom);
+    }
+
+    private String workflowColumnLabel(CnCwWorkflowSession.Snapshot input, int column) {
+        CnCwWorkflowSpec.InputLayout layout = input.spec().layout();
+        if ((layout == CnCwWorkflowSpec.InputLayout.SERIES
+                || layout == CnCwWorkflowSpec.InputLayout.PAIRED_SERIES
+                || layout == CnCwWorkflowSpec.InputLayout.FIXED_FIELDS)
+                && column < input.spec().fields().size()) {
+            return input.spec().fields().get(column).label();
+        }
+        if (layout == CnCwWorkflowSpec.InputLayout.VECTOR_SET) {
+            return column == 0 ? "x" : column == 1 ? "y" : "z";
+        }
+        if (layout == CnCwWorkflowSpec.InputLayout.COEFFICIENTS
+                && "simultaneous".equals(input.spec().commandId())) {
+            return column == input.columns() - 1 ? "b" : "x" + (column + 1);
+        }
+        if (layout == CnCwWorkflowSpec.InputLayout.COEFFICIENTS) return "系数";
+        return Integer.toString(column + 1);
+    }
+
+    private String workflowRowLabel(CnCwWorkflowSession.Snapshot input, int row) {
+        CnCwWorkflowSpec.InputLayout layout = input.spec().layout();
+        if (layout == CnCwWorkflowSpec.InputLayout.VECTOR_SET) return "v" + (row + 1);
+        if (layout == CnCwWorkflowSpec.InputLayout.COEFFICIENTS
+                && "polynomial".equals(input.spec().commandId())) {
+            return "a" + (input.rows() - 1 - row);
+        }
+        return Integer.toString(row + 1);
+    }
+
+    private boolean workflowShapeAdjustable(CnCwWorkflowSession.Snapshot input) {
+        CnCwWorkflowSpec.InputLayout layout = input.spec().layout();
+        return layout == CnCwWorkflowSpec.InputLayout.GRID
+                || layout == CnCwWorkflowSpec.InputLayout.VECTOR_SET
+                || layout == CnCwWorkflowSpec.InputLayout.COEFFICIENTS;
+    }
+
+    private boolean selectWorkflowCellAt(float x, float y) {
+        if (!state.hasWorkflowInput() || state.resultShown()) return false;
+        CnCwWorkflowSession.Snapshot input = state.workflowInput();
+        RectF lcd = displayBounds(getWidth());
+        RectF grid = workflowGridBounds(lcd);
+        int visibleRows = Math.min(5, input.rows());
+        int startRow = Math.max(0, Math.min(input.selectedRow() - visibleRows / 2,
+                input.rows() - visibleRows));
+        float rowHeader = dp(24f);
+        float headerHeight = dp(18f);
+        if (x < grid.left + rowHeader || x > grid.right
+                || y < grid.top + headerHeight || y > grid.bottom) return false;
+        float cellWidth = (grid.width() - rowHeader) / input.columns();
+        float cellHeight = (grid.height() - headerHeight) / visibleRows;
+        int column = Math.min(input.columns() - 1,
+                Math.max(0, (int) ((x - grid.left - rowHeader) / cellWidth)));
+        int visibleRow = Math.min(visibleRows - 1,
+                Math.max(0, (int) ((y - grid.top - headerHeight) / cellHeight)));
+        int row = startRow + visibleRow;
+        state = machine.selectWorkflowCell(row, column);
+        performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+        postInvalidateOnAnimation();
+        return true;
     }
 
     /** Renders core-owned application results without parsing display strings. */
@@ -1282,6 +1430,10 @@ public final class CalculatorView extends View {
             case MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 if (event.getActionMasked() == MotionEvent.ACTION_DOWN
                         && displayBounds(getWidth()).contains(event.getX(), event.getY())) {
+                    if (state.hasWorkflowInput() && !state.resultShown()) {
+                        selectWorkflowCellAt(event.getX(), event.getY());
+                        return true;
+                    }
                     displayPressed = true;
                     displaySelectionMode = false;
                     displayLongPressTriggered = false;
