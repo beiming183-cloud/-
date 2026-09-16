@@ -51,26 +51,23 @@ Stage 3 不继续在 Android View 中堆光标补丁，而是把编辑位置从�
 - semantic path 可以表达分数/幂/根号/函数的未来嵌套位置；
 - `:core:check` 必须包含 semantic cursor suite。
 
-## Step 2：分数内部移动（已开始）
+## Step 2：分数内部移动（completed）
 
-Step 1 CI 已通过。Step 2 已进入第一子阶段，只做分数，不同时改幂和根号。
+分数语义编辑已收口：
 
-当前正在接入：分子/分母语义 slot、上下切换和自然树内光标保持。DEL 与语义选区仍属于本 Step 的后续子阶段，不提前宣称完成。
-
-完整 Step 2 目标：
-
-1. 为自然表达式中的 `FRACTION` 建立 numerator / denominator 子路径；
-2. 定义左右移动规则：
-   - 分子末尾向右可进入分母或退出分数；
-   - 分母开头向左可回到分子或退出分数；
-3. 定义上下规则：分子 ↔ 分母；
-4. DEL 在嵌套位置只能做语义删除，不能拆坏分数模板；
-5. 旧 token cursor 继续作为外部触摸兼容边界；
-6. 增加分子、分母、上下切换、左右退出、删除和回归测试。
+1. 分子 / 分母分别发布 `FRACTION_NUMERATOR` / `FRACTION_DENOMINATOR`；
+2. `UP` / `DOWN` 在分子与分母之间切换，并尽量保持局部 offset；
+3. 左右移动采用显式语义路径：`root-before → numerator → denominator → root-after`，边界不再靠跳 token 猜测；
+4. 分数边缘允许“同一 legacy boundary、不同 semantic slot”，因此可以区分分数内部和外部；
+5. DEL 在分数内部只删除槽内容；分母起点回到分子、分子起点退出分数，不允许删除结构分隔符；
+6. 从 `root-after` DEL 会原子删除完整分数；
+7. 分子或分母暂时为空时仍保留 FRACTION 自然树和可见光标；
+8. 分母可独立选中并替换，继续扩选可覆盖完整分数，替换后结构保持正确；
+9. 旧 `int cursor`、Stage 2 触摸协议、复制粘贴和固定签名继续保留。
 
 分数路径稳定后，再依次接入：
 
-- Step 3：幂指数；
+- Step 3：幂指数（next）；
 - Step 4：根号 / n 次根；
 - Step 5：函数参数；
 - Step 6：语义选区、替换和删除统一；

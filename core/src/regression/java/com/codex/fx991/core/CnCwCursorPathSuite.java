@@ -18,6 +18,9 @@ public final class CnCwCursorPathSuite {
         nestedPathCarriesStructureWithoutLosingFallback();
         uiStatePublishesSemanticCursorFacade();
         fractionPublishesNestedSlotsAndMovesVertically();
+        fractionHorizontalEntryExitIsSemantic();
+        fractionDeleteNeverBreaksTemplate();
+        fractionSelectionReplacementKeepsStructure();
         System.out.println("PASS " + checks + " semantic cursor checks");
     }
 
@@ -101,6 +104,130 @@ public final class CnCwCursorPathSuite {
                 "vertical move also preserves start-of-slot position");
         check(machine.state().naturalExpression().containsCursor(),
                 "fraction numerator start keeps cursor inside natural fraction tree");
+    }
+
+    private void fractionHorizontalEntryExitIsSemantic() {
+        CnCwMachine machine = fractionMachine();
+
+        machine.dispatch(CnCwKey.RIGHT);
+        equal(CnCwCursorPath.Slot.ROW, machine.state().semanticCursor().slot(),
+                "RIGHT at denominator end exits to root row");
+        equal(3, machine.state().cursor(),
+                "fraction exit keeps the same legacy boundary");
+        check(machine.state().naturalExpression().containsCursor(),
+                "root-after fraction still renders a cursor");
+
+        machine.dispatch(CnCwKey.LEFT);
+        equal(CnCwCursorPath.Slot.FRACTION_DENOMINATOR,
+                machine.state().semanticCursor().slot(),
+                "LEFT from root-after re-enters denominator");
+        equal(1, machine.state().semanticCursor().offset(),
+                "re-entry lands at denominator end");
+
+        machine.dispatch(CnCwKey.LEFT);
+        equal(0, machine.state().semanticCursor().offset(),
+                "LEFT moves inside denominator before crossing slots");
+        machine.dispatch(CnCwKey.LEFT);
+        equal(CnCwCursorPath.Slot.FRACTION_NUMERATOR,
+                machine.state().semanticCursor().slot(),
+                "LEFT from denominator start enters numerator end");
+        equal(1, machine.state().semanticCursor().offset(),
+                "numerator end offset is retained");
+        machine.dispatch(CnCwKey.LEFT);
+        equal(0, machine.state().semanticCursor().offset(),
+                "LEFT moves to numerator start");
+        machine.dispatch(CnCwKey.LEFT);
+        equal(CnCwCursorPath.Slot.ROW, machine.state().semanticCursor().slot(),
+                "LEFT from numerator start exits to root-before");
+        equal(0, machine.state().cursor(),
+                "root-before fraction shares the numerator-start legacy boundary");
+        machine.dispatch(CnCwKey.RIGHT);
+        equal(CnCwCursorPath.Slot.FRACTION_NUMERATOR,
+                machine.state().semanticCursor().slot(),
+                "RIGHT from root-before enters numerator");
+        equal(0, machine.state().semanticCursor().offset(),
+                "root-before entry starts at numerator offset zero");
+    }
+
+    private void fractionDeleteNeverBreaksTemplate() {
+        CnCwMachine machine = fractionMachine();
+        machine.dispatch(CnCwKey.DEL);
+        equal("5/", machine.state().expression(),
+                "DEL removes denominator content without deleting fraction template");
+        equal(CnCwCursorPath.Slot.FRACTION_DENOMINATOR,
+                machine.state().semanticCursor().slot(),
+                "empty denominator remains a semantic slot");
+        equal(0, machine.state().semanticCursor().offset(),
+                "empty denominator cursor is at offset zero");
+        check(machine.state().naturalExpression().containsCursor(),
+                "empty denominator remains renderable");
+
+        machine.dispatch(CnCwKey.DEL);
+        equal("5/", machine.state().expression(),
+                "DEL at denominator start navigates instead of deleting separator");
+        equal(CnCwCursorPath.Slot.FRACTION_NUMERATOR,
+                machine.state().semanticCursor().slot(),
+                "denominator-start DEL moves to numerator end");
+
+        machine.dispatch(CnCwKey.DEL);
+        equal("/", machine.state().expression(),
+                "DEL can empty numerator while preserving fraction structure");
+        equal(CnCwCursorPath.Slot.FRACTION_NUMERATOR,
+                machine.state().semanticCursor().slot(),
+                "empty numerator remains a semantic slot");
+        check(machine.state().naturalExpression().containsCursor(),
+                "empty numerator fraction still renders cursor");
+
+        machine.dispatch(CnCwKey.DEL);
+        equal("/", machine.state().expression(),
+                "DEL at numerator start exits instead of deleting template");
+        equal(CnCwCursorPath.Slot.ROW, machine.state().semanticCursor().slot(),
+                "numerator-start DEL exits to root row");
+
+        machine = fractionMachine();
+        machine.dispatch(CnCwKey.RIGHT); // explicit root-after
+        machine.dispatch(CnCwKey.DEL);
+        equal("", machine.state().expression(),
+                "DEL from root-after removes the entire fraction atomically");
+        equal(CnCwCursorPath.rootBoundary(0), machine.state().semanticCursor(),
+                "whole-fraction delete returns to root boundary");
+    }
+
+    private void fractionSelectionReplacementKeepsStructure() {
+        CnCwMachine machine = fractionMachine();
+        machine.dispatch(CnCwKey.SHIFT);
+        machine.dispatch(CnCwKey.LEFT);
+        equal("6", machine.selectedExpression(),
+                "SHIFT+LEFT selects denominator content first");
+        machine.dispatch(CnCwKey.DIGIT_9);
+        equal("5/9", machine.state().expression(),
+                "replacing denominator preserves fraction separator");
+        equal(CnCwCursorPath.Slot.FRACTION_DENOMINATOR,
+                machine.state().semanticCursor().slot(),
+                "replacement cursor stays in denominator");
+
+        machine.dispatch(CnCwKey.SHIFT);
+        machine.dispatch(CnCwKey.LEFT);
+        equal("9", machine.selectedExpression(),
+                "denominator remains independently selectable after replacement");
+        machine.dispatch(CnCwKey.SHIFT);
+        machine.dispatch(CnCwKey.LEFT);
+        equal("5/9", machine.selectedExpression(),
+                "second semantic extension selects the complete fraction");
+        machine.dispatch(CnCwKey.DIGIT_7);
+        equal("7", machine.state().expression(),
+                "replacing whole fraction removes template and inserts one root token");
+        equal(CnCwCursorPath.rootBoundary(1), machine.state().semanticCursor(),
+                "whole-fraction replacement returns to root cursor semantics");
+    }
+
+    private CnCwMachine fractionMachine() {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        machine.dispatch(CnCwKey.OK);
+        machine.dispatch(CnCwKey.DIGIT_5);
+        machine.dispatch(CnCwKey.FRACTION);
+        machine.dispatch(CnCwKey.DIGIT_6);
+        return machine;
     }
 
     private void check(boolean condition, String message) {
