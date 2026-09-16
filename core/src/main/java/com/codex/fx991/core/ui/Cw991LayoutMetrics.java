@@ -111,8 +111,13 @@ public final class Cw991LayoutMetrics {
         float secondarySize = Math.max(safeDensity * 15f,
                 Math.min(safeDensity * 17f, diameter * secondaryRatio));
         if (!circular && isKeyboardRole(role)) {
-            float keyWidth = width * 0.96f;
-            float keyHeight = Math.min(height * 0.82f, width * 0.72f);
+            // The left ON/HOME/SETTINGS/BACK block uses wider, deliberately
+            // shorter rectangular caps: about 85% of a normal numeric key's
+            // width and about 75-80% of its height on phone layouts.
+            float keyWidth = width * (role == Role.CONTROL ? 0.98f : 0.96f);
+            float keyHeight = role == Role.CONTROL
+                    ? Math.min(height * 0.80f, width * 0.66f)
+                    : Math.min(height * 0.82f, width * 0.72f);
             float textHeight = Math.max(safeDensity * 28f, keyHeight);
             mainSize = textHeight * mainRatio;
             secondarySize = Math.max(safeDensity * 13f,

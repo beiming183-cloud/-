@@ -21,6 +21,9 @@ public final class CnCwMachineSuite {
         homeSettingsOpensSettings();
         calculateUsesManualPrecedence();
         semanticTokensDoNotCollapseDuringEvaluation();
+        clipboardPastePreservesExpressionSemantics();
+        ansTokenCanBeSelectedAndCopied();
+        ansProcessExpandsForInspection();
         calculateKeepsExactStandardResults();
         imaginaryUnitWorksInCalculate();
         shiftedExeForcesDecimalResult();
@@ -48,6 +51,7 @@ public final class CnCwMachineSuite {
         semanticDeleteAndCursor();
         semanticSelectionSupportsDeleteAndReplace();
         touchSelectionCanAnchorAndExtend();
+        touchSelectionHandlesMoveIndependently();
         directTouchCursorMovesAtomically();
         shiftedDeleteTogglesOverwriteAndOnIsDistinct();
         settingsAreMachineOwned();
@@ -120,6 +124,85 @@ public final class CnCwMachineSuite {
         press(machine, CnCwKey.VAR_A, CnCwKey.VAR_B, CnCwKey.EXE);
         near(0.0, machine.state().ans(), 0.0,
                 "adjacent variables remain separate implicit factors");
+    }
+
+    private void clipboardPastePreservesExpressionSemantics() {
+        CnCwMachine source = calculateMachine();
+        press(source, CnCwKey.DIGIT_5, CnCwKey.DIGIT_6, CnCwKey.SQUARE);
+        equal("56^2", source.state().expression(), "square copy uses evaluator source");
+
+        CnCwMachine pasted = calculateMachine();
+        check(pasted.pasteExpression(source.state().expression()) > 0,
+                "evaluator source can be pasted");
+        pasted.dispatch(CnCwKey.EXE);
+        equal("3136", pasted.state().result(), "56^2 round-trips through clipboard");
+
+        pasted = calculateMachine();
+        check(pasted.pasteExpression("56²") > 0, "display superscript can be pasted");
+        pasted.dispatch(CnCwKey.EXE);
+        equal("3136", pasted.state().result(), "56² keeps square semantics");
+
+        pasted = calculateMachine();
+        check(pasted.pasteExpression("√(9)") > 0, "display square-root can be pasted");
+        pasted.dispatch(CnCwKey.EXE);
+        equal("3", pasted.state().result(), "square-root paste does not duplicate parenthesis");
+
+        pasted = calculateMachine();
+        check(pasted.pasteExpression("π/2") > 0, "pi display form can be pasted");
+        pasted.dispatch(CnCwKey.EXE);
+        equal("π/2", pasted.state().result(), "pi paste keeps exact semantics");
+
+        pasted = calculateMachine();
+        check(pasted.pasteExpression("i^2") > 0, "imaginary expression can be pasted");
+        pasted.dispatch(CnCwKey.EXE);
+        equal("-1", pasted.state().result(), "imaginary-unit paste uses complex engine");
+
+        pasted = calculateMachine();
+        press(pasted, CnCwKey.DIGIT_2, CnCwKey.ADD, CnCwKey.DIGIT_3, CnCwKey.EXE);
+        check(pasted.pasteExpression("Ans+1") > 0, "Ans source can be pasted after result");
+        pasted.dispatch(CnCwKey.EXE);
+        equal("6", pasted.state().result(), "paste after result starts new expression but keeps Ans");
+
+        pasted = calculateMachine();
+        press(pasted, CnCwKey.DIGIT_7);
+        equal(-1, pasted.pasteExpression("56@2"), "unsupported paste is rejected atomically");
+        equal("7", pasted.state().expression(), "invalid paste cannot silently drop symbols");
+
+        pasted = calculateMachine();
+        check(pasted.pasteExpression("1E3") > 0, "scientific E literal can be pasted");
+        pasted.dispatch(CnCwKey.EXE);
+        equal("1000", pasted.state().result(), "scientific E literal keeps numeric meaning");
+    }
+
+    private void ansTokenCanBeSelectedAndCopied() {
+        CnCwMachine machine = calculateMachine();
+        press(machine, CnCwKey.DIGIT_2, CnCwKey.ADD, CnCwKey.DIGIT_3, CnCwKey.EXE);
+        machine.dispatch(CnCwKey.ANS);
+        equal("Ans", machine.state().expression(), "Ans key publishes evaluator source");
+        machine.selectTouchWord(0);
+        check(machine.state().hasSelection(), "Ans token can be touch-selected");
+        equal("Ans", machine.selectedExpression(), "selected Ans exports to clipboard source");
+    }
+
+    private void ansProcessExpandsForInspection() {
+        CnCwMachine machine = calculateMachine();
+        press(machine, CnCwKey.DIGIT_2, CnCwKey.ADD, CnCwKey.DIGIT_3, CnCwKey.EXE);
+        equal("2+3", machine.calculationProcessDisplay(),
+                "first result keeps its readable calculation process");
+
+        press(machine, CnCwKey.MULTIPLY, CnCwKey.DIGIT_2, CnCwKey.EXE);
+        equal("Ans*2", machine.state().expression(),
+                "Ans remains evaluator semantics internally");
+        equal("(2+3)×2", machine.calculationProcessDisplay(),
+                "inspection process expands Ans to previous calculation");
+        equal("10", machine.state().result(), "expanded inspection does not alter result");
+
+        press(machine, CnCwKey.ADD, CnCwKey.DIGIT_1, CnCwKey.EXE);
+        equal("Ans+1", machine.state().expression(),
+                "second continuation still keeps internal Ans token");
+        equal("((2+3)×2)+1", machine.calculationProcessDisplay(),
+                "Ans process expansion is recursive across calculations");
+        equal("11", machine.state().result(), "recursive display expansion does not alter arithmetic");
     }
 
     private void calculateKeepsExactStandardResults() {
@@ -622,6 +705,39 @@ public final class CnCwMachineSuite {
         machine.selectTouchWord(1);
         equal("123", machine.selectedExpression(),
                 "long-press selects the complete numeric word before dragging");
+    }
+
+    private void touchSelectionHandlesMoveIndependently() {
+        CnCwMachine machine = calculateMachine();
+        press(machine, CnCwKey.DIGIT_1, CnCwKey.DIGIT_2, CnCwKey.DIGIT_3,
+                CnCwKey.DIGIT_4, CnCwKey.DIGIT_5);
+        machine.beginTouchSelection(0);
+        machine.extendTouchSelection(5);
+        machine.moveTouchSelectionStart(2);
+        equal("345", machine.selectedExpression(),
+                "left touch handle moves without changing the right boundary");
+        equal(2, machine.state().selectionStart(),
+                "left touch handle publishes its new boundary");
+        equal(5, machine.state().selectionEnd(),
+                "left touch handle preserves right boundary");
+        machine.moveTouchSelectionEnd(4);
+        equal("34", machine.selectedExpression(),
+                "right touch handle moves without changing the left boundary");
+        equal(2, machine.state().selectionStart(),
+                "right touch handle preserves left boundary");
+        equal(4, machine.state().selectionEnd(),
+                "right touch handle publishes its new boundary");
+
+        machine = calculateMachine();
+        press(machine, CnCwKey.SIN, CnCwKey.DIGIT_2, CnCwKey.CLOSE_PAREN);
+        machine.beginTouchSelection(0);
+        machine.extendTouchSelection(3);
+        machine.moveTouchSelectionStart(1);
+        equal("sin(2)", machine.selectedExpression(),
+                "left handle cannot split an enclosing function call");
+        machine.moveTouchSelectionEnd(2);
+        equal("sin(2)", machine.selectedExpression(),
+                "right handle cannot split an enclosing function call");
     }
 
     private void shiftedDeleteTogglesOverwriteAndOnIsDistinct() {

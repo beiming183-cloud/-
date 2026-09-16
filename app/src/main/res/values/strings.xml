@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Neutral fallback used by tooling; the cn991 flavor supplies its
-         published model label. -->
-    <string name="app_name">CN Scientific</string>
-    <string name="app_model_name">CN Scientific</string>
-    <string name="app_description">Independent scientific calculator</string>
+    <!-- Neutral fallback used by tooling; product flavors may override these values. -->
+    <string name="app_name">北北计算器</string>
+    <string name="app_model_name">北北计算器</string>
+    <string name="app_description">独立开发的 Android 科学计算器</string>
 </resources>

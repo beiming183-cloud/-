@@ -22,6 +22,10 @@ public final class Cw991LayoutMetricsSuite {
                 Cw991LayoutMetrics.Role.FUNCTION, 136f, 158f, viewportWidth, density);
         Cw991LayoutMetrics.KeyVisual rectangularFunction = Cw991LayoutMetrics.forKey(
                 Cw991LayoutMetrics.Role.FUNCTION, 136f, 158f, viewportWidth, density, false);
+        Cw991LayoutMetrics.KeyVisual rectangularNumber = Cw991LayoutMetrics.forKey(
+                Cw991LayoutMetrics.Role.NUMBER, 216f, 190f, viewportWidth, density, false);
+        Cw991LayoutMetrics.KeyVisual utilityControl = Cw991LayoutMetrics.forKey(
+                Cw991LayoutMetrics.Role.CONTROL, 185f, 185f, viewportWidth, density, false);
         Cw991LayoutMetrics.KeyVisual shift = Cw991LayoutMetrics.forKey(
                 Cw991LayoutMetrics.Role.SHIFT, 159f, 128f, viewportWidth, density);
 
@@ -38,6 +42,12 @@ public final class Cw991LayoutMetricsSuite {
         check(!rectangularFunction.circular()
                         && rectangularFunction.width() > rectangularFunction.height(),
                 "calculation keyboard exposes a wide rectangular keycap variant");
+        check(utilityControl.width() / rectangularNumber.width() >= 0.80f
+                        && utilityControl.width() / rectangularNumber.width() <= 0.90f,
+                "left utility controls are 80-90 percent of a numeric key width");
+        check(utilityControl.height() / rectangularNumber.height() >= 0.70f
+                        && utilityControl.height() / rectangularNumber.height() <= 0.82f,
+                "left utility controls are 70-82 percent of a numeric key height");
         check(Math.abs(shift.width() / shift.height() - 1f) <= 0.03f,
                 "SHIFT is visually circular");
         check(Math.abs(number.height() - tallNumber.height()) <= 8.0f,

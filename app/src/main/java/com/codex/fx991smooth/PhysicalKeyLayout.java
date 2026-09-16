@@ -164,20 +164,29 @@ public final class PhysicalKeyLayout {
         // The previous caps were noticeably undersized on the tall X100s Pro viewport.
         float radius = clamp(Math.min(dp(25), width * 0.060f), dp(17), dp(32));
 
-        // Left-side controls on the real unit: power/home above settings/back.
+        // Left-side controls form one deliberate 2x2 module.  They are about
+        // one quarter larger than the previous caps, while the d-pad and
+        // right page rocker keep their established proportions.
+        float utilityRadius = radius * 1.24f;
+        float utilityLeftX = margin + utilityRadius;
+        float utilityRightX = margin + utilityRadius * 3.04f;
         addCircle(hits, key(CnCwKey.ON, "ON", "", Kind.CONTROL),
-                margin + radius, controlTop + controlHeight * 0.29f, radius * 2f);
+                utilityLeftX, controlTop + controlHeight * 0.29f, utilityRadius * 2f);
         addCircle(hits, key(CnCwKey.HOME, "⌂", "主屏", Kind.CONTROL),
-                margin + radius * 3.15f, controlTop + controlHeight * 0.29f, radius * 2f);
+                utilityRightX, controlTop + controlHeight * 0.29f, utilityRadius * 2f);
         addCircle(hits, key(CnCwKey.SETTINGS, "≡", "设置", Kind.CONTROL),
-                margin + radius, controlTop + controlHeight * 0.74f, radius * 2f);
+                utilityLeftX, controlTop + controlHeight * 0.74f, utilityRadius * 2f);
         addCircle(hits, key(CnCwKey.BACK, "↩", "返回", Kind.CONTROL),
-                margin + radius * 3.15f, controlTop + controlHeight * 0.74f, radius * 2f);
+                utilityRightX, controlTop + controlHeight * 0.74f, utilityRadius * 2f);
 
         // Direction pad is the interaction centre, not a tiny afterthought.
-        // Center the pad in the actual space between the left controls and rocker.
-        // The geometric screen center makes the left and right breathing room uneven.
-        float dpadX = width * 0.53f;
+        // Balance its horizontal breathing room against the actual neighboring
+        // touch modules instead of pinning it to a fixed percentage of screen width.
+        // Using the midpoint between the 2x2 utility block's right edge and the
+        // page rocker's left edge keeps both gaps equal as the viewport changes.
+        float utilityModuleRight = utilityRightX + utilityRadius;
+        float rockerModuleLeft = width - margin - radius * 2f;
+        float dpadX = (utilityModuleRight + rockerModuleLeft) * 0.5f;
         float dpadY = controlTop + controlHeight * 0.52f;
         float d = radius * 1.56f;
         float offset = d * 1.35f;

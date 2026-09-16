@@ -53,6 +53,9 @@ public final class CalculatorView extends View {
     private float displayDownX;
     private float displayDownY;
     private int lastDragCursor = -1;
+    /** -1 = left handle, 0 = choose from drag direction, +1 = right handle. */
+    private int selectionDragEdge;
+    private boolean selectionTapCandidate;
     private static final int BODY_EDGE = Color.rgb(48, 55, 52);
     /* A warm neutral shell keeps the calculator from looking washed out while
        the cool LCD and ochre function layer remain immediately scannable. */
@@ -249,52 +252,50 @@ public final class CalculatorView extends View {
         drawStatusBar(canvas, lcd, "");
         List<CnCwCommand> allItems = state.homeItems();
         List<CnCwCommand> items = state.homeVisibleItems();
-        float contentTop = lcd.top + lcd.height() * 0.085f;
-        float gap = dp(1);
+        float contentTop = lcd.top + lcd.height() * 0.115f;
+        float outer = dp(4.5f);
+        float columnGap = dp(4f);
+        float rowGap = dp(5f);
         int columns = 3;
+        int rows = 2;
         int start = state.homeViewportStart();
         int visibleCount = items.size();
-        int rows = 2;
-        float cellWidth = (lcd.width() - gap * (columns + 1)) / columns;
-        float cellHeight = (lcd.bottom - contentTop - gap * (rows + 1)) / rows;
+        float cellWidth = (lcd.width() - outer * 2f - columnGap * (columns - 1)) / columns;
+        float cellHeight = (lcd.bottom - contentTop - outer * 2f - rowGap) / rows;
+        float radius = dp(4.2f);
         for (int visibleIndex = 0; visibleIndex < items.size(); visibleIndex++) {
             int index = start + visibleIndex;
             int row = visibleIndex / columns;
             int column = visibleIndex % columns;
-            float left = lcd.left + gap + column * (cellWidth + gap);
-            float top = contentTop + gap + row * (cellHeight + gap);
+            float left = lcd.left + outer + column * (cellWidth + columnGap);
+            float top = contentTop + outer + row * (cellHeight + rowGap);
             scratch.set(left, top, left + cellWidth, top + cellHeight);
             boolean selected = index == state.selectedIndex();
-            if (selected) {
-                paint.setColor(LCD_DARK);
-                canvas.drawRect(scratch, paint);
-            }
-            paint.setColor(selected ? LCD : LCD_INK);
-            drawApplicationGlyph(canvas, items.get(visibleIndex).id(), scratch,
-                    selected ? LCD : LCD_INK);
-            paint.setTypeface(FACE_MEDIUM);
-            paint.setTextSize(sp(16f));
-            paint.setTextAlign(Paint.Align.CENTER);
-            canvas.drawText(items.get(visibleIndex).label(), scratch.centerX(),
-                    scratch.bottom - dp(2.8f), paint);
+
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.argb(selected ? 56 : 14, 22, 37, 31));
+            canvas.drawRoundRect(scratch, radius, radius, paint);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(selected ? 1.1f : 0.65f));
+            paint.setColor(Color.argb(selected ? 176 : 58, 22, 37, 31));
+            canvas.drawRoundRect(scratch, radius, radius, paint);
+            paint.setStyle(Paint.Style.FILL);
+
+            drawApplicationGlyph(canvas, items.get(visibleIndex).id(), scratch, LCD_INK);
+            drawFittedCentered(canvas, items.get(visibleIndex).label(), scratch.centerX(),
+                    scratch.bottom - dp(18f), scratch.bottom - dp(2.5f),
+                    sp(13.5f), scratch.width() * 0.88f, sp(10.5f), LCD_INK, FACE_MEDIUM);
         }
-        paint.setColor(Color.argb(92, 22, 37, 31));
-        paint.setStrokeWidth(dp(0.55f));
-        float gridMidX = lcd.left + lcd.width() / 3f;
-        canvas.drawLine(gridMidX, contentTop, gridMidX, lcd.bottom, paint);
-        canvas.drawLine(gridMidX * 2f - lcd.left, contentTop,
-                gridMidX * 2f - lcd.left, lcd.bottom, paint);
-        float gridMidY = contentTop + (lcd.bottom - contentTop) * 0.5f;
-        canvas.drawLine(lcd.left, gridMidY, lcd.right, gridMidY, paint);
         if (allItems.size() > visibleCount) {
-            drawScrollBar(canvas, lcd, start, visibleCount, allItems.size(), contentTop, lcd.bottom);
+            drawScrollBar(canvas, lcd, start, visibleCount, allItems.size(),
+                    contentTop + outer, lcd.bottom - outer);
         }
     }
 
     private void drawApplicationGlyph(Canvas canvas, String id, RectF cell, int color) {
         float cx = cell.centerX();
-        float cy = cell.top + cell.height() * 0.36f;
-        float radius = Math.min(cell.width(), cell.height()) * 0.18f;
+        float cy = cell.top + cell.height() * 0.38f;
+        float radius = Math.min(cell.width(), cell.height()) * 0.145f;
         paint.setColor(color);
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeWidth(dp(1.2f));
@@ -385,8 +386,19 @@ public final class CalculatorView extends View {
         float contentTop = lcd.top + lcd.height() * 0.145f;
         float contentBottom = lcd.bottom - dp(3);
         float available = lcd.width() - dp(12);
-        drawNaturalExpression(canvas, state.naturalExpression(), lcd, contentTop,
-                contentBottom, available);
+        boolean showExpandedAnsProcess = state.resultShown()
+                && state.expression().contains("Ans")
+                && !machine.calculationProcessDisplay().isBlank();
+        if (showExpandedAnsProcess) {
+            drawInspectionProcess(canvas, machine.calculationProcessDisplay(), lcd,
+                    contentTop, contentBottom, available);
+        } else {
+            drawNaturalExpression(canvas, state.naturalExpression(), lcd, contentTop,
+                    contentBottom, available);
+        }
+        if (state.hasSelection()) {
+            drawSelectionHandles(canvas, lcd, contentTop, contentBottom);
+        }
         if (state.resultShown() && !state.result().isEmpty()) {
             String[] lines = decimalDisplayResult(state.result()).split("\\n", -1);
             paint.setTypeface(FACE_MEDIUM);
@@ -396,9 +408,8 @@ public final class CalculatorView extends View {
                         contentBottom, available)
                         && !drawNaturalFractionResult(canvas, lines[0], lcd, contentTop,
                         contentBottom, available)) {
-                    paint.setTextSize(sp(34f));
-                    canvas.drawText(ellipsize(lines[0], available), lcd.right - dp(6),
-                            contentTop + (contentBottom - contentTop) * 0.86f, paint);
+                    drawFittedResultText(canvas, lines[0], lcd, contentTop,
+                            contentBottom, available);
                 }
             } else {
                 paint.setTextSize(sp(16f));
@@ -599,14 +610,143 @@ public final class CalculatorView extends View {
         return -1f;
     }
 
-    /** Draws engineering and SCI output as a compact mantissa with superscript exponent. */
+    /** Draws an Ans-expanded finished calculation without changing editor tokens. */
+    private void drawInspectionProcess(Canvas canvas, String value, RectF lcd,
+                                       float contentTop, float contentBottom, float available) {
+        String display = value == null ? "" : value;
+        float left = lcd.left + dp(6);
+        float baseline = contentTop + Math.min(dp(31), (contentBottom - contentTop) * 0.32f);
+        paint.setColor(LCD_INK);
+        paint.setTypeface(FACE_NORMAL);
+        paint.setTextAlign(Paint.Align.LEFT);
+        for (float size = 25f; size >= 12f; size -= 1f) {
+            paint.setTextSize(sp(size));
+            if (paint.measureText(display) <= available) {
+                canvas.drawText(display, left, baseline, paint);
+                return;
+            }
+        }
+        paint.setTextSize(sp(12f));
+        float width = Math.max(1f, paint.measureText(display));
+        float scale = Math.min(1f, available / width);
+        canvas.save();
+        canvas.scale(scale, 1f, left, baseline);
+        canvas.drawText(display, left, baseline, paint);
+        canvas.restore();
+    }
+
+    /** Draws phone-style handles at the two semantic selection boundaries. */
+    private void drawSelectionHandles(Canvas canvas, RectF lcd,
+                                      float contentTop, float contentBottom) {
+        float startX = displayBoundaryX(state.selectionStart());
+        float endX = displayBoundaryX(state.selectionEnd());
+        float top = contentTop + dp(1.5f);
+        float bottom = Math.min(contentBottom - dp(10), contentTop + dp(34));
+        paint.setColor(LCD_DARK);
+        paint.setStrokeWidth(dp(1.15f));
+        paint.setStyle(Paint.Style.STROKE);
+        canvas.drawLine(startX, top + dp(4), startX, bottom, paint);
+        canvas.drawLine(endX, top, endX, bottom - dp(4), paint);
+        paint.setStyle(Paint.Style.FILL);
+        canvas.drawCircle(startX, bottom + dp(2.2f), dp(2.6f), paint);
+        canvas.drawCircle(endX, top - dp(2.2f), dp(2.6f), paint);
+    }
+
+    /** Draws a result without losing trailing digits to an ellipsis. */
+    private void drawFittedResultText(Canvas canvas, String value, RectF lcd,
+                                      float contentTop, float contentBottom, float available) {
+        float right = lcd.right - dp(6);
+        float baseline = contentTop + (contentBottom - contentTop) * 0.86f;
+        String display = value == null ? "" : value;
+        paint.setColor(LCD_INK);
+        paint.setTypeface(FACE_MEDIUM);
+        paint.setTextAlign(Paint.Align.RIGHT);
+
+        for (float size = 34f; size >= 16f; size -= 1f) {
+            paint.setTextSize(sp(size));
+            if (paint.measureText(display) <= available) {
+                canvas.drawText(display, right, baseline, paint);
+                return;
+            }
+        }
+
+        String scientific = compactScientificResult(display);
+        if (!scientific.equals(display)) {
+            // The long-number fallback is created only after the first natural-SCI
+            // pass, so route that newly-created E notation back through the natural
+            // mantissa × 10 + raised exponent renderer instead of ever drawing E.
+            if (drawNaturalScientificResult(canvas, scientific, lcd, contentTop,
+                    contentBottom, available)) {
+                return;
+            }
+            // Defensive fallback: even if the structured renderer rejects a future
+            // scientific spelling, never expose raw E notation to the calculator LCD.
+            display = scientific.replace("E", "×10^").replace("e", "×10^");
+            for (float size = 24f; size >= 14f; size -= 1f) {
+                paint.setTextSize(sp(size));
+                if (paint.measureText(display) <= available) {
+                    canvas.drawText(display, right, baseline, paint);
+                    return;
+                }
+            }
+        }
+
+        // Last-resort fit still preserves every character instead of adding an ellipsis.
+        for (float size = 13f; size >= 8f; size -= 1f) {
+            paint.setTextSize(sp(size));
+            if (paint.measureText(display) <= available) {
+                canvas.drawText(display, right, baseline, paint);
+                return;
+            }
+        }
+
+        paint.setTextSize(sp(8f));
+        float width = Math.max(1f, paint.measureText(display));
+        float scale = Math.min(1f, available / width);
+        canvas.save();
+        canvas.scale(scale, 1f, right, baseline);
+        canvas.drawText(display, right, baseline, paint);
+        canvas.restore();
+    }
+
+    /** Converts only plain numeric results to a compact scientific fallback. */
+    private static String compactScientificResult(String value) {
+        if (value == null || !value.matches("[−-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[Ee][+−-]?\\d+)?")) {
+            return value == null ? "" : value;
+        }
+        try {
+            double numeric = Double.parseDouble(value.replace('−', '-'));
+            if (!Double.isFinite(numeric) || numeric == 0.0d) return value;
+            String scientific = String.format(java.util.Locale.US, "%.9E", numeric);
+            int marker = scientific.indexOf('E');
+            String mantissa = scientific.substring(0, marker);
+            String exponent = scientific.substring(marker + 1);
+            while (mantissa.contains(".") && mantissa.endsWith("0")) {
+                mantissa = mantissa.substring(0, mantissa.length() - 1);
+            }
+            if (mantissa.endsWith(".")) mantissa = mantissa.substring(0, mantissa.length() - 1);
+            boolean negativeExponent = exponent.startsWith("-");
+            exponent = exponent.replace("+", "").replace("-", "");
+            while (exponent.length() > 1 && exponent.startsWith("0")) {
+                exponent = exponent.substring(1);
+            }
+            return mantissa + "E" + (negativeExponent ? "-" : "") + exponent;
+        } catch (NumberFormatException ignored) {
+            return value;
+        }
+    }
+
+    /** Draws SCI/ENG output as a handheld-style mantissa × 10 with a raised exponent. */
     private boolean drawNaturalScientificResult(Canvas canvas, String value, RectF lcd,
                                                 float contentTop, float contentBottom,
                                                 float available) {
+        if (value == null || value.isBlank()) return false;
         int marker = value.indexOf("\u00d710^");
-        int markerLength = 3;
+        int markerLength = 4;
         if (marker < 1) {
-            int scientific = value.lastIndexOf('E');
+            int upper = value.lastIndexOf('E');
+            int lower = value.lastIndexOf('e');
+            int scientific = Math.max(upper, lower);
             if (scientific < 1 || scientific + 1 >= value.length()) return false;
             marker = scientific;
             markerLength = 1;
@@ -619,17 +759,38 @@ public final class CalculatorView extends View {
         if (mantissa.isEmpty() || exponent.isEmpty()) return false;
 
         float baseSize = sp(34f);
-        float exponentSize = baseSize * 0.62f;
-        paint.setTypeface(FACE_MEDIUM);
-        paint.setTextSize(baseSize);
+        float minBaseSize = sp(14f);
+        float exponentRatio = 0.62f;
         String base = mantissa + "\u00d710";
-        float baseWidth = paint.measureText(base);
+        paint.setTypeface(FACE_MEDIUM);
+
+        float exponentSize;
+        float baseWidth;
+        float exponentWidth;
+        while (true) {
+            exponentSize = baseSize * exponentRatio;
+            paint.setTextSize(baseSize);
+            baseWidth = paint.measureText(base);
+            paint.setTextSize(exponentSize);
+            exponentWidth = paint.measureText(exponent);
+            if (baseWidth + exponentWidth <= available || baseSize <= minBaseSize) break;
+            baseSize -= sp(1f);
+        }
+
+        exponentSize = baseSize * exponentRatio;
+        paint.setTextSize(baseSize);
+        baseWidth = paint.measureText(base);
         paint.setTextSize(exponentSize);
-        float exponentWidth = paint.measureText(exponent);
-        if (baseWidth + exponentWidth > available) return false;
+        exponentWidth = paint.measureText(exponent);
+        float totalWidth = baseWidth + exponentWidth;
+        float horizontalScale = totalWidth > available ? available / totalWidth : 1f;
 
         float baseline = contentTop + (contentBottom - contentTop) * 0.86f;
-        float left = lcd.right - dp(6) - baseWidth - exponentWidth;
+        float right = lcd.right - dp(6);
+        canvas.save();
+        canvas.translate(right, 0f);
+        canvas.scale(horizontalScale, 1f);
+        float left = -totalWidth;
         paint.setColor(LCD_INK);
         paint.setTypeface(FACE_MEDIUM);
         paint.setTextAlign(Paint.Align.LEFT);
@@ -637,6 +798,7 @@ public final class CalculatorView extends View {
         canvas.drawText(base, left, baseline, paint);
         paint.setTextSize(exponentSize);
         canvas.drawText(exponent, left + baseWidth, baseline - baseSize * 0.54f, paint);
+        canvas.restore();
         return true;
     }
 
@@ -999,16 +1161,80 @@ public final class CalculatorView extends View {
                     displayPressed = true;
                     displaySelectionMode = false;
                     displayLongPressTriggered = false;
+                    selectionTapCandidate = false;
+                    selectionDragEdge = 0;
                     displayDownX = event.getX();
                     displayDownY = event.getY();
                     lastDragCursor = state.cursor();
+
+                    if (state.hasSelection()) {
+                        RectF lcd = displayBounds(getWidth());
+                        float contentTop = lcd.top + lcd.height() * 0.145f;
+                        float contentBottom = lcd.bottom - dp(3);
+                        float startX = displayBoundaryX(state.selectionStart());
+                        float endX = displayBoundaryX(state.selectionEnd());
+                        // Keep the handles visually small, but give each boundary a much
+                        // larger phone-style grab zone. Users should not need to land on
+                        // the tiny knob itself before they can adjust an existing selection.
+                        float handleHitTop = contentTop - dp(10);
+                        float handleHitBottom = Math.min(contentBottom, contentTop + dp(52));
+                        float handleXSlop = dp(26);
+                        boolean inHandleBand = event.getY() >= handleHitTop
+                                && event.getY() <= handleHitBottom;
+                        float startXDistance = Math.abs(event.getX() - startX);
+                        float endXDistance = Math.abs(event.getX() - endX);
+                        boolean startHit = inHandleBand && startXDistance <= handleXSlop;
+                        boolean endHit = inHandleBand && endXDistance <= handleXSlop;
+                        if (startHit || endHit) {
+                            selectionDragEdge = startHit && endHit
+                                    ? (startXDistance <= endXDistance ? -1 : 1)
+                                    : startHit ? -1 : 1;
+                            displaySelectionMode = true;
+                            lastDragCursor = selectionDragEdge < 0
+                                    ? state.selectionStart() : state.selectionEnd();
+                            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+                            return true;
+                        }
+                        float left = Math.min(startX, endX) - dp(6);
+                        float right = Math.max(startX, endX) + dp(6);
+                        float textTop = contentTop - dp(4);
+                        float textBottom = Math.min(contentBottom, contentTop + dp(38));
+                        if (event.getX() >= left && event.getX() <= right
+                                && event.getY() >= textTop && event.getY() <= textBottom) {
+                            selectionTapCandidate = true;
+                            return true;
+                        }
+                    }
+
                     displayLongPress = () -> {
                         if (displayPressed) {
                             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
                             displayLongPressTriggered = true;
+                            if (state.resultShown() && state.hasAns()
+                                    && isResultBand(displayDownY)) {
+                                // A long-press on the lower result line must expose the
+                                // clipboard actions directly. Previously it tried to select
+                                // the expression above, making “复制 Ans” effectively unreachable.
+                                displaySelectionMode = false;
+                                selectionDragEdge = 0;
+                                postInvalidateOnAnimation();
+                                showClipboardMenu();
+                                return;
+                            }
+                            if (machine.cursorLimit() == 0) {
+                                // There is nothing to select on an empty editor. Long-press
+                                // should still expose the standard phone action the user
+                                // needs here: paste from the system clipboard.
+                                displaySelectionMode = false;
+                                selectionDragEdge = 0;
+                                postInvalidateOnAnimation();
+                                showPasteOnlyMenu();
+                                return;
+                            }
                             int anchor = displayCursorPosition(displayDownX);
                             state = machine.selectTouchWord(anchor);
                             lastDragCursor = state.cursor();
+                            selectionDragEdge = 0;
                             displaySelectionMode = true;
                             postInvalidateOnAnimation();
                         }
@@ -1027,11 +1253,17 @@ public final class CalculatorView extends View {
             case MotionEvent.ACTION_MOVE -> {
                 if (displayPressed) {
                     if (displaySelectionMode) {
-                        extendSelectionToDisplayPosition(event.getX());
+                        moveSelectionBoundaryToDisplayPosition(event.getX());
                         return true;
                     }
                     float dx = event.getX() - displayDownX;
                     float dy = event.getY() - displayDownY;
+                    if (selectionTapCandidate) {
+                        if (Math.abs(dx) > dp(10) || Math.abs(dy) > dp(10)) {
+                            selectionTapCandidate = false;
+                        }
+                        return true;
+                    }
                     if (Math.abs(dx) > dp(4) && Math.abs(dx) > Math.abs(dy)) {
                         if (displayLongPress != null) gestureHandler.removeCallbacks(displayLongPress);
                         moveCursorToDisplayPosition(event.getX(), true);
@@ -1047,11 +1279,21 @@ public final class CalculatorView extends View {
                     if (displaySelectionMode || displayLongPressTriggered) {
                         displaySelectionMode = false;
                         displayLongPressTriggered = false;
-                        showClipboardMenu();
+                        selectionDragEdge = 0;
+                        selectionTapCandidate = false;
+                        // Phone-style behavior: releasing a handle keeps the selection.
+                        postInvalidateOnAnimation();
                         return true;
                     }
                     float dx = event.getX() - displayDownX;
                     float dy = event.getY() - displayDownY;
+                    if (selectionTapCandidate) {
+                        selectionTapCandidate = false;
+                        if (Math.abs(dx) < dp(12) && Math.abs(dy) < dp(12)) {
+                            showClipboardMenu();
+                        }
+                        return true;
+                    }
                     if (Math.abs(dx) < dp(18) && Math.abs(dy) < dp(18)) {
                         moveCursorToDisplayPosition(event.getX(), false);
                     }
@@ -1067,6 +1309,8 @@ public final class CalculatorView extends View {
                 displayPressed = false;
                 displaySelectionMode = false;
                 displayLongPressTriggered = false;
+                selectionTapCandidate = false;
+                selectionDragEdge = 0;
                 if (displayLongPress != null) gestureHandler.removeCallbacks(displayLongPress);
                 stopKeyRepeat();
                 touchRouter.cancelAll();
@@ -1148,11 +1392,48 @@ public final class CalculatorView extends View {
         return Math.max(0, Math.min(machine.cursorLimit(), target));
     }
 
-    private void extendSelectionToDisplayPosition(float x) {
+    /** Returns the approximate x-coordinate of a semantic insertion boundary. */
+    private float displayBoundaryX(int boundaryIndex) {
+        List<String> labels = machine.cursorTokenDisplays();
+        RectF lcd = displayBounds(getWidth());
+        float baseSize = sp(25f);
+        NaturalMetrics natural = measureNatural(state.naturalExpression(), baseSize);
+        float available = lcd.width() - dp(12);
+        float expressionX = lcd.left + dp(6);
+        if (natural.width > available) {
+            float cursorOffset = naturalCursorOffset(state.naturalExpression(), baseSize);
+            float focus = cursorOffset < 0 ? natural.width : cursorOffset;
+            expressionX = expressionX + available * 0.58f - focus;
+            expressionX = Math.min(lcd.left + dp(6),
+                    Math.max(lcd.left + dp(6) + available - natural.width, expressionX));
+        }
+        if (labels.isEmpty()) return expressionX;
+        paint.setTypeface(FACE_NORMAL);
+        paint.setTextSize(baseSize);
+        float rawWidth = 0f;
+        for (String label : labels) rawWidth += Math.max(dp(4), paint.measureText(label));
+        float scale = rawWidth <= 0 ? 1f : natural.width / rawWidth;
+        int clamped = Math.max(0, Math.min(labels.size(), boundaryIndex));
+        float x = expressionX;
+        for (int i = 0; i < clamped; i++) {
+            x += Math.max(dp(4), paint.measureText(labels.get(i))) * scale;
+        }
+        return x;
+    }
+
+    private void moveSelectionBoundaryToDisplayPosition(float x) {
         int target = displayCursorPosition(x);
+        if (selectionDragEdge == 0) {
+            if (target <= state.selectionStart() || x < displayDownX) selectionDragEdge = -1;
+            else if (target >= state.selectionEnd() || x > displayDownX) selectionDragEdge = 1;
+            else return;
+        }
         if (target == lastDragCursor) return;
-        state = machine.extendTouchSelection(target);
-        lastDragCursor = target;
+        state = selectionDragEdge < 0
+                ? machine.moveTouchSelectionStart(target)
+                : machine.moveTouchSelectionEnd(target);
+        lastDragCursor = selectionDragEdge < 0
+                ? state.selectionStart() : state.selectionEnd();
         performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
         postInvalidateOnAnimation();
     }
@@ -1178,22 +1459,51 @@ public final class CalculatorView extends View {
         }
     }
 
+    private boolean isResultBand(float y) {
+        RectF lcd = displayBounds(getWidth());
+        float contentTop = lcd.top + lcd.height() * 0.145f;
+        float contentBottom = lcd.bottom - dp(3);
+        return y >= contentTop + (contentBottom - contentTop) * 0.58f;
+    }
+
+    private void showPasteOnlyMenu() {
+        new AlertDialog.Builder(getContext()).setItems(new String[]{"粘贴"}, (dialog, which) -> {
+            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            pasteClipboardText();
+        }).show();
+    }
+
     private void showClipboardMenu() {
+        performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
         boolean hasSelection = state.hasSelection();
-        String[] items = hasSelection
-                ? new String[]{"复制选区", "复制计算过程", "复制计算结果", "粘贴"}
-                : new String[]{"复制计算过程", "复制计算结果", "粘贴"};
+        boolean hasAns = state.hasAns();
+        List<String> actions = new ArrayList<>();
+        if (hasSelection) actions.add("复制选区");
+        actions.add("复制计算过程");
+        actions.add("复制计算结果");
+        if (hasAns) actions.add("复制 Ans");
+        actions.add("粘贴");
+        String[] items = actions.toArray(new String[0]);
         new AlertDialog.Builder(getContext()).setItems(items, (dialog, which) -> {
-            if (hasSelection && which == 0) {
-                copyText(cleanClipboardText(machine.selectedExpression()), "已复制选区");
-            } else if (which == (hasSelection ? 1 : 0)) {
-                copyText(cleanClipboardText(state.expression()), "已复制计算过程");
-            } else if (which == (hasSelection ? 2 : 1)) {
-                copyText(decimalResult(state.result()), "已复制十进制结果");
-            } else {
-                pasteClipboardText();
+            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            String action = items[which];
+            switch (action) {
+                case "复制选区" -> copyText(cleanClipboardText(machine.selectedExpression()), "已复制选区");
+                case "复制计算过程" -> copyText(cleanClipboardText(machine.calculationProcessDisplay()), "已复制展开后的计算过程");
+                case "复制计算结果" -> copyText(decimalResult(state.result()), "已复制十进制结果");
+                case "复制 Ans" -> copyText(ansClipboardText(), "已复制 Ans");
+                default -> pasteClipboardText();
             }
         }).show();
+    }
+
+    private String ansClipboardText() {
+        if (!state.hasAns()) return "";
+        String currentResult = cleanClipboardText(state.result());
+        if (state.resultShown() && !currentResult.isEmpty()) {
+            return currentResult;
+        }
+        return BigDecimal.valueOf(state.ans()).stripTrailingZeros().toPlainString();
     }
 
     private String cleanClipboardText(String text) {
@@ -1232,7 +1542,6 @@ public final class CalculatorView extends View {
         if (clipboard != null) {
             clipboard.setPrimaryClip(ClipData.newPlainText("计算器", text));
             Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
-            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
         }
     }
 
@@ -1242,37 +1551,13 @@ public final class CalculatorView extends View {
         if (clipboard == null || !clipboard.hasPrimaryClip()) return;
         CharSequence value = clipboard.getPrimaryClip().getItemAt(0).coerceToText(getContext());
         if (value == null) return;
-        String normalized = value.toString()
-                .replace("×", "*").replace("÷", "/")
-                .replace("−", "-").replace("√", "sqrt(")
-                .replace("²", "^2").replace("³", "^3");
-        int accepted = 0;
-        for (int i = 0; i < normalized.length(); i++) {
-            if (normalized.startsWith("sqrt(", i)) {
-                dispatchKey(CnCwKey.SQRT);
-                dispatchKey(CnCwKey.OPEN_PAREN);
-                accepted++;
-                i += 4;
-                continue;
-            }
-            CnCwKey key = pasteKey(normalized.charAt(i));
-            if (key != null) { dispatchKey(key); accepted++; }
-        }
-        Toast.makeText(getContext(), accepted == 0 ? "没有可识别内容" : "已粘贴", Toast.LENGTH_SHORT).show();
-    }
 
-    private CnCwKey pasteKey(char ch) {
-        return switch (ch) {
-            case '0' -> CnCwKey.DIGIT_0; case '1' -> CnCwKey.DIGIT_1;
-            case '2' -> CnCwKey.DIGIT_2; case '3' -> CnCwKey.DIGIT_3;
-            case '4' -> CnCwKey.DIGIT_4; case '5' -> CnCwKey.DIGIT_5;
-            case '6' -> CnCwKey.DIGIT_6; case '7' -> CnCwKey.DIGIT_7;
-            case '8' -> CnCwKey.DIGIT_8; case '9' -> CnCwKey.DIGIT_9;
-            case '.' -> CnCwKey.DOT; case '+' -> CnCwKey.ADD;
-            case '-' -> CnCwKey.SUBTRACT; case '*' -> CnCwKey.MULTIPLY;
-            case '/' -> CnCwKey.DIVIDE; case '(' -> CnCwKey.OPEN_PAREN;
-            case ')' -> CnCwKey.CLOSE_PAREN; default -> null;
-        };
+        int accepted = machine.pasteExpression(value.toString());
+        state = machine.state();
+        postInvalidateOnAnimation();
+        String message = accepted < 0 ? "包含无法识别的符号，未粘贴"
+                : accepted == 0 ? "没有可识别内容" : "已粘贴";
+        Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
     }
 
     @Override

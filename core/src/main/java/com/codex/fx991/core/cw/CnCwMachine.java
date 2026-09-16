@@ -78,6 +78,10 @@ public final class CnCwMachine {
     private String activeCommandId = "";
     private double ans;
     private boolean hasAns;
+    /** Human-readable calculation process that produced the current Ans value. */
+    private String ansProcessDisplay = "";
+    /** Human-readable calculation process associated with the currently shown result. */
+    private String resultProcessDisplay = "";
     private ExactValue exactAns;
     private ExactValue lastExactResult;
     private String originalResult = "";
@@ -139,6 +143,8 @@ public final class CnCwMachine {
         activeCommandId = source.activeCommandId;
         ans = source.ans;
         hasAns = source.hasAns;
+        ansProcessDisplay = source.ansProcessDisplay;
+        resultProcessDisplay = source.resultProcessDisplay;
         exactAns = source.exactAns;
         lastExactResult = source.lastExactResult;
         originalResult = source.originalResult;
@@ -181,6 +187,30 @@ public final class CnCwMachine {
     }
 
     public CnCwUiState state() { return state; }
+
+    /**
+     * Returns the human-readable calculation process for inspection/copying.
+     * Ans is expanded to the already-expanded process that produced its value;
+     * evaluator tokens themselves are never rewritten.
+     */
+    public String calculationProcessDisplay() {
+        if (resultShown && resultProcessDisplay != null && !resultProcessDisplay.isBlank()) {
+            return resultProcessDisplay;
+        }
+        return expandedProcessDisplay(tokens, ansProcessDisplay);
+    }
+
+    private String expandedProcessDisplay(List<Token> source, String ansSource) {
+        StringBuilder out = new StringBuilder(Math.max(8, source.size() * 2));
+        for (Token token : source) {
+            if ("Ans".equals(token.evaluation) && ansSource != null && !ansSource.isBlank()) {
+                out.append('(').append(ansSource).append(')');
+            } else {
+                out.append(token.display);
+            }
+        }
+        return out.toString();
+    }
 
     /**
      * Applies exactly one logical key intent and returns the new snapshot.
@@ -297,6 +327,47 @@ public final class CnCwMachine {
         return state;
     }
 
+    /** Moves only the left touch-selection handle, preserving the right edge. */
+    public CnCwUiState moveTouchSelectionStart(int target) {
+        return moveTouchSelectionBoundary(true, target);
+    }
+
+    /** Moves only the right touch-selection handle, preserving the left edge. */
+    public CnCwUiState moveTouchSelectionEnd(int target) {
+        return moveTouchSelectionBoundary(false, target);
+    }
+
+    private CnCwUiState moveTouchSelectionBoundary(boolean startBoundary, int target) {
+        if (!poweredOn || !screen.isApplication() || applicationLanding || !hasSelection()) {
+            return state;
+        }
+        int currentStart = Math.min(selectionAnchor, selectionFocus);
+        int currentEnd = Math.max(selectionAnchor, selectionFocus);
+        int clamped = Math.max(0, Math.min(tokens.size(), target));
+        SelectionRange range;
+        if (startBoundary) {
+            clamped = Math.min(clamped, currentEnd - 1);
+            range = normalizeTouchSelectionRange(clamped, currentEnd);
+            selectionAnchor = range.start;
+            selectionFocus = range.end;
+            cursor = range.start;
+        } else {
+            clamped = Math.max(clamped, currentStart + 1);
+            range = normalizeTouchSelectionRange(currentStart, clamped);
+            selectionAnchor = range.start;
+            selectionFocus = range.end;
+            cursor = range.end;
+        }
+        shiftArmed = false;
+        result = "";
+        resultShown = false;
+        errorShown = false;
+        lastError = null;
+        status = applicationStatus();
+        publish();
+        return state;
+    }
+
     /**
      * Snaps a dragged selection around structures that must stay intact when
      * copied or replaced. Touches may land inside a function, power, or
@@ -355,6 +426,217 @@ public final class CnCwMachine {
         return com.codex.fx991.core.Compat.copyList(labels);
     }
 
+    /**
+     * Imports plain text from an external clipboard as semantic calculator tokens.
+     *
+     * <p>The Android adapter must not silently drop characters while simulating
+     * key presses.  Clipboard text is parsed atomically here so display spellings
+     * such as {@code ²}, {@code √( )}, {@code π} and evaluator spellings such as
+     * {@code ^2}, {@code sqrt(} and {@code pi} round-trip through the same token
+     * model used by normal key input.  Unknown non-whitespace characters reject
+     * the whole paste instead of corrupting a valid expression by omission.</p>
+     *
+     * @return number of imported semantic tokens, 0 for blank/no-op, -1 when the
+     *         source contains unsupported text.
+     */
+    public int pasteExpression(String text) {
+        if (!poweredOn || !screen.isApplication() || applicationLanding || text == null) return 0;
+        List<Token> imported = parsePastedTokens(text);
+        if (imported == null) return -1;
+        if (imported.isEmpty()) return 0;
+
+        // Treat one system paste as one editor mutation.  This also makes undo
+        // restore the entire pre-paste expression instead of only the last char.
+        rememberUndo();
+        resetStatementSequence();
+        formatConverted = false;
+        engineeringMode = false;
+        originalResult = "";
+
+        if (selectionActive()) {
+            int start = selectionStart();
+            int end = selectionEnd();
+            tokens.subList(start, end).clear();
+            cursor = start;
+            clearSelection();
+        } else if (resultShown) {
+            tokens.clear();
+            cursor = 0;
+            clearSelection();
+        }
+
+        tokens.addAll(cursor, imported);
+        cursor += imported.size();
+        shiftArmed = false;
+        result = "";
+        resultShown = false;
+        errorShown = false;
+        lastError = null;
+        lastExactResult = null;
+        status = applicationStatus();
+        publish();
+        return imported.size();
+    }
+
+    /** Returns null rather than partially importing text whose semantics are unknown. */
+    private List<Token> parsePastedTokens(String text) {
+        String source = text.replace("│", "").replace("▌", "").trim();
+        List<Token> imported = new ArrayList<>();
+        int index = 0;
+        while (index < source.length()) {
+            char value = source.charAt(index);
+            if (Character.isWhitespace(value)) {
+                index++;
+                continue;
+            }
+
+            PasteMatch match = pasteLexeme(source, index);
+            if (match != null) {
+                imported.add(match.token);
+                index += match.length;
+                continue;
+            }
+
+            // Preserve scientific E notation as one evaluator token.  Without
+            // this, 1E3 would be misread as 1 * variable-E * 3.
+            if (Character.isDigit(value) || value == '.') {
+                int numberEnd = index;
+                boolean hasDigit = false;
+                while (numberEnd < source.length()) {
+                    char number = source.charAt(numberEnd);
+                    if (Character.isDigit(number)) {
+                        hasDigit = true;
+                        numberEnd++;
+                    } else if (number == '.') {
+                        numberEnd++;
+                    } else {
+                        break;
+                    }
+                }
+                if (hasDigit && numberEnd < source.length()
+                        && (source.charAt(numberEnd) == 'E' || source.charAt(numberEnd) == 'e')) {
+                    int exponentEnd = numberEnd + 1;
+                    if (exponentEnd < source.length()
+                            && (source.charAt(exponentEnd) == '+'
+                            || source.charAt(exponentEnd) == '-'
+                            || source.charAt(exponentEnd) == '−')) exponentEnd++;
+                    int exponentDigits = exponentEnd;
+                    while (exponentEnd < source.length()
+                            && Character.isDigit(source.charAt(exponentEnd))) exponentEnd++;
+                    if (exponentEnd > exponentDigits) {
+                        String literal = source.substring(index, exponentEnd).replace('−', '-');
+                        imported.add(token(literal, literal));
+                        index = exponentEnd;
+                        continue;
+                    }
+                }
+            }
+
+            Token token = switch (value) {
+                case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.' -> token(Character.toString(value));
+                case '+' -> token("+", "+", true);
+                case '-', '−' -> token("−", "-", true);
+                case '*', '×' -> token("×", "*", true);
+                case '/', '÷' -> token("÷", "/", true);
+                case '^' -> token("^", "^", true);
+                case '(' -> token("(");
+                case ')' -> token(")");
+                case ',' -> token(",");
+                case '!' -> token("!");
+                case '%' -> token("%", "%");
+                case '=' -> token("=", "=", true);
+                case '<' -> token("<", "<", true);
+                case '>' -> token(">", ">", true);
+                case ':' -> token(":", ":", true);
+                case 'π' -> token("π", "pi");
+                case 'e' -> token("e", "e");
+                case 'i' -> token("i", "i");
+                case 'x' -> token("x");
+                case 'y' -> token("y");
+                case 'z' -> token("z");
+                case 'A', 'B', 'C', 'D', 'E', 'F' -> token(Character.toString(value));
+                case '²' -> token("²", "^2");
+                case '³' -> token("³", "^3");
+                case '√' -> token("√(", "sqrt(");
+                case '∠' -> token("∠", "∠");
+                default -> null;
+            };
+            if (token == null) return null;
+            imported.add(token);
+            index++;
+            // The √ token already owns its opening parenthesis.  A displayed
+            // string normally contains √(...), so consume that literal '(' once.
+            if (value == '√' && index < source.length() && source.charAt(index) == '(') index++;
+        }
+        return imported;
+    }
+
+    /** Matches multi-character evaluator/display spellings before char fallback. */
+    private PasteMatch pasteLexeme(String source, int index) {
+        String[][] spellings = {
+                {"sinh⁻¹(", "sinh⁻¹(", "asinh("},
+                {"cosh⁻¹(", "cosh⁻¹(", "acosh("},
+                {"tanh⁻¹(", "tanh⁻¹(", "atanh("},
+                {"sin⁻¹(", "sin⁻¹(", "asin("},
+                {"cos⁻¹(", "cos⁻¹(", "acos("},
+                {"tan⁻¹(", "tan⁻¹(", "atan("},
+                {"integral(", "∫(", "integral("},
+                {"ranint(", "RanInt#(", "ranint("},
+                {"sqrt(", "√(", "sqrt("},
+                {"mixed(", "a b/c(", "mixed("},
+                {"asinh(", "sinh⁻¹(", "asinh("},
+                {"acosh(", "cosh⁻¹(", "acosh("},
+                {"atanh(", "tanh⁻¹(", "atanh("},
+                {"asin(", "sin⁻¹(", "asin("},
+                {"acos(", "cos⁻¹(", "acos("},
+                {"atan(", "tan⁻¹(", "atan("},
+                {"sinh(", "sinh(", "sinh("},
+                {"cosh(", "cosh(", "cosh("},
+                {"tanh(", "tanh(", "tanh("},
+                {"root(", "√[ ](", "root("},
+                {"diff(", "d/dx(", "diff("},
+                {"sum(", "Σ(", "sum("},
+                {"abs(", "Abs(", "abs("},
+                {"dms(", "DMS(", "dms("},
+                {"pol(", "Pol(", "pol("},
+                {"rec(", "Rec(", "rec("},
+                {"ran(", "Ran#", "ran("},
+                {"sin(", "sin(", "sin("},
+                {"cos(", "cos(", "cos("},
+                {"tan(", "tan(", "tan("},
+                {"log(", "log(", "log("},
+                {"ln(", "ln(", "ln("},
+                {"f(", "f(", "f("},
+                {"g(", "g(", "g("},
+                {"Ans", "Ans", "Ans"},
+                {"nPr", "nPr", "nPr"},
+                {"nCr", "nCr", "nCr"},
+                {"pi", "π", "pi"},
+                {"<=", "≤", "<=", "binary"},
+                {">=", "≥", ">=", "binary"},
+                {"!=", "≠", "!=", "binary"},
+                {"->", "→", "->", "binary"},
+                {"⁻¹", "⁻¹", "^(-1)"}
+        };
+        for (String[] spelling : spellings) {
+            if (!source.startsWith(spelling[0], index)) continue;
+            boolean binary = spelling.length > 3 && "binary".equals(spelling[3]);
+            Token token = token(spelling[1], spelling[2], binary);
+            return new PasteMatch(token, spelling[0].length());
+        }
+        return null;
+    }
+
+    private static final class PasteMatch {
+        private final Token token;
+        private final int length;
+
+        private PasteMatch(Token token, int length) {
+            this.token = token;
+            this.length = length;
+        }
+    }
+
     public CnCwUiState reset() {
         screen = CnCwScreen.HOME;
         application = null;
@@ -374,6 +656,8 @@ public final class CnCwMachine {
         activeCommandId = "";
         ans = 0.0;
         hasAns = false;
+        ansProcessDisplay = "";
+        resultProcessDisplay = "";
         exactAns = null;
         lastExactResult = null;
         originalResult = "";
@@ -1116,7 +1400,10 @@ public final class CnCwMachine {
                     formatted = BaseNEngine.format((int) scalar, BaseNEngine.Base.DECIMAL);
                 }
             }
+            String evaluatedProcessDisplay = expandedProcessDisplay(tokens, ansProcessDisplay);
+            resultProcessDisplay = evaluatedProcessDisplay;
             if (storeAnswer && application != ApplicationMode.INEQUALITY) {
+                ansProcessDisplay = evaluatedProcessDisplay;
                 ans = scalar;
                 hasAns = true;
                 exactAns = exactScalar;
@@ -1135,7 +1422,7 @@ public final class CnCwMachine {
                     : statementSequence.isEmpty() ? applicationStatus()
                     : "语句 " + Math.min(statementSequenceIndex, statementSequence.size())
                     + "/" + statementSequence.size();
-            history.add(new HistoryEntry(com.codex.fx991.core.Compat.copyList(tokens), result));
+            history.add(new HistoryEntry(com.codex.fx991.core.Compat.copyList(tokens), result, resultProcessDisplay));
             if (history.size() > 100) history.remove(0);
             historyIndex = history.size();
             if (spreadsheetGrid && application == ApplicationMode.SPREADSHEET
@@ -1390,6 +1677,7 @@ public final class CnCwMachine {
         tokens.addAll(entry.tokens);
         cursor = tokens.size();
         result = entry.result;
+        resultProcessDisplay = entry.processDisplay;
         resultShown = true;
         status = "历史 " + (historyIndex + 1) + "/" + history.size();
     }
@@ -1600,6 +1888,8 @@ public final class CnCwMachine {
         }
         ans = 0.0;
         hasAns = false;
+        ansProcessDisplay = "";
+        resultProcessDisplay = "";
         exactAns = null;
         clearFunctionDefinitions();
         history.clear();
@@ -2811,7 +3101,7 @@ public final class CnCwMachine {
 
     private record Token(String display, String evaluation, boolean binary) { }
     private record Navigation(CnCwScreen screen, int selectedIndex) { }
-    private record HistoryEntry(List<Token> tokens, String result) { }
+    private record HistoryEntry(List<Token> tokens, String result, String processDisplay) { }
     private record CoordinateCall(boolean polar, String first, String second) { }
     private record SelectionRange(int start, int end) { }
     private record SimplificationResult(long originalNumerator, long originalDenominator,
