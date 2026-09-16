@@ -104,17 +104,33 @@ Stage 3 不继续在 Android View 中堆光标补丁，而是把编辑位置从�
 4. DEL 在参数内部只删除参数内容，在后续参数起点会回到前一参数，不允许删除结构逗号；从闭合函数 `root-after` DEL 会原子删除完整函数；
 5. 参数暂时为空时仍保留 `FUNCTION_ARGUMENT` 语义位置，可以继续输入或粘贴；
 6. 保留 Stage 2 的裸函数兼容行为：刚输入 `sin(` 这类只有一个空参数的裸函数 token 时，DEL 一次仍会删除完整函数 token；
-7. 保留 Stage 2 的触摸选区行为：触摸拖选函数内部仍扩展为完整函数调用，不在 Step 5 抢先引入参数级触摸精细选区；参数级统一选择/替换留到 Step 6；
+7. Step 5 暂时保留 Stage 2 的函数整体触摸选区，参数级精细触摸选区留到 Step 6；
 8. `sin(30)` 与 `sum(x,1,3)` 求值回归继续通过；
-9. 开发过程中两次由旧回归拦住兼容性变化（裸函数 DEL、函数内部触摸选区），均按既有契约恢复后再通过；
+9. 开发过程中两次由旧回归拦住兼容性变化（裸函数 DEL、函数内部触摸选区），均按阶段边界恢复后再通过；
 10. 一次性 Step 5 patch/compat workflow 与脚本已全部删除；产品代码清理 head `625e897` 的正式 PR CI run `35097482012` 已通过完整核心回归、Android APK 构建、固定签名检查和 artifact 上传。
 
-### 收口备注
+### Step 5 收口备注
 
-- Step 5 收口文档期间曾误写 `README.md` 为占位文本；随后立即从误操作前 commit 原样恢复。
+- 收口文档期间曾误写 `README.md` 为占位文本；随后立即从误操作前 commit 原样恢复。
 - 恢复后的 README blob SHA 为原始 `c1c95661cabc9ee3ef7badeb590b5c7632dee81d`，因此 README 内容无实际变化。
+
+## Step 6：统一语义选区、替换和删除（completed）
+
+选区协议已经从“仅有 token 起止下标”继续迁移到语义位置，同时保留旧下标供 Android 兼容：
+
+1. `CnCwUiState` 新增 `semanticSelectionAnchor()` / `semanticSelectionFocus()`，方向性 anchor/focus 均发布 `CnCwCursorPath`；
+2. 分数分子/分母、幂底数/指数、根号内容/根指数、函数参数都可以把选区 anchor/focus 映射到对应 semantic slot 与槽内 offset；
+3. 触摸选区在同一可编辑语义槽内保持精细选择，不再强制扩大到整个函数；因此 `sin(30)` 可以只选 `30` 或其中一部分；
+4. 多参数函数通过 `[函数模板位置, 参数序号]` 标识参数；选区一旦跨越结构逗号，会自动吸附为完整函数调用，结构逗号不会被单独删除或替换；
+5. 嵌套结构仍优先保护最内层结构边界：选择跨越内部函数参数时会先吸附内部结构，不允许生成破坏嵌套语法的半结构选区；
+6. 参数精细选区可直接 DEL 或粘贴替换；删除到空参数后仍停留在原 `FUNCTION_ARGUMENT`，粘贴替换后也保持参数语义身份；
+7. 分数、幂、根号原有精细选择与整体结构选择协议继续工作，键盘 `SHIFT+方向键` 的既有结构选择习惯未被强行改写；
+8. 旧 `selectionStart()` / `selectionEnd()` 继续保留，Android Stage 2 抓手代码仍可工作；Step 7 再迁移到 semantic selection anchor/focus；
+9. 更新旧 golden regression：Step 6 起，函数单参数内部触摸拖选的正式契约改为参数级精细选区；
+10. 一次性 Step 6 patch workflow/script 已删除；产品代码清理 head `f827b90` 的正式 PR CI run `35098992722` 已通过完整核心回归、Android APK 构建、固定签名检查和 artifact 上传。
 
 下一步：
 
-- Step 6：语义选区、替换和删除统一（next）；
-- Step 7：Android 命中测试与渲染全面切换到 semantic cursor。
+- Step 7：Android 命中测试与渲染全面切换到 semantic cursor / semantic selection；
+- 真机重新验证点击光标、水平滑动、上下结构移动、选区抓手、复制粘贴、DEL 与长按重复；
+- Step 7 通过后再决定 Stage 3 是否可以从 Draft 收口并合并。
