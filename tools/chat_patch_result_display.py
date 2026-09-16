@@ -97,4 +97,10 @@ if helper not in text:
         raise SystemExit("scientific renderer anchor not found")
     text = text.replace(anchor, helper + anchor, 1)
 
+# The generated Java string literal must contain doubled backslashes so Java's
+# regex engine receives \d / \. rather than illegal Java string escapes.
+bad_regex = r'value.matches("[−-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][+−-]?\d+)?")'
+good_regex = r'value.matches("[−-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[Ee][+−-]?\\d+)?")'
+text = text.replace(bad_regex, good_regex)
+
 path.write_text(text, encoding="utf-8")
