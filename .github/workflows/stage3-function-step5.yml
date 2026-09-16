@@ -6,6 +6,7 @@ on:
       - stage3/semantic-editor
     paths:
       - tools/stage3_function_step5_patch.py
+      - tools/stage3_function_step5_compat_fix.py
       - .github/workflows/stage3-function-step5.yml
 
 permissions:
@@ -28,7 +29,9 @@ jobs:
           java-version: '17'
 
       - name: 应用 Step 5 函数语义补丁
-        run: python tools/stage3_function_step5_patch.py
+        run: |
+          python tools/stage3_function_step5_patch.py
+          python tools/stage3_function_step5_compat_fix.py
 
       - name: 添加 Gradle 执行权限
         run: chmod +x gradlew
