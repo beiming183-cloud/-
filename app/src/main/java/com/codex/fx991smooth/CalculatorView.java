@@ -646,7 +646,7 @@ public final class CalculatorView extends View {
 
     /** Converts only plain numeric results to a compact scientific fallback. */
     private static String compactScientificResult(String value) {
-        if (value == null || !value.matches("[−-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][+−-]?\d+)?")) {
+        if (value == null || !value.matches("[−-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[Ee][+−-]?\\d+)?")) {
             return value == null ? "" : value;
         }
         try {
