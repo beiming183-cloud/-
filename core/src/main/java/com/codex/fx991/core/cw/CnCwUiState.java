@@ -41,6 +41,8 @@ public final class CnCwUiState {
     private final String result;
     /** Structured application result; null for ordinary/text-only results. */
     private final CnCwModeEngine.ModeResult applicationResult;
+    /** Stage 5 immutable input-table snapshot; null for the legacy editor. */
+    private final CnCwWorkflowSession.Snapshot workflowInput;
     private final double ans;
     private final boolean hasAns;
     private final String status;
@@ -81,6 +83,7 @@ public final class CnCwUiState {
                 CnCwCursorPath semanticSelectionFocus,
                 String result,
                 CnCwModeEngine.ModeResult applicationResult,
+                CnCwWorkflowSession.Snapshot workflowInput,
                 double ans,
                 boolean hasAns,
                 String status,
@@ -122,6 +125,7 @@ public final class CnCwUiState {
                 "semanticSelectionFocus");
         this.result = result == null ? "" : result;
         this.applicationResult = applicationResult;
+        this.workflowInput = workflowInput;
         this.ans = ans;
         this.hasAns = hasAns;
         this.status = status == null ? "" : status;
@@ -204,6 +208,8 @@ public final class CnCwUiState {
     public CnCwCursorPath semanticSelectionFocus() { return semanticSelectionFocus; }
     public String result() { return result; }
     public CnCwModeEngine.ModeResult applicationResult() { return applicationResult; }
+    public CnCwWorkflowSession.Snapshot workflowInput() { return workflowInput; }
+    public boolean hasWorkflowInput() { return workflowInput != null; }
     public boolean hasStructuredApplicationResult() {
         return applicationResult != null
                 && applicationResult.layout() != CnCwModeEngine.ResultLayout.TEXT;
