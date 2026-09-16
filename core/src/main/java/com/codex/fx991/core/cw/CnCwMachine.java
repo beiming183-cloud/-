@@ -76,6 +76,8 @@ public final class CnCwMachine {
     private boolean verificationMode;
     private boolean manualSimplification;
     private String result = "";
+    /** Last core-owned application result; renderer sees it only while resultShown. */
+    private CnCwModeEngine.ModeResult applicationResult;
     private String status = "HOME";
     private String activeCommandId = "";
     private double ans;
@@ -142,6 +144,7 @@ public final class CnCwMachine {
         verificationMode = source.verificationMode;
         manualSimplification = source.manualSimplification;
         result = source.result;
+        applicationResult = source.applicationResult;
         status = source.status;
         activeCommandId = source.activeCommandId;
         ans = source.ans;
@@ -1417,6 +1420,7 @@ public final class CnCwMachine {
 
     private void evaluate(boolean forceDecimal) {
         if (tokens.isEmpty()) return;
+        applicationResult = null;
         String source = autoCloseParentheses(evaluationSource());
             String plainSource = source.replace("\u2063", "");
             boolean complexEvaluation = application == ApplicationMode.COMPLEX
@@ -1473,12 +1477,14 @@ public final class CnCwMachine {
                 formatted = formatResult(scalar, exactScalar, statement, false);
             } else if (application == ApplicationMode.SPREADSHEET && !com.codex.fx991.core.Compat.isBlank(activeCommandId)) {
                 CnCwModeEngine.ModeResult modeResult = spreadsheetWorkflow(plainSource);
+                applicationResult = modeResult;
                 formatted = modeResult.display();
                 scalar = modeResult.primaryValue() == null
                         ? (hasAns ? ans : 0.0) : modeResult.primaryValue();
             } else if (!com.codex.fx991.core.Compat.isBlank(activeCommandId) && isStructuredWorkflow(application)) {
                 CnCwModeEngine.ModeResult modeResult = CnCwModeEngine.evaluate(
                         application, activeCommandId, plainSource, evaluationContext());
+                applicationResult = modeResult;
                 formatted = modeResult.display();
                 scalar = modeResult.primaryValue() == null
                         ? (hasAns ? ans : 0.0) : modeResult.primaryValue();
@@ -1593,7 +1599,8 @@ public final class CnCwMachine {
                     : statementSequence.isEmpty() ? applicationStatus()
                     : "语句 " + Math.min(statementSequenceIndex, statementSequence.size())
                     + "/" + statementSequence.size();
-            history.add(new HistoryEntry(com.codex.fx991.core.Compat.copyList(tokens), result, resultProcessDisplay));
+            history.add(new HistoryEntry(com.codex.fx991.core.Compat.copyList(tokens), result,
+                    resultProcessDisplay, applicationResult));
             if (history.size() > 100) history.remove(0);
             historyIndex = history.size();
             if (spreadsheetGrid && application == ApplicationMode.SPREADSHEET
@@ -1850,6 +1857,7 @@ public final class CnCwMachine {
         semanticCursorOverride = null;
         result = entry.result;
         resultProcessDisplay = entry.processDisplay;
+        applicationResult = entry.applicationResult;
         resultShown = true;
         status = "历史 " + (historyIndex + 1) + "/" + history.size();
     }
@@ -2758,7 +2766,8 @@ public final class CnCwMachine {
                 naturalExpression(), cursor, semanticCursorPath(), semanticSpans(),
                 selectionStartIndex(), selectionEndIndex(),
                 semanticSelectionPath(selectionAnchor), semanticSelectionPath(selectionFocus),
-                result, ans, hasAns, status, settings, shiftArmed, poweredOn, overwriteMode,
+                result, resultShown ? applicationResult : null,
+                ans, hasAns, status, settings, shiftArmed, poweredOn, overwriteMode,
                 verificationMode, engineeringMode,
                 !statementSequence.isEmpty() && statementSequenceIndex < statementSequence.size(),
                 !history.isEmpty() && historyIndex > 0,
@@ -4701,7 +4710,8 @@ public final class CnCwMachine {
 
     private record Token(String display, String evaluation, boolean binary) { }
     private record Navigation(CnCwScreen screen, int selectedIndex) { }
-    private record HistoryEntry(List<Token> tokens, String result, String processDisplay) { }
+    private record HistoryEntry(List<Token> tokens, String result, String processDisplay,
+                                CnCwModeEngine.ModeResult applicationResult) { }
     private record CoordinateCall(boolean polar, String first, String second) { }
     private record FractionBounds(int templateIndex, int numeratorStart, int numeratorEnd,
                                   int denominatorStart, int denominatorEnd) { }
