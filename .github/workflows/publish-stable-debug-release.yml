@@ -15,6 +15,7 @@ jobs:
       - name: Download exact verified APK artifact
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: beiming183-cloud/-
         shell: bash
         run: |
           gh api repos/beiming183-cloud/-/actions/artifacts/10442113179/zip > artifact.zip
@@ -26,6 +27,7 @@ jobs:
       - name: Publish normal GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: beiming183-cloud/-
         shell: bash
         run: |
           TAG="chat-20260916-stable-signing"
