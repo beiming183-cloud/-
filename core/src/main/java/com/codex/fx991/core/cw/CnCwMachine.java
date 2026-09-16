@@ -3268,7 +3268,14 @@ public final class CnCwMachine {
         return true;
     }
 
-    /** UP enters the visual exponent; DOWN returns to the base. */
+    /**
+     * UP/DOWN follow visual geometry rather than reusing the same local token
+     * offset.  A superscript is drawn to the upper-right of the base, so the
+     * nearest lower insertion point is the base end; conversely entering the
+     * exponent from the base starts at the exponent's left edge.  Reusing the
+     * numeric offset made multi-digit bases jump into their middle and could
+     * make repeated base/exponent movement feel stuck on-device.
+     */
     private boolean movePowerVertical(int direction) {
         if (resultShown || errorShown || selectionActive()) return false;
         PowerCursor power = powerCursorFromPath(semanticCursorPath());
@@ -3277,12 +3284,11 @@ public final class CnCwMachine {
         if (bounds == null) return false;
 
         if (direction < 0 && power.slot == CnCwCursorPath.Slot.SUPERSCRIPT_BASE) {
-            setPowerCursor(bounds, CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT,
-                    Math.min(power.offset, bounds.exponentEnd - bounds.exponentStart));
+            setPowerCursor(bounds, CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT, 0);
         } else if (direction > 0
                 && power.slot == CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT) {
             setPowerCursor(bounds, CnCwCursorPath.Slot.SUPERSCRIPT_BASE,
-                    Math.min(power.offset, bounds.baseEnd - bounds.baseStart));
+                    bounds.baseEnd - bounds.baseStart);
         }
         finishSemanticCursorMove();
         return true;

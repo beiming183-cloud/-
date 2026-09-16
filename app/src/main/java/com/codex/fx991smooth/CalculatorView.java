@@ -1434,6 +1434,22 @@ public final class CalculatorView extends View {
     private float[] semanticSpanXRange(CnCwSemanticSpan span) {
         boolean stackedFraction = span.slot() == CnCwCursorPath.Slot.FRACTION_NUMERATOR
                 || span.slot() == CnCwCursorPath.Slot.FRACTION_DENOMINATOR;
+
+        // The structural ^ token is not drawn at full-size between the base and
+        // exponent.  Legacy boundary projection nevertheless allocates width to
+        // its key label, which shifted exponent hit-testing to the right and made
+        // base/exponent dragging feel sticky.  Anchor the exponent at the base's
+        // visual end and measure only the visible exponent tokens at 0.62 scale,
+        // exactly matching drawNaturalNode(SUPERSCRIPT).
+        if (span.slot() == CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT
+                && !span.childPath().isEmpty()) {
+            int templateBoundary = Math.max(span.containerStartBoundary(),
+                    Math.min(span.containerEndBoundary(), span.childPath().get(0)));
+            float left = displayBoundaryX(templateBoundary);
+            float width = semanticTokenWidth(span.startBoundary(), span.endBoundary(), 0.62f);
+            return new float[]{left, left + Math.max(dp(5), width)};
+        }
+
         int start = stackedFraction ? span.containerStartBoundary() : span.startBoundary();
         int end = stackedFraction ? span.containerEndBoundary() : span.endBoundary();
         float left = displayBoundaryX(start);
@@ -1443,6 +1459,20 @@ public final class CalculatorView extends View {
             right = displayBoundaryX(span.containerEndBoundary());
         }
         return new float[]{left, right};
+    }
+
+    /** Measures visible token labels for a semantic slot at natural-display scale. */
+    private float semanticTokenWidth(int startBoundary, int endBoundary, float textScale) {
+        List<String> labels = machine.cursorTokenDisplays();
+        int start = Math.max(0, Math.min(labels.size(), startBoundary));
+        int end = Math.max(start, Math.min(labels.size(), endBoundary));
+        paint.setTypeface(FACE_NORMAL);
+        paint.setTextSize(sp(25f) * textScale);
+        float width = 0f;
+        for (int index = start; index < end; index++) {
+            width += Math.max(dp(3), paint.measureText(labels.get(index)));
+        }
+        return width;
     }
 
     private float semanticSlotCenterY(CnCwCursorPath.Slot slot,

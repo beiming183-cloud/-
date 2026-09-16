@@ -23,6 +23,7 @@ public final class CnCwCursorPathSuite {
         fractionDeleteNeverBreaksTemplate();
         fractionSelectionReplacementKeepsStructure();
         powerPublishesBaseExponentAndMovesSemantically();
+        powerVerticalProjectionUsesVisualEdges();
         powerDeleteNeverBreaksTemplate();
         powerSelectionReplacementKeepsStructure();
         radicalPublishesContentAndMovesSemantically();
@@ -261,7 +262,12 @@ public final class CnCwCursorPathSuite {
         equal(CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT,
                 machine.state().semanticCursor().slot(),
                 "UP returns base cursor to exponent");
+        equal(0, machine.state().semanticCursor().offset(),
+                "UP enters the visual left edge of the exponent");
 
+        machine.dispatch(CnCwKey.RIGHT);
+        equal(1, machine.state().semanticCursor().offset(),
+                "RIGHT reaches exponent end after visual-edge UP transition");
         machine.dispatch(CnCwKey.RIGHT);
         equal(CnCwCursorPath.Slot.ROW, machine.state().semanticCursor().slot(),
                 "RIGHT at exponent end exits power to root row");
@@ -292,6 +298,47 @@ public final class CnCwCursorPathSuite {
         equal(CnCwCursorPath.Slot.SUPERSCRIPT_BASE,
                 machine.state().semanticCursor().slot(),
                 "RIGHT from root-before enters power base");
+    }
+
+    private void powerVerticalProjectionUsesVisualEdges() {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        machine.dispatch(CnCwKey.OK);
+        machine.dispatch(CnCwKey.DIGIT_5);
+        machine.dispatch(CnCwKey.DIGIT_5);
+        machine.dispatch(CnCwKey.DIGIT_5);
+        machine.dispatch(CnCwKey.POWER);
+        machine.dispatch(CnCwKey.DIGIT_3);
+        machine.dispatch(CnCwKey.DIGIT_6);
+
+        equal(CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT,
+                machine.state().semanticCursor().slot(),
+                "multi-digit power input ends in exponent");
+        equal(2, machine.state().semanticCursor().offset(),
+                "multi-digit exponent ends at offset two");
+
+        machine.dispatch(CnCwKey.DOWN);
+        equal(CnCwCursorPath.Slot.SUPERSCRIPT_BASE,
+                machine.state().semanticCursor().slot(),
+                "DOWN from exponent enters base");
+        equal(3, machine.state().semanticCursor().offset(),
+                "DOWN projects to visual base end instead of middle of 555");
+
+        machine.dispatch(CnCwKey.UP);
+        equal(CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT,
+                machine.state().semanticCursor().slot(),
+                "UP from base returns to exponent");
+        equal(0, machine.state().semanticCursor().offset(),
+                "UP projects to visual exponent start");
+
+        machine.dispatch(CnCwKey.RIGHT);
+        equal(1, machine.state().semanticCursor().offset(),
+                "RIGHT advances inside exponent after vertical transition");
+        machine.dispatch(CnCwKey.RIGHT);
+        equal(2, machine.state().semanticCursor().offset(),
+                "RIGHT reaches exponent end without sticking");
+        machine.dispatch(CnCwKey.LEFT);
+        equal(1, machine.state().semanticCursor().offset(),
+                "LEFT leaves exponent end without sticking");
     }
 
     private void powerDeleteNeverBreaksTemplate() {
