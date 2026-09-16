@@ -180,9 +180,13 @@ public final class PhysicalKeyLayout {
                 utilityRightX, controlTop + controlHeight * 0.74f, utilityRadius * 2f);
 
         // Direction pad is the interaction centre, not a tiny afterthought.
-        // Center the pad in the actual space between the left controls and rocker.
-        // The geometric screen center makes the left and right breathing room uneven.
-        float dpadX = width * 0.53f;
+        // Balance its horizontal breathing room against the actual neighboring
+        // touch modules instead of pinning it to a fixed percentage of screen width.
+        // Using the midpoint between the 2x2 utility block's right edge and the
+        // page rocker's left edge keeps both gaps equal as the viewport changes.
+        float utilityModuleRight = utilityRightX + utilityRadius;
+        float rockerModuleLeft = width - margin - radius * 2f;
+        float dpadX = (utilityModuleRight + rockerModuleLeft) * 0.5f;
         float dpadY = controlTop + controlHeight * 0.52f;
         float d = radius * 1.56f;
         float offset = d * 1.35f;
