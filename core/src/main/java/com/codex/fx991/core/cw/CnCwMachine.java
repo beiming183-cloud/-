@@ -398,9 +398,12 @@ public final class CnCwMachine {
                         unitStart = fraction.numeratorStart;
                         unitEnd = fraction.denominatorEnd;
                     }
-                } else if ("^".equals(token.evaluation)) {
-                    unitStart = semanticAtomStart(index);
-                    unitEnd = semanticAtomEnd(index + 1);
+                } else if (isPowerTemplate(token)) {
+                    PowerBounds power = powerBounds(index);
+                    if (power != null) {
+                        unitStart = power.baseStart;
+                        unitEnd = power.exponentEnd;
+                    }
                 } else if (opensParenthesis(token)) {
                     int close = matchingClose(index);
                     unitEnd = close >= 0 ? close + 1 : unitEnd;
@@ -459,6 +462,7 @@ public final class CnCwMachine {
         // Treat one system paste as one editor mutation.  This also makes undo
         // restore the entire pre-paste expression instead of only the last char.
         rememberUndo();
+        semanticCursorOverride = null;
         resetStatementSequence();
         formatConverted = false;
         engineeringMode = false;
@@ -869,7 +873,7 @@ public final class CnCwMachine {
                     if (hadSelection) {
                         semanticCursorOverride = null;
                         cursor = Math.max(0, cursor - 1);
-                    } else if (!moveFractionHorizontal(-1)) {
+                    } else if (!moveFractionHorizontal(-1) && !movePowerHorizontal(-1)) {
                         semanticCursorOverride = null;
                         cursor = Math.max(0, cursor - 1);
                     }
@@ -890,7 +894,7 @@ public final class CnCwMachine {
                     if (hadSelection) {
                         semanticCursorOverride = null;
                         cursor = Math.min(tokens.size(), cursor + 1);
-                    } else if (!moveFractionHorizontal(1)) {
+                    } else if (!moveFractionHorizontal(1) && !movePowerHorizontal(1)) {
                         semanticCursorOverride = null;
                         cursor = Math.min(tokens.size(), cursor + 1);
                     }
@@ -902,10 +906,10 @@ public final class CnCwMachine {
                 lastError = null;
             }
             case UP -> {
-                if (!moveFractionVertical(-1)) recallHistory(-1);
+                if (!moveFractionVertical(-1) && !movePowerVertical(-1)) recallHistory(-1);
             }
             case DOWN -> {
-                if (!moveFractionVertical(1)) recallHistory(1);
+                if (!moveFractionVertical(1) && !movePowerVertical(1)) recallHistory(1);
             }
             case PAGE_UP -> recallHistory(-6);
             case PAGE_DOWN -> recallHistory(6);
@@ -1054,6 +1058,7 @@ public final class CnCwMachine {
         shiftArmed = false;
         if (deleteSelectionIfPresent()) return;
         if (deleteFractionSemantic()) return;
+        if (deletePowerSemantic()) return;
         if (cursor <= 0 || tokens.isEmpty()) return;
         semanticCursorOverride = null;
         resetStatementSequence();
@@ -1092,9 +1097,8 @@ public final class CnCwMachine {
         if (direction < 0) {
             if (position <= 0) return 0;
             int atomStart = semanticAtomStart(position);
-            if (atomStart > 0
-                    && "^".equals(tokens.get(atomStart - 1).evaluation)) {
-                return semanticAtomStart(atomStart - 1);
+            if (atomStart > 0 && isPowerTemplate(tokens.get(atomStart - 1))) {
+                return powerBaseStart(atomStart - 1);
             }
             return atomStart;
         }
@@ -1104,8 +1108,9 @@ public final class CnCwMachine {
             FractionBounds fraction = fractionBounds(atomEnd);
             return fraction == null ? semanticAtomEnd(atomEnd + 1) : fraction.denominatorEnd;
         }
-        if (atomEnd < tokens.size() && "^".equals(tokens.get(atomEnd).evaluation)) {
-            return semanticAtomEnd(atomEnd + 1);
+        if (atomEnd < tokens.size() && isPowerTemplate(tokens.get(atomEnd))) {
+            PowerBounds power = powerBounds(atomEnd);
+            return power == null ? semanticAtomEnd(atomEnd + 1) : power.exponentEnd;
         }
         return atomEnd;
     }
@@ -1118,6 +1123,9 @@ public final class CnCwMachine {
         // never expose it as an independent selection unit.
         if (isFractionTemplate(previous)) {
             return fractionNumeratorStart(safe - 1);
+        }
+        if (isPowerTemplate(previous)) {
+            return powerBaseStart(safe - 1);
         }
         if (isNumericFragment(previous)) {
             int start = safe - 1;
@@ -1138,6 +1146,10 @@ public final class CnCwMachine {
         if (isFractionTemplate(current)) {
             FractionBounds fraction = fractionBounds(safe);
             return fraction == null ? safe + 1 : fraction.denominatorEnd;
+        }
+        if (isPowerTemplate(current)) {
+            PowerBounds power = powerBounds(safe);
+            return power == null ? safe + 1 : power.exponentEnd;
         }
         if (isNumericFragment(current)) {
             int end = safe + 1;
@@ -2145,6 +2157,7 @@ public final class CnCwMachine {
         if (token == null) return;
         closeAllPopups();
         applicationLanding = false;
+        semanticCursorOverride = null;
         rememberUndo();
         if (prepareContinuousVerification(token)) return;
         tokens.add(cursor, token);
@@ -2652,10 +2665,18 @@ public final class CnCwMachine {
             return semanticCursorOverride;
         }
         FractionCursor fraction = fractionCursorAt(cursor);
-        if (fraction == null) return CnCwCursorPath.rootBoundary(cursor);
-        return CnCwCursorPath.nested(
-                com.codex.fx991.core.Compat.list(fraction.templateIndex),
-                fraction.slot, fraction.offset, cursor);
+        if (fraction != null) {
+            return CnCwCursorPath.nested(
+                    com.codex.fx991.core.Compat.list(fraction.templateIndex),
+                    fraction.slot, fraction.offset, cursor);
+        }
+        PowerCursor power = powerCursorAt(cursor);
+        if (power != null) {
+            return CnCwCursorPath.nested(
+                    com.codex.fx991.core.Compat.list(power.templateIndex),
+                    power.slot, power.offset, cursor);
+        }
+        return CnCwCursorPath.rootBoundary(cursor);
     }
 
     private FractionBounds fractionBounds(int templateIndex) {
@@ -2936,6 +2957,272 @@ public final class CnCwMachine {
         status = applicationStatus();
     }
 
+    private static boolean isPowerTemplate(Token token) {
+        return "^".equals(token.evaluation) && "^".equals(token.display);
+    }
+
+    private PowerBounds powerBounds(int templateIndex) {
+        if (templateIndex < 0 || templateIndex >= tokens.size()
+                || !isPowerTemplate(tokens.get(templateIndex))) return null;
+        int baseStart = powerBaseStart(templateIndex);
+        int baseEnd = templateIndex;
+        int exponentStart = templateIndex + 1;
+        int exponentEnd = powerExponentEnd(exponentStart, tokens.size());
+        return new PowerBounds(templateIndex, baseStart, baseEnd, exponentStart, exponentEnd);
+    }
+
+    /** Keeps a complete fraction as the base of a power when one ends at ^. */
+    private int powerBaseStart(int templateIndex) {
+        if (templateIndex <= 0) return Math.max(0, templateIndex);
+        Token previous = tokens.get(templateIndex - 1);
+        if (previous.binary) return templateIndex;
+        FractionBounds fraction = fractionEndingAtBoundary(templateIndex);
+        if (fraction != null) return fraction.numeratorStart;
+
+        // Chained powers use the complete previous power as the next base.
+        PowerBounds previousPower = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int candidate = 0; candidate < templateIndex; candidate++) {
+            if (!isPowerTemplate(tokens.get(candidate))) continue;
+            int candidateEnd = powerExponentEnd(candidate + 1, templateIndex);
+            if (candidateEnd != templateIndex) continue;
+            int candidateStart = candidate <= 0 ? candidate : semanticAtomStart(candidate);
+            int span = templateIndex - candidateStart;
+            if (span < bestSpan) {
+                bestSpan = span;
+                previousPower = new PowerBounds(candidate, candidateStart, candidate,
+                        candidate + 1, templateIndex);
+            }
+        }
+        if (previousPower != null) return previousPower.baseStart;
+        return semanticAtomStart(templateIndex);
+    }
+
+    /** Empty exponents stop before the following top-level binary operator. */
+    private int powerExponentEnd(int start, int limit) {
+        int safe = Math.max(0, Math.min(limit, start));
+        if (safe >= limit) return safe;
+        if (tokens.get(safe).binary) return safe;
+        return naturalExponentEnd(safe, limit, false);
+    }
+
+    private PowerCursor powerCursorAt(int boundary) {
+        int safe = Math.max(0, Math.min(tokens.size(), boundary));
+        PowerCursor best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            PowerBounds bounds = powerBounds(template);
+            if (bounds == null) continue;
+            CnCwCursorPath.Slot slot = null;
+            int offset = 0;
+            if (safe >= bounds.baseStart && safe <= bounds.baseEnd) {
+                slot = CnCwCursorPath.Slot.SUPERSCRIPT_BASE;
+                offset = safe - bounds.baseStart;
+            } else if (safe >= bounds.exponentStart && safe <= bounds.exponentEnd) {
+                slot = CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT;
+                offset = safe - bounds.exponentStart;
+            }
+            if (slot == null) continue;
+            int span = bounds.exponentEnd - bounds.baseStart;
+            if (span < bestSpan) {
+                bestSpan = span;
+                best = new PowerCursor(template, bounds.baseStart, bounds.baseEnd,
+                        bounds.exponentStart, bounds.exponentEnd, slot, offset);
+            }
+        }
+        return best;
+    }
+
+    private PowerCursor powerCursorFromPath(CnCwCursorPath path) {
+        if (path == null || path.isRootBoundary() || path.childPath().isEmpty()) return null;
+        CnCwCursorPath.Slot slot = path.slot();
+        if (slot != CnCwCursorPath.Slot.SUPERSCRIPT_BASE
+                && slot != CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT) return null;
+        int template = path.childPath().get(0);
+        PowerBounds bounds = powerBounds(template);
+        if (bounds == null) return null;
+        int length = slot == CnCwCursorPath.Slot.SUPERSCRIPT_BASE
+                ? bounds.baseEnd - bounds.baseStart
+                : bounds.exponentEnd - bounds.exponentStart;
+        int offset = Math.max(0, Math.min(length, path.offset()));
+        return new PowerCursor(template, bounds.baseStart, bounds.baseEnd,
+                bounds.exponentStart, bounds.exponentEnd, slot, offset);
+    }
+
+    private PowerBounds powerStartingAtBoundary(int boundary) {
+        PowerBounds best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            PowerBounds value = powerBounds(template);
+            if (value == null || value.baseStart != boundary) continue;
+            int span = value.exponentEnd - value.baseStart;
+            if (span < bestSpan) { best = value; bestSpan = span; }
+        }
+        return best;
+    }
+
+    private PowerBounds powerEndingAtBoundary(int boundary) {
+        PowerBounds best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            PowerBounds value = powerBounds(template);
+            if (value == null || value.exponentEnd != boundary) continue;
+            int span = value.exponentEnd - value.baseStart;
+            if (span < bestSpan) { best = value; bestSpan = span; }
+        }
+        return best;
+    }
+
+    private void setPowerCursor(PowerBounds power, CnCwCursorPath.Slot slot, int offset) {
+        int length = slot == CnCwCursorPath.Slot.SUPERSCRIPT_BASE
+                ? power.baseEnd - power.baseStart
+                : power.exponentEnd - power.exponentStart;
+        int local = Math.max(0, Math.min(length, offset));
+        cursor = (slot == CnCwCursorPath.Slot.SUPERSCRIPT_BASE
+                ? power.baseStart : power.exponentStart) + local;
+        semanticCursorOverride = CnCwCursorPath.nested(
+                com.codex.fx991.core.Compat.list(power.templateIndex), slot, local, cursor);
+    }
+
+    /** root-before → base → exponent → root-after. */
+    private boolean movePowerHorizontal(int direction) {
+        if (resultShown || errorShown || selectionActive()) return false;
+        CnCwCursorPath path = semanticCursorPath();
+        if (path.isRootBoundary()) {
+            PowerBounds target = direction > 0
+                    ? powerStartingAtBoundary(cursor) : powerEndingAtBoundary(cursor);
+            if (target == null) return false;
+            if (direction > 0) {
+                setPowerCursor(target, CnCwCursorPath.Slot.SUPERSCRIPT_BASE, 0);
+            } else {
+                setPowerCursor(target, CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT,
+                        target.exponentEnd - target.exponentStart);
+            }
+            finishSemanticCursorMove();
+            return true;
+        }
+
+        PowerCursor power = powerCursorFromPath(path);
+        if (power == null) return false;
+        PowerBounds bounds = powerBounds(power.templateIndex);
+        if (bounds == null) return false;
+
+        if (power.slot == CnCwCursorPath.Slot.SUPERSCRIPT_BASE) {
+            int length = bounds.baseEnd - bounds.baseStart;
+            if (direction < 0) {
+                if (power.offset == 0) setRootCursor(bounds.baseStart);
+                else setPowerCursor(bounds, power.slot, power.offset - 1);
+            } else {
+                if (power.offset < length) {
+                    setPowerCursor(bounds, power.slot, power.offset + 1);
+                } else {
+                    setPowerCursor(bounds, CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT, 0);
+                }
+            }
+        } else {
+            int length = bounds.exponentEnd - bounds.exponentStart;
+            if (direction < 0) {
+                if (power.offset > 0) {
+                    setPowerCursor(bounds, power.slot, power.offset - 1);
+                } else {
+                    setPowerCursor(bounds, CnCwCursorPath.Slot.SUPERSCRIPT_BASE,
+                            bounds.baseEnd - bounds.baseStart);
+                }
+            } else {
+                if (power.offset < length) {
+                    setPowerCursor(bounds, power.slot, power.offset + 1);
+                } else {
+                    setRootCursor(bounds.exponentEnd);
+                }
+            }
+        }
+        finishSemanticCursorMove();
+        return true;
+    }
+
+    /** UP enters the visual exponent; DOWN returns to the base. */
+    private boolean movePowerVertical(int direction) {
+        if (resultShown || errorShown || selectionActive()) return false;
+        PowerCursor power = powerCursorFromPath(semanticCursorPath());
+        if (power == null) return false;
+        PowerBounds bounds = powerBounds(power.templateIndex);
+        if (bounds == null) return false;
+
+        if (direction < 0 && power.slot == CnCwCursorPath.Slot.SUPERSCRIPT_BASE) {
+            setPowerCursor(bounds, CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT,
+                    Math.min(power.offset, bounds.exponentEnd - bounds.exponentStart));
+        } else if (direction > 0
+                && power.slot == CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT) {
+            setPowerCursor(bounds, CnCwCursorPath.Slot.SUPERSCRIPT_BASE,
+                    Math.min(power.offset, bounds.baseEnd - bounds.baseStart));
+        }
+        finishSemanticCursorMove();
+        return true;
+    }
+
+    /**
+     * DEL never removes ^ by itself. Inside a slot it deletes slot content;
+     * slot-start DEL navigates to the preceding semantic position. From an
+     * explicit root-after position, DEL removes the complete power atomically.
+     */
+    private boolean deletePowerSemantic() {
+        if (tokens.isEmpty()) return false;
+        CnCwCursorPath path = semanticCursorPath();
+        if (path.isRootBoundary()) {
+            if (semanticCursorOverride == null) return false;
+            PowerBounds power = powerEndingAtBoundary(cursor);
+            if (power == null) return false;
+            rememberUndo();
+            tokens.subList(power.baseStart, power.exponentEnd).clear();
+            setRootCursor(power.baseStart);
+            finishSemanticEditMutation();
+            return true;
+        }
+
+        PowerCursor power = powerCursorFromPath(path);
+        if (power == null) return false;
+        PowerBounds bounds = powerBounds(power.templateIndex);
+        if (bounds == null) return false;
+
+        if (power.slot == CnCwCursorPath.Slot.SUPERSCRIPT_BASE) {
+            if (power.offset == 0) {
+                setRootCursor(bounds.baseStart);
+                finishSemanticCursorMove();
+                return true;
+            }
+            int deleteIndex = cursor - 1;
+            if (deleteIndex < bounds.baseStart || deleteIndex >= bounds.baseEnd) return false;
+            rememberUndo();
+            tokens.remove(deleteIndex);
+            cursor--;
+            int newTemplate = Math.max(0, power.templateIndex - 1);
+            semanticCursorOverride = CnCwCursorPath.nested(
+                    com.codex.fx991.core.Compat.list(newTemplate),
+                    CnCwCursorPath.Slot.SUPERSCRIPT_BASE,
+                    Math.max(0, power.offset - 1), cursor);
+            finishSemanticEditMutation();
+            return true;
+        }
+
+        if (power.offset == 0) {
+            setPowerCursor(bounds, CnCwCursorPath.Slot.SUPERSCRIPT_BASE,
+                    bounds.baseEnd - bounds.baseStart);
+            finishSemanticCursorMove();
+            return true;
+        }
+        int deleteIndex = cursor - 1;
+        if (deleteIndex < bounds.exponentStart || deleteIndex >= bounds.exponentEnd) return false;
+        rememberUndo();
+        tokens.remove(deleteIndex);
+        cursor--;
+        semanticCursorOverride = CnCwCursorPath.nested(
+                com.codex.fx991.core.Compat.list(power.templateIndex),
+                CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT,
+                Math.max(0, power.offset - 1), cursor);
+        finishSemanticEditMutation();
+        return true;
+    }
+
     private List<String> spreadsheetCellsSnapshot() {
         List<String> values = new ArrayList<>(SpreadsheetModel.ROWS * SpreadsheetModel.COLUMNS);
         for (int row = 0; row < SpreadsheetModel.ROWS; row++) {
@@ -2988,17 +3275,37 @@ public final class CnCwMachine {
                 children.add(CnCwExpressionNode.cursor());
             }
             Token token = tokens.get(index);
-            if ("^".equals(token.evaluation) && index != renderCursor && !children.isEmpty()) {
-                int exponentEnd = naturalExponentEnd(index + 1, end, false);
-                CnCwExpressionNode base = children.remove(children.size() - 1);
-                CnCwExpressionNode exponent = naturalRow(index + 1, exponentEnd, renderCursor);
-                children.add(CnCwExpressionNode.compound(CnCwExpressionNode.Kind.SUPERSCRIPT,
-                        com.codex.fx991.core.Compat.list(base, exponent), false));
-                if (exponent.containsCursor() && renderCursor == exponentEnd) {
-                    cursorHandledAt = exponentEnd;
+            if (isPowerTemplate(token)) {
+                PowerBounds bounds = powerBounds(index);
+                if (bounds != null) {
+                    int baseStart = Math.max(start, bounds.baseStart);
+                    int exponentEnd = Math.min(end, bounds.exponentEnd);
+                    CnCwCursorPath semantic = semanticCursorPath();
+                    boolean ownsCursor = !semantic.isRootBoundary()
+                            && !semantic.childPath().isEmpty()
+                            && semantic.childPath().get(0) == index
+                            && (semantic.slot() == CnCwCursorPath.Slot.SUPERSCRIPT_BASE
+                            || semantic.slot() == CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT);
+                    int prefixCursor = ownsCursor ? -1 : renderCursor;
+                    int baseCursor = ownsCursor
+                            && semantic.slot() != CnCwCursorPath.Slot.SUPERSCRIPT_BASE
+                            ? -1 : renderCursor;
+                    int exponentCursor = ownsCursor
+                            && semantic.slot() != CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT
+                            ? -1 : renderCursor;
+                    CnCwExpressionNode prefix = naturalRow(start, baseStart, prefixCursor);
+                    CnCwExpressionNode base = naturalRow(baseStart, index, baseCursor);
+                    CnCwExpressionNode exponent = naturalRow(index + 1, exponentEnd, exponentCursor);
+                    children.clear();
+                    children.addAll(prefix.children());
+                    children.add(CnCwExpressionNode.compound(CnCwExpressionNode.Kind.SUPERSCRIPT,
+                            com.codex.fx991.core.Compat.list(base, exponent), false));
+                    if (base.containsCursor() || exponent.containsCursor()) {
+                        cursorHandledAt = renderCursor;
+                    }
+                    index = exponentEnd;
+                    continue;
                 }
-                index = exponentEnd;
-                continue;
             }
             if (isFractionTemplate(token)) {
                 FractionBounds bounds = fractionBounds(index);
@@ -3485,6 +3792,11 @@ public final class CnCwMachine {
     private record FractionCursor(int templateIndex, int numeratorStart, int numeratorEnd,
                                   int denominatorStart, int denominatorEnd,
                                   CnCwCursorPath.Slot slot, int offset) { }
+    private record PowerBounds(int templateIndex, int baseStart, int baseEnd,
+                               int exponentStart, int exponentEnd) { }
+    private record PowerCursor(int templateIndex, int baseStart, int baseEnd,
+                               int exponentStart, int exponentEnd,
+                               CnCwCursorPath.Slot slot, int offset) { }
     private record SelectionRange(int start, int end) { }
     private record SimplificationResult(long originalNumerator, long originalDenominator,
                                         long displayNumerator, long displayDenominator,

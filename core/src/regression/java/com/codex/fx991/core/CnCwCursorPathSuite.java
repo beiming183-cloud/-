@@ -21,6 +21,9 @@ public final class CnCwCursorPathSuite {
         fractionHorizontalEntryExitIsSemantic();
         fractionDeleteNeverBreaksTemplate();
         fractionSelectionReplacementKeepsStructure();
+        powerPublishesBaseExponentAndMovesSemantically();
+        powerDeleteNeverBreaksTemplate();
+        powerSelectionReplacementKeepsStructure();
         System.out.println("PASS " + checks + " semantic cursor checks");
     }
 
@@ -219,6 +222,150 @@ public final class CnCwCursorPathSuite {
                 "replacing whole fraction removes template and inserts one root token");
         equal(CnCwCursorPath.rootBoundary(1), machine.state().semanticCursor(),
                 "whole-fraction replacement returns to root cursor semantics");
+    }
+
+    private void powerPublishesBaseExponentAndMovesSemantically() {
+        CnCwMachine machine = powerMachine();
+        equal(CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT,
+                machine.state().semanticCursor().slot(),
+                "power input ends inside exponent slot");
+        equal(1, machine.state().semanticCursor().childPath().get(0),
+                "power semantic path identifies ^ template token");
+        equal(1, machine.state().semanticCursor().offset(),
+                "exponent cursor keeps local offset");
+        check(machine.state().naturalExpression().containsCursor(),
+                "power exponent cursor remains visible in natural tree");
+
+        machine.dispatch(CnCwKey.DOWN);
+        equal(CnCwCursorPath.Slot.SUPERSCRIPT_BASE,
+                machine.state().semanticCursor().slot(),
+                "DOWN moves exponent cursor into base");
+        equal(1, machine.state().semanticCursor().offset(),
+                "DOWN preserves nearest base offset");
+        machine.dispatch(CnCwKey.UP);
+        equal(CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT,
+                machine.state().semanticCursor().slot(),
+                "UP returns base cursor to exponent");
+
+        machine.dispatch(CnCwKey.RIGHT);
+        equal(CnCwCursorPath.Slot.ROW, machine.state().semanticCursor().slot(),
+                "RIGHT at exponent end exits power to root row");
+        equal(3, machine.state().cursor(),
+                "power root-after shares exponent-end legacy boundary");
+        machine.dispatch(CnCwKey.LEFT);
+        equal(CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT,
+                machine.state().semanticCursor().slot(),
+                "LEFT from root-after re-enters exponent end");
+        machine.dispatch(CnCwKey.LEFT);
+        equal(0, machine.state().semanticCursor().offset(),
+                "LEFT moves to exponent start");
+        machine.dispatch(CnCwKey.LEFT);
+        equal(CnCwCursorPath.Slot.SUPERSCRIPT_BASE,
+                machine.state().semanticCursor().slot(),
+                "LEFT from exponent start enters base end");
+        equal(1, machine.state().semanticCursor().offset(),
+                "base end keeps local offset");
+        machine.dispatch(CnCwKey.LEFT);
+        equal(0, machine.state().semanticCursor().offset(),
+                "LEFT moves to base start");
+        machine.dispatch(CnCwKey.LEFT);
+        equal(CnCwCursorPath.Slot.ROW, machine.state().semanticCursor().slot(),
+                "LEFT from base start exits to root-before");
+        equal(0, machine.state().cursor(),
+                "power root-before shares base-start legacy boundary");
+        machine.dispatch(CnCwKey.RIGHT);
+        equal(CnCwCursorPath.Slot.SUPERSCRIPT_BASE,
+                machine.state().semanticCursor().slot(),
+                "RIGHT from root-before enters power base");
+    }
+
+    private void powerDeleteNeverBreaksTemplate() {
+        CnCwMachine machine = powerMachine();
+        machine.dispatch(CnCwKey.DEL);
+        equal("2^", machine.state().expression(),
+                "DEL removes exponent content without deleting ^ template");
+        equal(CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT,
+                machine.state().semanticCursor().slot(),
+                "empty exponent remains a semantic slot");
+        equal(0, machine.state().semanticCursor().offset(),
+                "empty exponent cursor stays at offset zero");
+        check(machine.state().naturalExpression().containsCursor(),
+                "empty exponent remains renderable as superscript slot");
+
+        machine.dispatch(CnCwKey.DEL);
+        equal("2^", machine.state().expression(),
+                "DEL at exponent start navigates instead of deleting ^");
+        equal(CnCwCursorPath.Slot.SUPERSCRIPT_BASE,
+                machine.state().semanticCursor().slot(),
+                "exponent-start DEL returns to base end");
+
+        machine.dispatch(CnCwKey.DEL);
+        equal("^", machine.state().expression(),
+                "DEL can empty power base while preserving ^ structure");
+        equal(CnCwCursorPath.Slot.SUPERSCRIPT_BASE,
+                machine.state().semanticCursor().slot(),
+                "empty power base remains semantic");
+        check(machine.state().naturalExpression().containsCursor(),
+                "empty power base remains visible in natural tree");
+
+        machine.dispatch(CnCwKey.DEL);
+        equal("^", machine.state().expression(),
+                "DEL at base start exits instead of deleting structural ^");
+        equal(CnCwCursorPath.Slot.ROW, machine.state().semanticCursor().slot(),
+                "base-start DEL exits to root row");
+
+        machine = powerMachine();
+        machine.dispatch(CnCwKey.RIGHT); // explicit root-after
+        machine.dispatch(CnCwKey.DEL);
+        equal("", machine.state().expression(),
+                "DEL from root-after removes complete power atomically");
+        equal(CnCwCursorPath.rootBoundary(0), machine.state().semanticCursor(),
+                "whole-power delete returns to root boundary");
+    }
+
+    private void powerSelectionReplacementKeepsStructure() {
+        CnCwMachine machine = powerMachine();
+        machine.dispatch(CnCwKey.SHIFT);
+        machine.dispatch(CnCwKey.LEFT);
+        equal("2^3", machine.selectedExpression(),
+                "keyboard semantic selection keeps Stage 2 whole-power behavior");
+        machine.dispatch(CnCwKey.DIGIT_7);
+        equal("7", machine.state().expression(),
+                "keyboard replacement still replaces the complete power atomically");
+        equal(CnCwCursorPath.rootBoundary(1), machine.state().semanticCursor(),
+                "whole-power keyboard replacement returns to root semantics");
+
+        machine = powerMachine();
+        machine.beginTouchSelection(2);
+        machine.extendTouchSelection(3);
+        equal("3", machine.selectedExpression(),
+                "touch fine selection can select exponent independently");
+        equal(1, machine.pasteExpression("9"),
+                "touch-selected exponent accepts semantic replacement");
+        equal("2^9", machine.state().expression(),
+                "touch exponent replacement preserves ^ template");
+        equal(CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT,
+                machine.state().semanticCursor().slot(),
+                "exponent replacement cursor remains in exponent");
+
+        machine = powerMachine();
+        machine.beginTouchSelection(0);
+        machine.extendTouchSelection(1);
+        equal("2", machine.selectedExpression(),
+                "touch fine selection can select power base independently");
+        equal(1, machine.pasteExpression("4"),
+                "base replacement accepts one semantic token");
+        equal("4^3", machine.state().expression(),
+                "replacing base preserves exponent and ^ template");
+    }
+
+    private CnCwMachine powerMachine() {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        machine.dispatch(CnCwKey.OK);
+        machine.dispatch(CnCwKey.DIGIT_2);
+        machine.dispatch(CnCwKey.POWER);
+        machine.dispatch(CnCwKey.DIGIT_3);
+        return machine;
     }
 
     private CnCwMachine fractionMachine() {

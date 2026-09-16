@@ -19,7 +19,7 @@ Stage 3 不继续在 Android View 中堆光标补丁，而是把编辑位置从�
 - AC、Ans、历史、复制粘贴、长按重复、固定签名和 Stage 2 真机行为不得回归；
 - 每接入一种结构，先补核心回归，再接 Android 触摸/渲染。
 
-## Step 1：语义位置模型（进行中）
+## Step 1：语义位置模型（completed）
 
 已完成第一层基础设施：
 
@@ -65,10 +65,23 @@ Stage 3 不继续在 Android View 中堆光标补丁，而是把编辑位置从�
 8. 分母可独立选中并替换，继续扩选可覆盖完整分数，替换后结构保持正确；
 9. 旧 `int cursor`、Stage 2 触摸协议、复制粘贴和固定签名继续保留。
 
-分数路径稳定后，再依次接入：
+## Step 3：幂指数语义编辑（completed）
 
-- Step 3：幂指数（next）；
-- Step 4：根号 / n 次根；
+幂结构已按与分数一致的迁移原则接入 semantic cursor：
+
+1. `^` 模板发布 `SUPERSCRIPT_BASE` / `SUPERSCRIPT_EXPONENT`；
+2. 左右路径为 `root-before → base → exponent → root-after`；
+3. `UP` 从 base 进入 exponent，`DOWN` 从 exponent 回到 base，并尽量保持局部 offset；
+4. DEL 在 base / exponent 内只删除槽内容，不允许单独删除结构 `^`；
+5. exponent 起点 DEL 回到 base，base 起点 DEL 退出幂；
+6. 从显式 `root-after` DEL 原子删除完整幂；
+7. base 或 exponent 暂时为空时，SUPERSCRIPT 自然树仍保留并显示光标；
+8. 触摸精细选区可独立选择/替换 exponent 或 base；键盘 `SHIFT+方向键` 继续遵守 Stage 2 协议，把幂整体视为一个选择单元；
+9. 分数语义优先级保持不变，旧 `int cursor` 和 Stage 2 触摸协议继续兼容。
+
+下一步：
+
+- Step 4：根号 / n 次根（next）；
 - Step 5：函数参数；
 - Step 6：语义选区、替换和删除统一；
 - Step 7：Android 命中测试与渲染全面切换到 semantic cursor。
