@@ -65,9 +65,9 @@ HOME 页面使用应用卡片组织不同计算功能，整体保持克制、清
 
 ## 开发状态
 
-Stage 2 的手机交互与真机差分验收已经完成。Stage 3 的语义编辑器 Step 1–7 代码已经完成，目前使用 **北北计算器 0.3.15 Release** 做集中真机验收。
+Stage 2 的手机交互与真机差分验收已经完成。Stage 3 的语义编辑器 Step 1–7 代码已经完成，目前使用 **北北计算器 0.3.16 Release** 做集中真机验收。
 
-从 0.3.15 起，正式版本使用固定 Application ID `com.beibei.calculator` 和长期 Release 签名；正式发布流程会对版本、包名和签名做 fail-closed 校验，避免再次出现开发 Debug 签名变化导致的覆盖安装冲突。
+从 0.3.15 起，正式版本使用固定 Application ID `com.beibei.calculator` 和长期 Release 签名；正式发布流程会对版本、包名、签名以及关键 R8 构建异常做 fail-closed 校验，避免再次出现开发 Debug 签名变化导致的覆盖安装冲突或已知压缩异常进入正式发布。
 
 后续还会继续：
 
