@@ -78,12 +78,41 @@ public final class CnCwModeEngineSuite {
     private void equationWorkflows() {
         var polynomial = evaluate(ApplicationMode.EQUATION, "polynomial", "1,2,-3");
         check(polynomial.display().contains("x1="), "polynomial roots rendered");
+        equal(CnCwModeEngine.ResultLayout.KEY_VALUE, polynomial.layout(),
+                "polynomial publishes key/value layout");
+        equal("多项式方程", polynomial.title(), "polynomial result title");
+        equal(2, polynomial.items().size(), "quadratic publishes two roots");
+        equal("x1", polynomial.items().get(0).label(), "first polynomial root label");
+        equal("x2", polynomial.items().get(1).label(), "second polynomial root label");
+
+        var complexPolynomial = evaluate(ApplicationMode.EQUATION, "polynomial", "1,0,1");
+        equal(2, complexPolynomial.items().size(), "complex quadratic keeps both roots");
+        check(complexPolynomial.items().get(0).value().contains("i"),
+                "first complex root remains structured as complex text");
+        check(complexPolynomial.items().get(1).value().contains("i"),
+                "second complex root remains structured as complex text");
+
         var simultaneous = evaluate(ApplicationMode.EQUATION, "simultaneous",
                 "2,1,1,5,2,-1,1");
         near(2.0, simultaneous.primaryValue(), 1e-12, "two-variable system first root");
         check(simultaneous.display().contains("x2=3"), "system second root rendered");
+        equal(CnCwModeEngine.ResultLayout.KEY_VALUE, simultaneous.layout(),
+                "simultaneous equations publish key/value layout");
+        equal("联立方程", simultaneous.title(), "simultaneous result title");
+        equal(2, simultaneous.items().size(), "two-variable system publishes two entries");
+        equal("x1", simultaneous.items().get(0).label(), "system first variable label");
+        equal("2", simultaneous.items().get(0).value(), "system first variable value");
+        equal("x2", simultaneous.items().get(1).label(), "system second variable label");
+        equal("3", simultaneous.items().get(1).value(), "system second variable value");
+
         var solve = evaluate(ApplicationMode.EQUATION, "solve", "x^2-16,1");
         near(4.0, solve.primaryValue(), 1e-9, "SOLVE workflow");
+        equal(CnCwModeEngine.ResultLayout.KEY_VALUE, solve.layout(),
+                "SOLVE publishes key/value layout");
+        equal("SOLVE", solve.title(), "SOLVE result title");
+        equal(2, solve.items().size(), "SOLVE publishes solution and residual");
+        equal("x", solve.items().get(0).label(), "SOLVE solution label");
+        equal("L-R", solve.items().get(1).label(), "SOLVE residual label");
     }
 
     private void inequalityWorkflow() {

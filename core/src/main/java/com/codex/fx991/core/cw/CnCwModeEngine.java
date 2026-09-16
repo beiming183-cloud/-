@@ -111,6 +111,10 @@ public final class CnCwModeEngine {
         return new ResultItem(label, format(value));
     }
 
+    private static ResultItem item(String label, String value) {
+        return new ResultItem(label, value);
+    }
+
     public static ModeResult evaluate(ApplicationMode mode,
                                       String commandId,
                                       String source,
@@ -266,11 +270,16 @@ public final class CnCwModeEngine {
             double[] coefficients = evaluateFields(fields, 0, context);
             List<ComplexValue> roots = PolynomialEngine.roots(coefficients);
             StringBuilder text = new StringBuilder();
+            List<ResultItem> items = new ArrayList<>();
             for (int i = 0; i < roots.size(); i++) {
+                String label = "x" + (i + 1);
+                String value = formatComplex(roots.get(i));
                 if (i > 0) text.append(i == 1 ? "\n" : "  ");
-                text.append("x").append(i + 1).append("=").append(formatComplex(roots.get(i)));
+                text.append(label).append("=").append(value);
+                items.add(item(label, value));
             }
-            return new ModeResult(text.toString(), roots.get(0).real());
+            return new ModeResult(text.toString(), roots.get(0).real(),
+                    ResultLayout.KEY_VALUE, "多项式方程", items);
         }
         if (command.equals("simultaneous")) {
             double[] values = evaluateFields(fields, 0, context);
@@ -287,7 +296,12 @@ public final class CnCwModeEngine {
                 right[row] = values[offset++];
             }
             double[] solution = new MatrixValue(matrix).solve(right);
-            return new ModeResult(formatVector("x", solution), solution[0]);
+            List<ResultItem> items = new ArrayList<>();
+            for (int index = 0; index < solution.length; index++) {
+                items.add(item("x" + (index + 1), solution[index]));
+            }
+            return new ModeResult(formatVector("x", solution), solution[0],
+                    ResultLayout.KEY_VALUE, "联立方程", items);
         }
         if (fields.size() != 2) throw new IllegalArgumentException("Enter f(x),initial guess");
         ScalarExpressionEngine.CompiledExpression expression =
@@ -296,8 +310,11 @@ public final class CnCwModeEngine {
         NumericAnalysis.SolveResult solved = NumericAnalysis.solve(
                 x -> expression.evaluate(context.withX(x)), initial, 1e-12, 100);
         if (!solved.converged()) throw new ArithmeticException("Cannot Solve");
-        return new ModeResult("x=" + format(solved.solution())
-                + "\nL-R=" + format(solved.remainder()), solved.solution());
+        String display = "x=" + format(solved.solution())
+                + "\nL-R=" + format(solved.remainder());
+        return ModeResult.keyValue("SOLVE", display, solved.solution(),
+                item("x", solved.solution()),
+                item("L-R", solved.remainder()));
     }
 
     private static ModeResult inequality(List<String> fields,
