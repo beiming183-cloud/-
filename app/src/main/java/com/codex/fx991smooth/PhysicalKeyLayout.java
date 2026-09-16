@@ -164,15 +164,20 @@ public final class PhysicalKeyLayout {
         // The previous caps were noticeably undersized on the tall X100s Pro viewport.
         float radius = clamp(Math.min(dp(25), width * 0.060f), dp(17), dp(32));
 
-        // Left-side controls on the real unit: power/home above settings/back.
+        // Left-side controls form one deliberate 2x2 module.  They are about
+        // one quarter larger than the previous caps, while the d-pad and
+        // right page rocker keep their established proportions.
+        float utilityRadius = radius * 1.24f;
+        float utilityLeftX = margin + utilityRadius;
+        float utilityRightX = margin + utilityRadius * 3.04f;
         addCircle(hits, key(CnCwKey.ON, "ON", "", Kind.CONTROL),
-                margin + radius, controlTop + controlHeight * 0.29f, radius * 2f);
+                utilityLeftX, controlTop + controlHeight * 0.29f, utilityRadius * 2f);
         addCircle(hits, key(CnCwKey.HOME, "⌂", "主屏", Kind.CONTROL),
-                margin + radius * 3.15f, controlTop + controlHeight * 0.29f, radius * 2f);
+                utilityRightX, controlTop + controlHeight * 0.29f, utilityRadius * 2f);
         addCircle(hits, key(CnCwKey.SETTINGS, "≡", "设置", Kind.CONTROL),
-                margin + radius, controlTop + controlHeight * 0.74f, radius * 2f);
+                utilityLeftX, controlTop + controlHeight * 0.74f, utilityRadius * 2f);
         addCircle(hits, key(CnCwKey.BACK, "↩", "返回", Kind.CONTROL),
-                margin + radius * 3.15f, controlTop + controlHeight * 0.74f, radius * 2f);
+                utilityRightX, controlTop + controlHeight * 0.74f, utilityRadius * 2f);
 
         // Direction pad is the interaction centre, not a tiny afterthought.
         // Center the pad in the actual space between the left controls and rocker.

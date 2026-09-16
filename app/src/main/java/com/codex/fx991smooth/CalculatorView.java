@@ -252,52 +252,50 @@ public final class CalculatorView extends View {
         drawStatusBar(canvas, lcd, "");
         List<CnCwCommand> allItems = state.homeItems();
         List<CnCwCommand> items = state.homeVisibleItems();
-        float contentTop = lcd.top + lcd.height() * 0.085f;
-        float gap = dp(1);
+        float contentTop = lcd.top + lcd.height() * 0.115f;
+        float outer = dp(4.5f);
+        float columnGap = dp(4f);
+        float rowGap = dp(5f);
         int columns = 3;
+        int rows = 2;
         int start = state.homeViewportStart();
         int visibleCount = items.size();
-        int rows = 2;
-        float cellWidth = (lcd.width() - gap * (columns + 1)) / columns;
-        float cellHeight = (lcd.bottom - contentTop - gap * (rows + 1)) / rows;
+        float cellWidth = (lcd.width() - outer * 2f - columnGap * (columns - 1)) / columns;
+        float cellHeight = (lcd.bottom - contentTop - outer * 2f - rowGap) / rows;
+        float radius = dp(4.2f);
         for (int visibleIndex = 0; visibleIndex < items.size(); visibleIndex++) {
             int index = start + visibleIndex;
             int row = visibleIndex / columns;
             int column = visibleIndex % columns;
-            float left = lcd.left + gap + column * (cellWidth + gap);
-            float top = contentTop + gap + row * (cellHeight + gap);
+            float left = lcd.left + outer + column * (cellWidth + columnGap);
+            float top = contentTop + outer + row * (cellHeight + rowGap);
             scratch.set(left, top, left + cellWidth, top + cellHeight);
             boolean selected = index == state.selectedIndex();
-            if (selected) {
-                paint.setColor(LCD_DARK);
-                canvas.drawRect(scratch, paint);
-            }
-            paint.setColor(selected ? LCD : LCD_INK);
-            drawApplicationGlyph(canvas, items.get(visibleIndex).id(), scratch,
-                    selected ? LCD : LCD_INK);
-            paint.setTypeface(FACE_MEDIUM);
-            paint.setTextSize(sp(16f));
-            paint.setTextAlign(Paint.Align.CENTER);
-            canvas.drawText(items.get(visibleIndex).label(), scratch.centerX(),
-                    scratch.bottom - dp(2.8f), paint);
+
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.argb(selected ? 56 : 14, 22, 37, 31));
+            canvas.drawRoundRect(scratch, radius, radius, paint);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(selected ? 1.1f : 0.65f));
+            paint.setColor(Color.argb(selected ? 176 : 58, 22, 37, 31));
+            canvas.drawRoundRect(scratch, radius, radius, paint);
+            paint.setStyle(Paint.Style.FILL);
+
+            drawApplicationGlyph(canvas, items.get(visibleIndex).id(), scratch, LCD_INK);
+            drawFittedCentered(canvas, items.get(visibleIndex).label(), scratch.centerX(),
+                    scratch.bottom - dp(18f), scratch.bottom - dp(2.5f),
+                    sp(13.5f), scratch.width() * 0.88f, sp(10.5f), LCD_INK, FACE_MEDIUM);
         }
-        paint.setColor(Color.argb(92, 22, 37, 31));
-        paint.setStrokeWidth(dp(0.55f));
-        float gridMidX = lcd.left + lcd.width() / 3f;
-        canvas.drawLine(gridMidX, contentTop, gridMidX, lcd.bottom, paint);
-        canvas.drawLine(gridMidX * 2f - lcd.left, contentTop,
-                gridMidX * 2f - lcd.left, lcd.bottom, paint);
-        float gridMidY = contentTop + (lcd.bottom - contentTop) * 0.5f;
-        canvas.drawLine(lcd.left, gridMidY, lcd.right, gridMidY, paint);
         if (allItems.size() > visibleCount) {
-            drawScrollBar(canvas, lcd, start, visibleCount, allItems.size(), contentTop, lcd.bottom);
+            drawScrollBar(canvas, lcd, start, visibleCount, allItems.size(),
+                    contentTop + outer, lcd.bottom - outer);
         }
     }
 
     private void drawApplicationGlyph(Canvas canvas, String id, RectF cell, int color) {
         float cx = cell.centerX();
-        float cy = cell.top + cell.height() * 0.36f;
-        float radius = Math.min(cell.width(), cell.height()) * 0.18f;
+        float cy = cell.top + cell.height() * 0.38f;
+        float radius = Math.min(cell.width(), cell.height()) * 0.145f;
         paint.setColor(color);
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeWidth(dp(1.2f));
