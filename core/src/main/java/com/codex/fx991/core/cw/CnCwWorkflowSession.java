@@ -14,6 +14,43 @@ import java.util.List;
  * any numerical algorithm.</p>
  */
 public final class CnCwWorkflowSession {
+    /** Immutable renderer/evaluation snapshot; never exposes the live cells list. */
+    public static final class Snapshot {
+        private final CnCwWorkflowSpec.WorkflowSpec spec;
+        private final int rows;
+        private final int columns;
+        private final List<String> cells;
+        private final int selectedRow;
+        private final int selectedColumn;
+        private final boolean complete;
+
+        private Snapshot(CnCwWorkflowSpec.WorkflowSpec spec, int rows, int columns,
+                         List<String> cells, int selectedRow, int selectedColumn,
+                         boolean complete) {
+            this.spec = spec;
+            this.rows = rows;
+            this.columns = columns;
+            this.cells = com.codex.fx991.core.Compat.copyList(cells);
+            this.selectedRow = selectedRow;
+            this.selectedColumn = selectedColumn;
+            this.complete = complete;
+        }
+
+        public CnCwWorkflowSpec.WorkflowSpec spec() { return spec; }
+        public int rows() { return rows; }
+        public int columns() { return columns; }
+        public List<String> cells() { return cells; }
+        public int selectedRow() { return selectedRow; }
+        public int selectedColumn() { return selectedColumn; }
+        public boolean complete() { return complete; }
+        public String cell(int row, int column) {
+            if (row < 0 || row >= rows || column < 0 || column >= columns) {
+                throw new IndexOutOfBoundsException(row + "," + column);
+            }
+            return cells.get(row * columns + column);
+        }
+    }
+
     private final CnCwWorkflowSpec.WorkflowSpec spec;
     private int rows;
     private int columns;
@@ -58,6 +95,20 @@ public final class CnCwWorkflowSession {
         return new CnCwWorkflowSession(spec, rows, columns);
     }
 
+    public CnCwWorkflowSession copy() {
+        CnCwWorkflowSession copy = new CnCwWorkflowSession(spec, rows, columns);
+        copy.cells.clear();
+        copy.cells.addAll(cells);
+        copy.selectedRow = selectedRow;
+        copy.selectedColumn = selectedColumn;
+        return copy;
+    }
+
+    public Snapshot snapshot() {
+        return new Snapshot(spec, rows, columns, cells,
+                selectedRow, selectedColumn, isComplete());
+    }
+
     public CnCwWorkflowSpec.WorkflowSpec spec() { return spec; }
     public int rows() { return rows; }
     public int columns() { return columns; }
@@ -80,13 +131,29 @@ public final class CnCwWorkflowSession {
         setCell(selectedRow, selectedColumn, value);
     }
 
-    public boolean move(int rowDelta, int columnDelta) {
-        int nextRow = clamp(selectedRow + rowDelta, 0, rows - 1);
-        int nextColumn = clamp(selectedColumn + columnDelta, 0, columns - 1);
-        boolean changed = nextRow != selectedRow || nextColumn != selectedColumn;
-        selectedRow = nextRow;
-        selectedColumn = nextColumn;
+    public boolean selectCell(int row, int column) {
+        if (row < 0 || row >= rows || column < 0 || column >= columns) return false;
+        boolean changed = row != selectedRow || column != selectedColumn;
+        selectedRow = row;
+        selectedColumn = column;
         return changed;
+    }
+
+    public boolean move(int rowDelta, int columnDelta) {
+        return selectCell(clamp(selectedRow + rowDelta, 0, rows - 1),
+                clamp(selectedColumn + columnDelta, 0, columns - 1));
+    }
+
+    public boolean selectFirstBlank() {
+        for (int row = 0; row < rows; row++) {
+            for (int column = 0; column < columns; column++) {
+                if (com.codex.fx991.core.Compat.isBlank(cell(row, column))) {
+                    selectCell(row, column);
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     public boolean appendRow() {
