@@ -21,6 +21,7 @@ public final class CnCwMachineSuite {
         homeSettingsOpensSettings();
         calculateUsesManualPrecedence();
         semanticTokensDoNotCollapseDuringEvaluation();
+        clipboardPastePreservesExpressionSemantics();
         calculateKeepsExactStandardResults();
         imaginaryUnitWorksInCalculate();
         shiftedExeForcesDecimalResult();
@@ -121,6 +122,54 @@ public final class CnCwMachineSuite {
         press(machine, CnCwKey.VAR_A, CnCwKey.VAR_B, CnCwKey.EXE);
         near(0.0, machine.state().ans(), 0.0,
                 "adjacent variables remain separate implicit factors");
+    }
+
+    private void clipboardPastePreservesExpressionSemantics() {
+        CnCwMachine source = calculateMachine();
+        press(source, CnCwKey.DIGIT_5, CnCwKey.DIGIT_6, CnCwKey.SQUARE);
+        equal("56^2", source.state().expression(), "square copy uses evaluator source");
+
+        CnCwMachine pasted = calculateMachine();
+        check(pasted.pasteExpression(source.state().expression()) > 0,
+                "evaluator source can be pasted");
+        pasted.dispatch(CnCwKey.EXE);
+        equal("3136", pasted.state().result(), "56^2 round-trips through clipboard");
+
+        pasted = calculateMachine();
+        check(pasted.pasteExpression("56²") > 0, "display superscript can be pasted");
+        pasted.dispatch(CnCwKey.EXE);
+        equal("3136", pasted.state().result(), "56² keeps square semantics");
+
+        pasted = calculateMachine();
+        check(pasted.pasteExpression("√(9)") > 0, "display square-root can be pasted");
+        pasted.dispatch(CnCwKey.EXE);
+        equal("3", pasted.state().result(), "square-root paste does not duplicate parenthesis");
+
+        pasted = calculateMachine();
+        check(pasted.pasteExpression("π/2") > 0, "pi display form can be pasted");
+        pasted.dispatch(CnCwKey.EXE);
+        equal("π/2", pasted.state().result(), "pi paste keeps exact semantics");
+
+        pasted = calculateMachine();
+        check(pasted.pasteExpression("i^2") > 0, "imaginary expression can be pasted");
+        pasted.dispatch(CnCwKey.EXE);
+        equal("-1", pasted.state().result(), "imaginary-unit paste uses complex engine");
+
+        pasted = calculateMachine();
+        press(pasted, CnCwKey.DIGIT_2, CnCwKey.ADD, CnCwKey.DIGIT_3, CnCwKey.EXE);
+        check(pasted.pasteExpression("Ans+1") > 0, "Ans source can be pasted after result");
+        pasted.dispatch(CnCwKey.EXE);
+        equal("6", pasted.state().result(), "paste after result starts new expression but keeps Ans");
+
+        pasted = calculateMachine();
+        press(pasted, CnCwKey.DIGIT_7);
+        equal(-1, pasted.pasteExpression("56@2"), "unsupported paste is rejected atomically");
+        equal("7", pasted.state().expression(), "invalid paste cannot silently drop symbols");
+
+        pasted = calculateMachine();
+        check(pasted.pasteExpression("1E3") > 0, "scientific E literal can be pasted");
+        pasted.dispatch(CnCwKey.EXE);
+        equal("1000", pasted.state().result(), "scientific E literal keeps numeric meaning");
     }
 
     private void calculateKeepsExactStandardResults() {

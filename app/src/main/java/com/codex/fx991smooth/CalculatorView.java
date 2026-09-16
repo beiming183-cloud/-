@@ -1364,11 +1364,15 @@ public final class CalculatorView extends View {
     }
 
     private void showClipboardMenu() {
+        // Selection itself already ticks on boundary changes; keep the feedback
+        // chain continuous when the user explicitly enters clipboard actions.
+        performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
         boolean hasSelection = state.hasSelection();
         String[] items = hasSelection
                 ? new String[]{"复制选区", "复制计算过程", "复制计算结果", "粘贴"}
                 : new String[]{"复制计算过程", "复制计算结果", "粘贴"};
         new AlertDialog.Builder(getContext()).setItems(items, (dialog, which) -> {
+            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
             if (hasSelection && which == 0) {
                 copyText(cleanClipboardText(machine.selectedExpression()), "已复制选区");
             } else if (which == (hasSelection ? 1 : 0)) {
@@ -1417,7 +1421,6 @@ public final class CalculatorView extends View {
         if (clipboard != null) {
             clipboard.setPrimaryClip(ClipData.newPlainText("计算器", text));
             Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
-            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
         }
     }
 
@@ -1427,37 +1430,13 @@ public final class CalculatorView extends View {
         if (clipboard == null || !clipboard.hasPrimaryClip()) return;
         CharSequence value = clipboard.getPrimaryClip().getItemAt(0).coerceToText(getContext());
         if (value == null) return;
-        String normalized = value.toString()
-                .replace("×", "*").replace("÷", "/")
-                .replace("−", "-").replace("√", "sqrt(")
-                .replace("²", "^2").replace("³", "^3");
-        int accepted = 0;
-        for (int i = 0; i < normalized.length(); i++) {
-            if (normalized.startsWith("sqrt(", i)) {
-                dispatchKey(CnCwKey.SQRT);
-                dispatchKey(CnCwKey.OPEN_PAREN);
-                accepted++;
-                i += 4;
-                continue;
-            }
-            CnCwKey key = pasteKey(normalized.charAt(i));
-            if (key != null) { dispatchKey(key); accepted++; }
-        }
-        Toast.makeText(getContext(), accepted == 0 ? "没有可识别内容" : "已粘贴", Toast.LENGTH_SHORT).show();
-    }
 
-    private CnCwKey pasteKey(char ch) {
-        return switch (ch) {
-            case '0' -> CnCwKey.DIGIT_0; case '1' -> CnCwKey.DIGIT_1;
-            case '2' -> CnCwKey.DIGIT_2; case '3' -> CnCwKey.DIGIT_3;
-            case '4' -> CnCwKey.DIGIT_4; case '5' -> CnCwKey.DIGIT_5;
-            case '6' -> CnCwKey.DIGIT_6; case '7' -> CnCwKey.DIGIT_7;
-            case '8' -> CnCwKey.DIGIT_8; case '9' -> CnCwKey.DIGIT_9;
-            case '.' -> CnCwKey.DOT; case '+' -> CnCwKey.ADD;
-            case '-' -> CnCwKey.SUBTRACT; case '*' -> CnCwKey.MULTIPLY;
-            case '/' -> CnCwKey.DIVIDE; case '(' -> CnCwKey.OPEN_PAREN;
-            case ')' -> CnCwKey.CLOSE_PAREN; default -> null;
-        };
+        int accepted = machine.pasteExpression(value.toString());
+        state = machine.state();
+        postInvalidateOnAnimation();
+        String message = accepted < 0 ? "包含无法识别的符号，未粘贴"
+                : accepted == 0 ? "没有可识别内容" : "已粘贴";
+        Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
     }
 
     @Override
