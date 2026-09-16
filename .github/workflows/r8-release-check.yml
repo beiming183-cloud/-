@@ -1,0 +1,55 @@
+name: Temporary R8 release check
+
+on:
+  push:
+    branches:
+      - stage3/semantic-editor
+
+permissions:
+  contents: read
+
+jobs:
+  r8-release-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore stable signing key
+        shell: bash
+        env:
+          SIGNING_BUNDLE: ${{ secrets.BEIBEI_SIGNING_BUNDLE_B64 }}
+        run: |
+          set -euo pipefail
+          test -n "$SIGNING_BUNDLE"
+          SIGNING_DIR="$RUNNER_TEMP/beibei-signing"
+          mkdir -p "$SIGNING_DIR"
+          printf '%s' "$SIGNING_BUNDLE" | base64 -d > "$RUNNER_TEMP/beibei-signing.tar.gz"
+          tar -xzf "$RUNNER_TEMP/beibei-signing.tar.gz" -C "$SIGNING_DIR"
+          source "$SIGNING_DIR/signing.env"
+          echo "::add-mask::$BEIBEI_STORE_PASSWORD"
+          echo "::add-mask::$BEIBEI_KEY_PASSWORD"
+          echo "BEIBEI_KEYSTORE_PATH=$SIGNING_DIR/beibei-release.jks" >> "$GITHUB_ENV"
+          echo "BEIBEI_STORE_PASSWORD=$BEIBEI_STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "BEIBEI_KEY_PASSWORD=$BEIBEI_KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "BEIBEI_KEY_ALIAS=$BEIBEI_KEY_ALIAS" >> "$GITHUB_ENV"
+
+      - name: Build release and reject stack-map warning
+        shell: bash
+        run: |
+          set -o pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:assembleCn991Release 2>&1 | tee release-build.log
+          if grep -Fq 'Invalid stack map table' release-build.log; then
+            echo 'R8 stack-map warning still present'
+            exit 1
+          fi
