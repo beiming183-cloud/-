@@ -1101,11 +1101,19 @@ public final class CalculatorView extends View {
                     lastDragCursor = state.cursor();
 
                     if (state.hasSelection()) {
+                        RectF lcd = displayBounds(getWidth());
+                        float contentTop = lcd.top + lcd.height() * 0.145f;
+                        float contentBottom = lcd.bottom - dp(3);
+                        float handleTop = contentTop + dp(1.5f) - dp(2.2f);
+                        float handleBottom = Math.min(contentBottom - dp(10),
+                                contentTop + dp(34)) + dp(2.2f);
                         float startX = displayBoundaryX(state.selectionStart());
                         float endX = displayBoundaryX(state.selectionEnd());
-                        float startDistance = Math.abs(event.getX() - startX);
-                        float endDistance = Math.abs(event.getX() - endX);
-                        float handleSlop = dp(22);
+                        float startDistance = (float) Math.hypot(
+                                event.getX() - startX, event.getY() - handleBottom);
+                        float endDistance = (float) Math.hypot(
+                                event.getX() - endX, event.getY() - handleTop);
+                        float handleSlop = dp(15);
                         if (Math.min(startDistance, endDistance) <= handleSlop) {
                             selectionDragEdge = startDistance <= endDistance ? -1 : 1;
                             displaySelectionMode = true;
@@ -1116,7 +1124,10 @@ public final class CalculatorView extends View {
                         }
                         float left = Math.min(startX, endX) - dp(6);
                         float right = Math.max(startX, endX) + dp(6);
-                        if (event.getX() >= left && event.getX() <= right) {
+                        float textTop = contentTop - dp(4);
+                        float textBottom = Math.min(contentBottom, contentTop + dp(38));
+                        if (event.getX() >= left && event.getX() <= right
+                                && event.getY() >= textTop && event.getY() <= textBottom) {
                             selectionTapCandidate = true;
                             return true;
                         }
