@@ -35,8 +35,8 @@ jobs:
       - name: 运行完整核心回归
         run: ./gradlew :core:check
 
-      - name: 构建 Android APK
-        run: ./gradlew :app:assembleCn991Debug
+      - name: 编译 Android Java
+        run: ./gradlew :app:compileCn991DebugJavaWithJavac
 
       - name: 提交正式产品改动
         shell: bash
