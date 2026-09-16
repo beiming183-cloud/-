@@ -65,16 +65,29 @@
 5. Android 对 `KEY_VALUE` 使用专用键值布局；
 6. Android 对 `MATRIX / VECTOR` 使用网格布局，并显示附加项目；
 7. `TEXT` 结果继续使用原 `state.result()` 渲染，因此分数、科学计数法、Ans 检查链路不被重写；
-8. 一次性 workflow / patch script 已全部删除；
-9. clean head `52cff66cb467fbde351a751cf8f83fa971978e1a` 的正式 PR CI run `35117876549` 已通过完整核心回归、Android Debug APK 构建与 artifact 上传；artifact `beibei-debug-apk` id `10456305339`。
+8. 一次性 Step 1–4 workflow / patch script 已全部删除；
+9. clean head `52cff66cb467fbde351a751cf8f83fa971978e1a` 的正式 PR CI run `35117876549` 已通过完整核心回归、Android Debug APK 构建与 artifact 上传。
 
-## Step 5：真机复验与收口（in progress）
+## Step 5：真机复验与收口（device validation ready）
 
-下一步：
+代码侧已完成：
 
-1. 基于长期签名链生成 `0.3.17` 真机测试 Release；
-2. 重点复验一元/双变量统计、线性回归、多项式/联立/SOLVE、矩阵、向量结果排版；
-3. 快速回归 Stage 3 的幂光标、分数/根号/函数精细编辑、复制粘贴、Ans 与历史；
-4. 真机通过后再把 PR #4 转 Ready 并合并到 `main`。
+1. 版本提升到 `0.3.17 / versionCode 331`；
+2. Application ID 保持 `com.beibei.calculator`；
+3. 使用长期 Release 签名构建，证书硬校验通过；
+4. Release 构建经过完整 core regression 与 R8 构建检查；
+5. tag `beibei-0.3.17` 已作为 prerelease 发布，名称 `北北计算器 0.3.17 · Stage 4 真机测试版`；
+6. APK：`beibei-calculator-0.3.17-release.apk`；
+7. APK SHA-256：`46af8798c435fdcee0723abb39f0bc8f996f634b390424ac7357abd92e34672e`；
+8. 临时 0.3.17 发布 workflow 已从分支删除；
+9. 清理后的 head `bffd5006e3107d9fd3e410b3e698ace4f4ccce07` 的正式 PR CI run `35118715685` 已通过完整核心回归、Android Debug APK 构建与 artifact 上传。
 
-PR #4 在真机验收前保持 Draft，不提前合并。
+真机验收重点：
+
+1. 一元统计、双变量统计、线性回归的键值结果排版；
+2. 多项式根、复根、联立方程、SOLVE 的结果可读性；
+3. 方阵/非方阵的矩阵网格、det 显示；
+4. 单向量/双向量的分量、模长、单位向量、点积、夹角；
+5. 快速回归 Stage 3 的幂光标、分数/根号/函数精细编辑、复制粘贴、Ans 与历史。
+
+真机通过后再把 PR #4 转 Ready 并合并到 `main`。在此之前 PR #4 保持 Draft。
