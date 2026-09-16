@@ -22,6 +22,7 @@ public final class CnCwMachineSuite {
         calculateUsesManualPrecedence();
         semanticTokensDoNotCollapseDuringEvaluation();
         clipboardPastePreservesExpressionSemantics();
+        ansTokenCanBeSelectedAndCopied();
         calculateKeepsExactStandardResults();
         imaginaryUnitWorksInCalculate();
         shiftedExeForcesDecimalResult();
@@ -170,6 +171,16 @@ public final class CnCwMachineSuite {
         check(pasted.pasteExpression("1E3") > 0, "scientific E literal can be pasted");
         pasted.dispatch(CnCwKey.EXE);
         equal("1000", pasted.state().result(), "scientific E literal keeps numeric meaning");
+    }
+
+    private void ansTokenCanBeSelectedAndCopied() {
+        CnCwMachine machine = calculateMachine();
+        press(machine, CnCwKey.DIGIT_2, CnCwKey.ADD, CnCwKey.DIGIT_3, CnCwKey.EXE);
+        machine.dispatch(CnCwKey.ANS);
+        equal("Ans", machine.state().expression(), "Ans key publishes evaluator source");
+        machine.selectTouchWord(0);
+        check(machine.state().hasSelection(), "Ans token can be touch-selected");
+        equal("Ans", machine.selectedExpression(), "selected Ans exports to clipboard source");
     }
 
     private void calculateKeepsExactStandardResults() {
