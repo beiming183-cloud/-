@@ -1102,18 +1102,24 @@ public final class CalculatorView extends View {
                         RectF lcd = displayBounds(getWidth());
                         float contentTop = lcd.top + lcd.height() * 0.145f;
                         float contentBottom = lcd.bottom - dp(3);
-                        float handleTop = contentTop + dp(1.5f) - dp(2.2f);
-                        float handleBottom = Math.min(contentBottom - dp(10),
-                                contentTop + dp(34)) + dp(2.2f);
                         float startX = displayBoundaryX(state.selectionStart());
                         float endX = displayBoundaryX(state.selectionEnd());
-                        float startDistance = (float) Math.hypot(
-                                event.getX() - startX, event.getY() - handleBottom);
-                        float endDistance = (float) Math.hypot(
-                                event.getX() - endX, event.getY() - handleTop);
-                        float handleSlop = dp(15);
-                        if (Math.min(startDistance, endDistance) <= handleSlop) {
-                            selectionDragEdge = startDistance <= endDistance ? -1 : 1;
+                        // Keep the handles visually small, but give each boundary a much
+                        // larger phone-style grab zone. Users should not need to land on
+                        // the tiny knob itself before they can adjust an existing selection.
+                        float handleHitTop = contentTop - dp(10);
+                        float handleHitBottom = Math.min(contentBottom, contentTop + dp(52));
+                        float handleXSlop = dp(26);
+                        boolean inHandleBand = event.getY() >= handleHitTop
+                                && event.getY() <= handleHitBottom;
+                        float startXDistance = Math.abs(event.getX() - startX);
+                        float endXDistance = Math.abs(event.getX() - endX);
+                        boolean startHit = inHandleBand && startXDistance <= handleXSlop;
+                        boolean endHit = inHandleBand && endXDistance <= handleXSlop;
+                        if (startHit || endHit) {
+                            selectionDragEdge = startHit && endHit
+                                    ? (startXDistance <= endXDistance ? -1 : 1)
+                                    : startHit ? -1 : 1;
                             displaySelectionMode = true;
                             lastDragCursor = selectionDragEdge < 0
                                     ? state.selectionStart() : state.selectionEnd();
@@ -1135,6 +1141,16 @@ public final class CalculatorView extends View {
                         if (displayPressed) {
                             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
                             displayLongPressTriggered = true;
+                            if (machine.cursorLimit() == 0) {
+                                // There is nothing to select on an empty editor. Long-press
+                                // should still expose the standard phone action the user
+                                // needs here: paste from the system clipboard.
+                                displaySelectionMode = false;
+                                selectionDragEdge = 0;
+                                postInvalidateOnAnimation();
+                                showPasteOnlyMenu();
+                                return;
+                            }
                             int anchor = displayCursorPosition(displayDownX);
                             state = machine.selectTouchWord(anchor);
                             lastDragCursor = state.cursor();
@@ -1361,6 +1377,13 @@ public final class CalculatorView extends View {
             Toast.makeText(getContext(), "已复制公式", Toast.LENGTH_SHORT).show();
             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
         }
+    }
+
+    private void showPasteOnlyMenu() {
+        new AlertDialog.Builder(getContext()).setItems(new String[]{"粘贴"}, (dialog, which) -> {
+            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            pasteClipboardText();
+        }).show();
     }
 
     private void showClipboardMenu() {
