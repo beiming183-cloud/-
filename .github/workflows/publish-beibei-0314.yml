@@ -1,0 +1,48 @@
+name: Publish 北北计算器 0.3.14
+
+on:
+  push:
+    branches: [ stage3/semantic-editor ]
+    paths:
+      - .github/workflows/publish-beibei-0314.yml
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出已验证源码
+        uses: actions/checkout@v4
+        with:
+          ref: 702e467fb3934d28c0d08ddedb679285eadccc98
+
+      - name: 下载正式 CI 已验证 APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: cn991-debug-apk
+          path: release
+          run-id: 35101291730
+          github-token: ${{ github.token }}
+
+      - name: 发布 0.3.14 真机验证版
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=$(find release -type f -name '*.apk' | head -n 1)
+          test -n "$APK"
+          OUT=release/beibei-calculator-0.3.14-debug.apk
+          if [ "$APK" != "$OUT" ]; then cp "$APK" "$OUT"; fi
+          if gh release view beibei-0.3.14 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists"
+            exit 0
+          fi
+          gh release create beibei-0.3.14 "$OUT#北北计算器 0.3.14 调试 APK" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target 702e467fb3934d28c0d08ddedb679285eadccc98 \
+            --title "北北计算器 0.3.14 - Stage 3 真机验证版" \
+            --notes "Stage 3 语义编辑器真机验证版。\n\n本版重点：分数、幂、根号/n 次根、函数参数的语义光标与结构化选区，以及 Android 点击、滑动、长按和选区抓手的 semantic path 命中迁移。legacy token boundary 保留为安全回退。\n\n版本：0.3.14（versionCode 328）。包名和固定 debug 签名保持不变，可直接覆盖安装 0.3.13。\n\nAPK 来自正式 PR CI run 35101291730 的已验证 artifact，未重新构建。PR #3 仍保持 Draft，等待真机验收后再决定合并。"
