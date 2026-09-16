@@ -1,0 +1,41 @@
+name: Stage 3 power Step 3 verification
+
+on:
+  push:
+    branches: [ stage3/semantic-editor ]
+
+permissions:
+  contents: write
+
+jobs:
+  verify-power-step3:
+    if: "github.event.head_commit.message == 'ci(stage3): verify power step3 completion'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: stage3/semantic-editor
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Apply Stage 3 Step 3 patch
+        run: python3 tools/stage3_power_step3_patch.py
+      - name: Enable Gradle wrapper
+        run: chmod +x ./gradlew
+      - name: Run full core regression
+        run: ./gradlew :core:check
+      - name: Compile Android Java
+        run: ./gradlew :app:compileCn991DebugJavaWithJavac
+      - name: Commit verified Step 3 changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add core/src/main/java/com/codex/fx991/core/cw/CnCwMachine.java \
+                  core/src/regression/java/com/codex/fx991/core/CnCwCursorPathSuite.java \
+                  docs/hand-offs/STAGE3_RELAY.md
+          git commit -m "feat(stage3): complete power semantic editing"
+          git push origin HEAD:stage3/semantic-editor
