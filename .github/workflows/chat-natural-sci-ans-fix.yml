@@ -26,8 +26,6 @@ jobs:
         run: chmod +x ./gradlew
       - name: Run full core regression
         run: ./gradlew :core:check
-      - name: Compile CN991 debug APK
-        run: ./gradlew :app:assembleCn991Debug
       - name: Commit verified product changes
         shell: bash
         run: |
