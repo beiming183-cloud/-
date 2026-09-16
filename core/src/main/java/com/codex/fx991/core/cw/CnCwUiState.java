@@ -28,6 +28,8 @@ public final class CnCwUiState {
     private final String displayText;
     private final CnCwExpressionNode naturalExpression;
     private final int cursor;
+    /** Stage 3 compatibility view of the cursor as a semantic editor position. */
+    private final CnCwCursorPath semanticCursor;
     private final int selectionStart;
     private final int selectionEnd;
     private final String result;
@@ -97,6 +99,7 @@ public final class CnCwUiState {
         this.displayText = displayText == null ? "" : displayText;
         this.naturalExpression = Objects.requireNonNull(naturalExpression, "naturalExpression");
         this.cursor = Math.max(0, cursor);
+        this.semanticCursor = CnCwCursorPath.rootBoundary(this.cursor);
         this.selectionStart = Math.max(0, selectionStart);
         this.selectionEnd = Math.max(this.selectionStart, selectionEnd);
         this.result = result == null ? "" : result;
@@ -164,6 +167,15 @@ public final class CnCwUiState {
     public String displayText() { return displayText; }
     public CnCwExpressionNode naturalExpression() { return naturalExpression; }
     public int cursor() { return cursor; }
+    /**
+     * Semantic cursor facade introduced in Stage 3.
+     *
+     * <p>At the bootstrap step this mirrors the existing top-level token
+     * boundary. Fraction/power/root/function work will progressively replace
+     * the root-only path with nested slots without removing {@link #cursor()}.
+     * </p>
+     */
+    public CnCwCursorPath semanticCursor() { return semanticCursor; }
     public boolean hasSelection() { return selectionEnd > selectionStart; }
     public int selectionStart() { return selectionStart; }
     public int selectionEnd() { return selectionEnd; }
