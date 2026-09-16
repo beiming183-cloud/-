@@ -21,8 +21,15 @@
 - APK 必须能够读取有效 `versionCode`。
 - Application ID 必须等于 `com.beibei.calculator`。
 - Release certificate SHA-256 必须等于本页记录的固定指纹。
+- Release 构建日志若出现 R8 `Invalid stack map table`，CI 直接失败并禁止发布。
 - 任一校验失败，CI 直接失败并禁止发布。
 - 不允许再用 GitHub Actions cache 保存或生成正式签名密钥。
+
+## R8 兼容性
+
+0.3.15 的首次正式构建曾对 `StatisticsEngine.TwoVariableResults` 报出 R8 `Invalid stack map table` 警告。根因是大型 Java 17 record 的生成字节码与当前 R8 版本之间的兼容性问题，而不是统计公式错误。
+
+Stage 3 已将该结果载体改为保持相同构造参数与 `n()`、`meanX()`、`sampleVarianceX()` 等访问接口的普通不可变类。Release 专用构建在不使用额外 ProGuard keep 规则的情况下复验通过，警告已消失。长期发布 workflow 现在把同类 warning 作为 fail-closed 门禁。
 
 ## 版本发布约定
 
