@@ -73,13 +73,28 @@ Stage 3 把编辑位置从单一 token 下标升级为真正的语义位置，�
 - versionCode：`329`；
 - Release certificate SHA-256：`DA6901B21ED9CCD8E33F4BFA6D2726183913F4E6C13910705E210184A17A5D33`；
 - Release key 只从 GitHub Actions Secret 恢复，不再使用 cache 保存正式签名；
-- 正式发布前硬校验 tag、APK versionName、Application ID 和证书指纹；已有 tag 不允许覆盖。
+- 正式发布前硬校验 tag、APK versionName、versionCode、Application ID 和证书指纹；已有 tag 不允许覆盖；
+- Release 构建若出现 R8 `Invalid stack map table`，直接失败并禁止发布。
 
 0.3.15 已通过长期签名发布流程并发布：`beibei-0.3.15`。以后正式版本必须沿用同一 Application ID 与同一 Release key。
 
+## R8 双变量统计风险处理
+
+0.3.15 首次正式构建曾对 `StatisticsEngine$TwoVariableResults` 报 R8 `Invalid stack map table` warning。统计公式本身没有报错；问题来自包含大量 `double` 分量的 Java 17 record 生成字节码。
+
+已完成根因修复：
+
+- `TwoVariableResults` 改为普通 `public static final` 不可变类；
+- 构造参数顺序和 `n()`、`sumX()`、`meanX()`、`sampleVarianceX()` 等访问接口保持不变；
+- 不修改双变量统计公式与上层调用协议；
+- 临时 Release+R8 检查在保留 ProGuard keep 规则时通过；
+- 随后删除 keep 规则恢复最小 ProGuard 配置，再次通过 Release+R8 检查；
+- 因此 warning 的消失来自代码结构修复，而非 suppress/keep 绕过；
+- 一次性 R8 检查 workflow 已删除，长期发布 workflow 已加入同类 warning 的 fail-closed 门禁。
+
 ## Stage 3 真机验收
 
-使用 **0.3.15 Release**，不要再用 0.3.14 Debug 作为 Stage 3 验收基线。
+使用 **0.3.15 Release** 作为当前正式安装链基线。注意：已发布的 0.3.15 APK 是 R8 修复前构建，因此 Stage 3 语义触摸仍可用它验收；统计模块若要验证本次 R8 修复，需要下一次正式版本重新发布后再看真机 Release 行为。
 
 1. 普通表达式：点击移动、水平滑动、左右抓手不能比 Stage 2 退化；
 2. 分数：点击分子/分母能进入对应槽，↑/↓ 正常，DEL 不拆结构；
@@ -87,11 +102,11 @@ Stage 3 把编辑位置从单一 token 下标升级为真正的语义位置，�
 4. 根号 / n 次根：被开方数与根指数命中符合视觉位置；
 5. 函数：`sin(30)` 参数可精细选择；`sum(x,1,3)` 单参数可选、跨逗号吸附完整函数；
 6. 复验复制、粘贴、替换、长按连续输入/删除、Ans 展开和历史；
-7. 额外复验统计/双变量统计，关注正式 Release 的 R8 压缩构建是否存在运行时异常；
-8. 若真机命中偏高/偏低，只调 Android semantic span 几何容差，不改 Step 1–6 核心编辑协议。
+7. 若真机命中偏高/偏低，只调 Android semantic span 几何容差，不改 Step 1–6 核心编辑协议。
 
 ## 下一步
 
-- 完成 0.3.15 Release 真机集中验收；
+- 完成 0.3.15 Release 的 Stage 3 语义触摸真机集中验收；
 - 真机通过后把 PR #3 从 Draft 收口并合并到 `main`；
+- R8 修复随下一正式版本进入长期 Release 链；
 - Stage 3 合并后进入应用模式结果协议统一，优先统计、方程、矩阵、向量，不在当前分支继续扩任务。
