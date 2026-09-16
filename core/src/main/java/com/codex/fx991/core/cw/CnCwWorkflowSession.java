@@ -1,6 +1,7 @@
 package com.codex.fx991.core.cw;
 
 import com.codex.fx991.core.math.ScalarExpressionEngine;
+import com.codex.fx991.core.mode.ApplicationMode;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -8,9 +9,9 @@ import java.util.List;
 /**
  * Mutable core-owned editor state for one structured application workflow.
  *
- * <p>Stage 5 starts with statistics series editors. Later coefficient/grid
- * workflows reuse the same row-major state. Evaluation still delegates to the
- * existing CnCwModeEngine bridge, so numerical behavior is not duplicated.</p>
+ * <p>Every Stage 5 structured editor uses the same row-major state. Evaluation
+ * still delegates to CnCwModeEngine, so input UX can evolve without duplicating
+ * any numerical algorithm.</p>
  */
 public final class CnCwWorkflowSession {
     private final CnCwWorkflowSpec.WorkflowSpec spec;
@@ -89,6 +90,7 @@ public final class CnCwWorkflowSession {
     }
 
     public boolean appendRow() {
+        if (isSimultaneous()) return false;
         if (rows >= spec.maxRows()) return false;
         int oldRows = rows;
         resize(rows + 1, columns);
@@ -98,6 +100,7 @@ public final class CnCwWorkflowSession {
     }
 
     public boolean removeSelectedRow() {
+        if (isSimultaneous()) return false;
         if (rows <= spec.minRows()) return false;
         int remove = selectedRow;
         for (int column = columns - 1; column >= 0; column--) {
@@ -113,10 +116,17 @@ public final class CnCwWorkflowSession {
                 || newColumns < spec.minColumns() || newColumns > spec.maxColumns()) {
             return false;
         }
+        if (isSimultaneous() && newColumns != newRows + 1) return false;
         resize(newRows, newColumns);
         selectedRow = Math.min(selectedRow, rows - 1);
         selectedColumn = Math.min(selectedColumn, columns - 1);
         return true;
+    }
+
+    /** Changes a 2–4 variable simultaneous system to n rows × (n+1) columns. */
+    public boolean setEquationDimension(int dimension) {
+        if (!isSimultaneous()) return false;
+        return resizeGrid(dimension, dimension + 1);
     }
 
     public boolean isComplete() {
@@ -127,8 +137,9 @@ public final class CnCwWorkflowSession {
     }
 
     /**
-     * Compatibility serialization for the existing evaluator. Statistics and
-     * vector data are row-major; matrix dimensions are prefixed automatically.
+     * Compatibility serialization for the existing evaluator. Statistics,
+     * polynomial, SOLVE and vectors are row-major. Matrix shape is prefixed as
+     * rows,columns; simultaneous equations are prefixed by their dimension.
      */
     public String legacySource() {
         if (!isComplete()) throw new IllegalStateException("Workflow input incomplete");
@@ -136,6 +147,8 @@ public final class CnCwWorkflowSession {
         if (spec.layout() == CnCwWorkflowSpec.InputLayout.GRID) {
             values.add(Integer.toString(rows));
             values.add(Integer.toString(columns));
+        } else if (isSimultaneous()) {
+            values.add(Integer.toString(rows));
         }
         values.addAll(cells);
         return com.codex.fx991.core.Compat.join(",", values);
@@ -147,6 +160,11 @@ public final class CnCwWorkflowSession {
 
     public List<String> cells() {
         return com.codex.fx991.core.Compat.copyList(cells);
+    }
+
+    private boolean isSimultaneous() {
+        return spec.mode() == ApplicationMode.EQUATION
+                && "simultaneous".equals(spec.commandId());
     }
 
     private void resize(int newRows, int newColumns) {
