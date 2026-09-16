@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   verify-power-step3:
-    if: "github.event.head_commit.message == 'ci(stage3): verify power step3 completion'"
+    if: "github.event.head_commit.message == 'ci(stage3): verify power step3 retry'"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +23,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Apply Stage 3 Step 3 patch
         run: python3 tools/stage3_power_step3_patch.py
+      - name: Preserve Stage 2 power selection contract
+        run: python3 tools/stage3_power_step3_compat_patch.py
       - name: Enable Gradle wrapper
         run: chmod +x ./gradlew
       - name: Run full core regression
