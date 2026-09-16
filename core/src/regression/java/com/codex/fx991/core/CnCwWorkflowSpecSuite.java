@@ -20,6 +20,8 @@ public final class CnCwWorkflowSpecSuite {
         equationSpecs();
         matrixAndVectorSpecs();
         statisticsSessions();
+        equationSessions();
+        matrixAndVectorSessions();
         unsupportedWorkflowReturnsNull();
         System.out.println("PASS " + checks + " workflow-spec/session checks");
     }
@@ -118,6 +120,71 @@ public final class CnCwWorkflowSpecSuite {
             failedClosed = true;
         }
         check(failedClosed, "incomplete statistics session cannot serialize silently");
+    }
+
+    private void equationSessions() {
+        var polynomial = CnCwWorkflowSession.create(
+                CnCwWorkflowSpec.forCommand(ApplicationMode.EQUATION, "polynomial"));
+        polynomial.setCell(0, 0, "1");
+        polynomial.setCell(1, 0, "2");
+        polynomial.setCell(2, 0, "-3");
+        equal("1,2,-3", polynomial.legacySource(), "polynomial coefficients serialize directly");
+        equal(2, polynomial.evaluate(context).items().size(), "quadratic session returns two roots");
+        check(polynomial.resizeGrid(4, 1), "polynomial can resize to cubic coefficient count");
+        equal(4, polynomial.rows(), "polynomial resized coefficient rows");
+
+        var simultaneous = CnCwWorkflowSession.create(
+                CnCwWorkflowSpec.forCommand(ApplicationMode.EQUATION, "simultaneous"));
+        equal(2, simultaneous.rows(), "simultaneous defaults to two variables");
+        equal(3, simultaneous.columns(), "two-variable system has augmented column");
+        simultaneous.setCell(0, 0, "1");
+        simultaneous.setCell(0, 1, "1");
+        simultaneous.setCell(0, 2, "5");
+        simultaneous.setCell(1, 0, "2");
+        simultaneous.setCell(1, 1, "-1");
+        simultaneous.setCell(1, 2, "1");
+        equal("2,1,1,5,2,-1,1", simultaneous.legacySource(),
+                "simultaneous session prefixes dimension");
+        near(2.0, simultaneous.evaluate(context).primaryValue(), 1e-12,
+                "simultaneous session delegates to equation engine");
+        check(simultaneous.setEquationDimension(3), "simultaneous can switch to three variables");
+        equal(3, simultaneous.rows(), "three-variable equation rows");
+        equal(4, simultaneous.columns(), "three-variable augmented columns");
+        check(!simultaneous.resizeGrid(3, 3), "simultaneous rejects invalid non-augmented shape");
+
+        var solve = CnCwWorkflowSession.create(
+                CnCwWorkflowSpec.forCommand(ApplicationMode.EQUATION, "solve"));
+        solve.setCell(0, 0, "x^2-16");
+        solve.setCell(0, 1, "1");
+        equal("x^2-16,1", solve.legacySource(), "SOLVE fixed fields serialize in order");
+        near(4.0, solve.evaluate(context).primaryValue(), 1e-9,
+                "SOLVE session delegates to numeric solver");
+    }
+
+    private void matrixAndVectorSessions() {
+        var matrix = CnCwWorkflowSession.create(
+                CnCwWorkflowSpec.forCommand(ApplicationMode.MATRIX, "calculate"));
+        check(matrix.resizeGrid(2, 2), "matrix can choose 2x2 shape");
+        matrix.setCell(0, 0, "2");
+        matrix.setCell(0, 1, "1");
+        matrix.setCell(1, 0, "1");
+        matrix.setCell(1, 1, "1");
+        equal("2,2,2,1,1,1", matrix.legacySource(), "matrix serializes dimensions and cells");
+        near(1.0, matrix.evaluate(context).primaryValue(), 0.0,
+                "matrix session delegates to matrix engine");
+
+        var vector = CnCwWorkflowSession.create(
+                CnCwWorkflowSpec.forCommand(ApplicationMode.VECTOR, "calculate"));
+        equal(1, vector.rows(), "vector defaults to one vector");
+        equal(2, vector.columns(), "vector defaults to 2D");
+        check(vector.resizeGrid(2, 2), "vector can switch to two 2D vectors");
+        vector.setCell(0, 0, "1");
+        vector.setCell(0, 1, "2");
+        vector.setCell(1, 0, "3");
+        vector.setCell(1, 1, "4");
+        equal("1,2,3,4", vector.legacySource(), "two-vector row-major serialization");
+        near(11.0, vector.evaluate(context).primaryValue(), 0.0,
+                "vector session delegates to vector engine");
     }
 
     private void unsupportedWorkflowReturnsNull() {
