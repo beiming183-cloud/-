@@ -129,8 +129,12 @@ Stage 3 不继续在 Android View 中堆光标补丁，而是把编辑位置从�
 9. 更新旧 golden regression：Step 6 起，函数单参数内部触摸拖选的正式契约改为参数级精细选区；
 10. 一次性 Step 6 patch workflow/script 已删除；产品代码清理 head `f827b90` 的正式 PR CI run `35098992722` 已通过完整核心回归、Android APK 构建、固定签名检查和 artifact 上传。
 
-下一步：
+## Step 7：Android 语义命中与渲染迁移（next）
 
-- Step 7：Android 命中测试与渲染全面切换到 semantic cursor / semantic selection；
-- 真机重新验证点击光标、水平滑动、上下结构移动、选区抓手、复制粘贴、DEL 与长按重复；
-- Step 7 通过后再决定 Stage 3 是否可以从 Draft 收口并合并。
+下一步只迁移 Android 适配层，不再改变 Step 1–6 的核心数学编辑协议：
+
+1. 触摸点击与拖动命中逐步读取 `semanticCursor()` / `semanticSelectionAnchor()` / `semanticSelectionFocus()`；
+2. 自然表达式节点提供分子、分母、指数、根号内容、函数参数等可进入区域，不再只靠平铺 token 字符串宽度判断；
+3. 保留 legacy token boundary 作为回退，直到真机手势全部验收；
+4. 真机复验点击光标、水平滑动、上下结构移动、左右选区抓手、复制粘贴、DEL、长按连续输入/删除；
+5. Step 7 通过后，再决定 PR #3 是否从 Draft 收口并合并 Stage 3。
