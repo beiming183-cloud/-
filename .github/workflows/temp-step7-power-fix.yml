@@ -28,7 +28,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: 应用幂光标修复
-        run: python scripts/temp_step7_power_fix.py
+        run: python scripts/temp_step7_power_fix_v2.py
 
       - name: 添加 Gradle 执行权限
         run: chmod +x ./gradlew
