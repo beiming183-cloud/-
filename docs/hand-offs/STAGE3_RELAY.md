@@ -94,8 +94,22 @@ Stage 3 不继续在 Android View 中堆光标补丁，而是把编辑位置从�
 9. `sqrt(9)` 与 `root(3,8)` 的求值回归继续通过，未改 evaluator 参数顺序；
 10. 分数、幂语义优先级和 Stage 2 兼容协议保持不变。
 
+## Step 5：函数参数语义编辑（completed）
+
+普通函数参数已经接入 semantic cursor，同时保留 Stage 2 交互契约：
+
+1. 普通函数（如 `sin(`、`cos(`、`ln(`、`sum(`）发布 `FUNCTION_ARGUMENT`；`sqrt/root` 继续由 Step 4 专用根号语义处理，`e^(`/`×10^(` 也不伪装成普通函数；
+2. `childPath` 使用 `[函数模板 token 位置, 参数序号]` 区分多参数函数中的每一个参数；
+3. 单参数函数左右路径为 `root-before → argument → root-after`；多参数函数按 `arg0 → arg1 → ...` 移动，结构逗号不会成为可编辑光标位置；
+4. DEL 在参数内部只删除参数内容，在后续参数起点会回到前一参数，不允许删除结构逗号；从闭合函数 `root-after` DEL 会原子删除完整函数；
+5. 参数暂时为空时仍保留 `FUNCTION_ARGUMENT` 语义位置，可以继续输入或粘贴；
+6. 保留 Stage 2 的裸函数兼容行为：刚输入 `sin(` 这类只有一个空参数的裸函数 token 时，DEL 一次仍会删除完整函数 token；
+7. 保留 Stage 2 的触摸选区行为：触摸拖选函数内部仍扩展为完整函数调用，不在 Step 5 抢先引入参数级触摸精细选区；参数级统一选择/替换留到 Step 6；
+8. `sin(30)` 与 `sum(x,1,3)` 求值回归继续通过；
+9. 开发过程中两次由旧回归拦住兼容性变化（裸函数 DEL、函数内部触摸选区），均按既有契约恢复后再通过；
+10. 一次性 Step 5 patch/compat workflow 与脚本已全部删除；清理后的正式 PR CI run `35097482012` 已通过完整核心回归、Android APK 构建、固定签名检查和 artifact 上传。
+
 下一步：
 
-- Step 5：函数参数（next）；
-- Step 6：语义选区、替换和删除统一；
+- Step 6：语义选区、替换和删除统一（next）；
 - Step 7：Android 命中测试与渲染全面切换到 semantic cursor。
