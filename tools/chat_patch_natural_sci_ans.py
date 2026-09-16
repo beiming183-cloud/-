@@ -1,0 +1,147 @@
+from pathlib import Path
+
+view_path = Path('app/src/main/java/com/codex/fx991smooth/CalculatorView.java')
+text = view_path.read_text(encoding='utf-8')
+
+old_comment = '    /** Draws engineering and SCI output as a compact mantissa with superscript exponent. */'
+new_comment = '    /** Draws SCI/ENG output as a handheld-style mantissa × 10 with a raised exponent. */'
+if old_comment in text:
+    start = text.index(old_comment)
+    end = text.index('    /** Draws handheld-style stacked fractions for exact scalar results. */', start)
+    new_scientific = r'''    /** Draws SCI/ENG output as a handheld-style mantissa × 10 with a raised exponent. */
+    private boolean drawNaturalScientificResult(Canvas canvas, String value, RectF lcd,
+                                                float contentTop, float contentBottom,
+                                                float available) {
+        if (value == null || value.isBlank()) return false;
+        int marker = value.indexOf("\u00d710^");
+        int markerLength = 3;
+        if (marker < 1) {
+            int upper = value.lastIndexOf('E');
+            int lower = value.lastIndexOf('e');
+            int scientific = Math.max(upper, lower);
+            if (scientific < 1 || scientific + 1 >= value.length()) return false;
+            marker = scientific;
+            markerLength = 1;
+        }
+        String mantissa = value.substring(0, marker).trim();
+        String exponent = value.substring(marker + markerLength).trim();
+        if (exponent.startsWith("(") && exponent.endsWith(")") && exponent.length() > 2) {
+            exponent = exponent.substring(1, exponent.length() - 1);
+        }
+        if (mantissa.isEmpty() || exponent.isEmpty()) return false;
+
+        float baseSize = sp(34f);
+        float minBaseSize = sp(14f);
+        float exponentRatio = 0.62f;
+        String base = mantissa + "\u00d710";
+        paint.setTypeface(FACE_MEDIUM);
+
+        float exponentSize;
+        float baseWidth;
+        float exponentWidth;
+        while (true) {
+            exponentSize = baseSize * exponentRatio;
+            paint.setTextSize(baseSize);
+            baseWidth = paint.measureText(base);
+            paint.setTextSize(exponentSize);
+            exponentWidth = paint.measureText(exponent);
+            if (baseWidth + exponentWidth <= available || baseSize <= minBaseSize) break;
+            baseSize -= sp(1f);
+        }
+
+        exponentSize = baseSize * exponentRatio;
+        paint.setTextSize(baseSize);
+        baseWidth = paint.measureText(base);
+        paint.setTextSize(exponentSize);
+        exponentWidth = paint.measureText(exponent);
+        float totalWidth = baseWidth + exponentWidth;
+        float horizontalScale = totalWidth > available ? available / totalWidth : 1f;
+
+        float baseline = contentTop + (contentBottom - contentTop) * 0.86f;
+        float right = lcd.right - dp(6);
+        canvas.save();
+        canvas.translate(right, 0f);
+        canvas.scale(horizontalScale, 1f);
+        float left = -totalWidth;
+        paint.setColor(LCD_INK);
+        paint.setTypeface(FACE_MEDIUM);
+        paint.setTextAlign(Paint.Align.LEFT);
+        paint.setTextSize(baseSize);
+        canvas.drawText(base, left, baseline, paint);
+        paint.setTextSize(exponentSize);
+        canvas.drawText(exponent, left + baseWidth, baseline - baseSize * 0.54f, paint);
+        canvas.restore();
+        return true;
+    }
+
+'''
+    text = text[:start] + new_scientific + text[end:]
+elif new_comment not in text:
+    raise SystemExit('scientific result method marker not found')
+
+if 'private String ansClipboardText()' not in text:
+    start = text.index('    private void showClipboardMenu() {')
+    end = text.index('    private String cleanClipboardText(String text) {', start)
+    new_clipboard = r'''    private void showClipboardMenu() {
+        performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+        boolean hasSelection = state.hasSelection();
+        boolean hasAns = state.hasAns();
+        List<String> actions = new ArrayList<>();
+        if (hasSelection) actions.add("复制选区");
+        actions.add("复制计算过程");
+        actions.add("复制计算结果");
+        if (hasAns) actions.add("复制 Ans");
+        actions.add("粘贴");
+        String[] items = actions.toArray(new String[0]);
+        new AlertDialog.Builder(getContext()).setItems(items, (dialog, which) -> {
+            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            String action = items[which];
+            switch (action) {
+                case "复制选区" -> copyText(cleanClipboardText(machine.selectedExpression()), "已复制选区");
+                case "复制计算过程" -> copyText(cleanClipboardText(state.expression()), "已复制计算过程");
+                case "复制计算结果" -> copyText(decimalResult(state.result()), "已复制十进制结果");
+                case "复制 Ans" -> copyText(ansClipboardText(), "已复制 Ans");
+                default -> pasteClipboardText();
+            }
+        }).show();
+    }
+
+    private String ansClipboardText() {
+        if (!state.hasAns()) return "";
+        String currentResult = cleanClipboardText(state.result());
+        if (state.resultShown() && !currentResult.isEmpty()) {
+            return decimalResult(currentResult);
+        }
+        return BigDecimal.valueOf(state.ans()).stripTrailingZeros().toPlainString();
+    }
+
+'''
+    text = text[:start] + new_clipboard + text[end:]
+view_path.write_text(text, encoding='utf-8')
+
+suite_path = Path('core/src/regression/java/com/codex/fx991/core/CnCwMachineSuite.java')
+suite = suite_path.read_text(encoding='utf-8')
+anchor = '        clipboardPastePreservesExpressionSemantics();\n'
+if '        ansTokenCanBeSelectedAndCopied();\n' not in suite:
+    suite = suite.replace(anchor, anchor + '        ansTokenCanBeSelectedAndCopied();\n', 1)
+method_anchor = '    private void calculateKeepsExactStandardResults() {'
+test_method = r'''    private void ansTokenCanBeSelectedAndCopied() {
+        CnCwMachine machine = calculateMachine();
+        press(machine, CnCwKey.DIGIT_2, CnCwKey.ADD, CnCwKey.DIGIT_3, CnCwKey.EXE);
+        machine.dispatch(CnCwKey.ANS);
+        equal("Ans", machine.state().expression(), "Ans key publishes evaluator source");
+        machine.selectTouchWord(0);
+        check(machine.state().hasSelection(), "Ans token can be touch-selected");
+        equal("Ans", machine.selectedExpression(), "selected Ans exports to clipboard source");
+    }
+
+'''
+if 'private void ansTokenCanBeSelectedAndCopied()' not in suite:
+    suite = suite.replace(method_anchor, test_method + method_anchor, 1)
+suite_path.write_text(suite, encoding='utf-8')
+
+gradle_path = Path('app/build.gradle')
+gradle = gradle_path.read_text(encoding='utf-8')
+gradle = gradle.replace('versionCode 323', 'versionCode 324')
+gradle = gradle.replace("versionName '0.3.9'", "versionName '0.3.10'")
+gradle_path.write_text(gradle, encoding='utf-8')
