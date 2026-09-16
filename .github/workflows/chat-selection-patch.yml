@@ -1,4 +1,4 @@
-name: Chat mobile selection patch
+name: Chat continuation patch
 
 on:
   push:
@@ -8,8 +8,8 @@ permissions:
   contents: write
 
 jobs:
-  patch-selection:
-    if: ${{ !contains(github.event.head_commit.message, '[chat-selection-patch]') }}
+  patch-continuation:
+    if: ${{ !contains(github.event.head_commit.message, '[chat-continuation-patch]') }}
     runs-on: ubuntu-latest
     steps:
       - name: 检出续开发分支
@@ -18,10 +18,11 @@ jobs:
           ref: chat/continue-20260916
           fetch-depth: 0
 
-      - name: 应用手机式双边界选区补丁
+      - name: 应用聊天模式续开发补丁
         run: |
           python tools/chat_patch_selection_handles.py
           python tools/chat_patch_selection_hitbox.py
+          python tools/chat_patch_ui_finish.py
 
       - name: 提交补丁
         shell: bash
@@ -33,7 +34,10 @@ jobs:
           git config user.name "chat-continuation"
           git config user.email "actions@users.noreply.github.com"
           git add core/src/main/java/com/codex/fx991/core/cw/CnCwMachine.java
+          git add core/src/main/java/com/codex/fx991/core/ui/Cw991LayoutMetrics.java
           git add core/src/regression/java/com/codex/fx991/core/CnCwMachineSuite.java
+          git add core/src/regression/java/com/codex/fx991/core/ui/Cw991LayoutMetricsSuite.java
           git add app/src/main/java/com/codex/fx991smooth/CalculatorView.java
-          git commit -m "feat: add independent phone-style selection handles [chat-selection-patch]"
+          git add app/src/main/java/com/codex/fx991smooth/PhysicalKeyLayout.java
+          git commit -m "feat: finish mobile selection and UI polish [chat-continuation-patch]"
           git push origin HEAD:chat/continue-20260916
