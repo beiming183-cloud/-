@@ -1,0 +1,48 @@
+name: Chat selection paste fix
+
+on:
+  push:
+    branches: [ chat/continue-20260916 ]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-selection-paste:
+    if: ${{ !contains(github.event.head_commit.message, '[selection-paste-fix]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout continuation branch
+        uses: actions/checkout@v4
+        with:
+          ref: chat/continue-20260916
+          fetch-depth: 0
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply interaction patch
+        run: python tools/chat_patch_selection_paste.py
+
+      - name: Run full core regression
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :core:check
+
+      - name: Build CN991 debug APK
+        run: ./gradlew :app:assembleCn991Debug
+
+      - name: Commit tested patch
+        shell: bash
+        run: |
+          git config user.name "chat-continuation"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/src/main/java/com/codex/fx991smooth/CalculatorView.java
+          git commit -m "fix: widen selection handles and allow empty paste [selection-paste-fix]"
+          git push origin HEAD:chat/continue-20260916
