@@ -20,19 +20,33 @@
 - 每迁移一个模式先补 core regression，再接 UI；
 - Stage 3 语义编辑、复制粘贴、Ans、历史、长期 Release 签名链不得回归。
 
-## Step 1：统一结果基础协议 + 统计（in progress）
+## Step 1：统一结果基础协议 + 统计（completed）
+
+已完成：
+
+1. `CnCwModeEngine.ModeResult` 从 `display + primaryValue` 扩展为普通不可变类，避免重新引入大型 record 风险；
+2. 新增 `ResultLayout`：`TEXT / KEY_VALUE / VECTOR / MATRIX / TABLE`；
+3. 新增有序 `ResultItem(label, value)`；
+4. `ModeResult` 新增 `layout()` / `title()` / `items()`，同时完整保留旧 `display()` / `primaryValue()` API；
+5. 一元统计发布 `n / x̄ / σx / sx`；
+6. 双变量统计发布 `x̄ / ȳ / σx / σy`；
+7. 线性回归发布 `a / b / r`；
+8. 旧两行 `display()` 文本保持不变，因此 Android 当前显示没有行为变化；
+9. `CnCwModeEngineSuite` 已覆盖布局、标题、顺序和具体值；
+10. 一次性 workflow/script 已删除；clean head `33a72b6` 的正式 PR CI run `35116398191` 已通过完整核心回归、Android Debug APK 构建与 artifact 上传。
+
+## Step 2：方程 / SOLVE 结果结构化（in progress）
 
 计划：
 
-1. 将 `CnCwModeEngine.ModeResult` 从仅有 `display + primaryValue` 扩展为兼容的不可变结构；
-2. 增加结果布局类型、标题和有序 key/value 项；
-3. 保留 `display()` / `primaryValue()` 原 API；
-4. 一元统计、双变量统计、线性回归先发布结构化结果；
-5. `CnCwModeEngineSuite` 增加结构化协议回归。
+1. 多项式根发布有序 `x1 / x2 / ...`；
+2. 2–4 元联立方程发布有序 `x1 / x2 / ...`；
+3. SOLVE 发布 `x` 与 `L-R`；
+4. 保留原 `display()` 文本和 `primaryValue()` 行为；
+5. 补充实根、复根、联立和 SOLVE 的结构化协议回归。
 
 ## 后续
 
-- Step 2：方程 / SOLVE 结果结构化；
 - Step 3：矩阵 / 向量结果结构化；
 - Step 4：`CnCwUiState` 携带结构化结果，Android 专用渲染；
 - Step 5：真机复验并决定 Stage 4 收口范围。
