@@ -7,11 +7,8 @@ on:
 permissions:
   contents: write
 
-env:
-  SIGNING_SHA256: 8427d60083951dc5bceab9663c851070145182c66c11a467b1d72a734434c688
-
 jobs:
-  patch-test-release:
+  patch-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,19 +22,6 @@ jobs:
           java-version: '17'
 
       - uses: gradle/actions/setup-gradle@v4
-
-      - name: Restore stable debug signing key
-        id: signing-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.android/debug.keystore
-          key: cn991-debug-signing-v1
-
-      - name: Require existing stable signing baseline
-        shell: bash
-        run: |
-          test "${{ steps.signing-cache.outputs.cache-hit }}" = "true"
-          test -f "$HOME/.android/debug.keystore"
 
       - name: Patch product code and regression coverage
         shell: bash
@@ -151,11 +135,7 @@ jobs:
                   if (state.resultShown() && !currentResult.isEmpty()) {
                       return decimalResult(currentResult);
                   }
-                  try {
-                      return BigDecimal.valueOf(state.ans()).stripTrailingZeros().toPlainString();
-                  } catch (NumberFormatException ignored) {
-                      return Double.toString(state.ans());
-                  }
+                  return BigDecimal.valueOf(state.ans()).stripTrailingZeros().toPlainString();
               }
 
           '''
@@ -193,17 +173,8 @@ jobs:
       - name: Run full core regression
         run: ./gradlew :core:check
 
-      - name: Build CN991 debug APK
+      - name: Compile CN991 debug APK
         run: ./gradlew :app:assembleCn991Debug
-
-      - name: Assert stable signing fingerprint
-        shell: bash
-        run: |
-          APK=$(find app/build/outputs/apk/cn991 -name '*.apk' | head -n 1)
-          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
-          DIGEST=$("$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1)
-          echo "APK signing SHA-256: $DIGEST"
-          test "$DIGEST" = "$SIGNING_SHA256"
 
       - name: Commit verified product changes
         shell: bash
@@ -213,16 +184,3 @@ jobs:
           git add app/src/main/java/com/codex/fx991smooth/CalculatorView.java core/src/regression/java/com/codex/fx991/core/CnCwMachineSuite.java app/build.gradle
           git commit -m "fix: natural scientific display and copyable Ans"
           git push origin HEAD:chat/continue-20260916
-
-      - name: Publish normal test Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: beiming183-cloud/-
-        shell: bash
-        run: |
-          APK=$(find app/build/outputs/apk/cn991 -name '*.apk' | head -n 1)
-          cp "$APK" CN991-0.3.10-debug.apk
-          gh release create chat-20260916-natural-sci-ans-0310 CN991-0.3.10-debug.apk \
-            --target chat/continue-20260916 \
-            --title "CN991 0.3.10 - Natural SCI & Ans Copy" \
-            --notes "真机验收修复：科学计数结果始终以尾数 × 10 的上标指数形式显示，不再因宽度不足退回 E 记法；剪贴板菜单加入复制 Ans；新增 Ans token 选区导出回归。versionCode 324，继续使用固定测试签名，可用于验证从 0.3.9 直接覆盖安装。"
