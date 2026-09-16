@@ -19,7 +19,9 @@ jobs:
           fetch-depth: 0
 
       - name: 应用手机式双边界选区补丁
-        run: python tools/chat_patch_selection_handles.py
+        run: |
+          python tools/chat_patch_selection_handles.py
+          python tools/chat_patch_selection_hitbox.py
 
       - name: 提交补丁
         shell: bash
