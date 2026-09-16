@@ -1,0 +1,35 @@
+name: Publish verified CN991 0.3.10 APK
+
+on:
+  push:
+    branches: [ chat/continue-20260916 ]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download exact verified APK artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: beiming183-cloud/-
+        shell: bash
+        run: |
+          gh api repos/beiming183-cloud/-/actions/artifacts/10442124314/zip > artifact.zip
+          unzip -q artifact.zip -d artifact
+          APK=$(find artifact -name '*.apk' | head -n 1)
+          test -n "$APK"
+          cp "$APK" CN991-0.3.10-debug.apk
+      - name: Publish normal GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: beiming183-cloud/-
+        shell: bash
+        run: |
+          gh release create chat-20260916-natural-sci-ans-0310 CN991-0.3.10-debug.apk \
+            --target a2a36e51f072369a6e1411bb8835d51c8239ec63 \
+            --title "CN991 0.3.10 - Natural SCI & Ans Copy" \
+            --notes "真机验收修复版。科学计数结果使用尾数 × 10 的上标指数形式显示，不再因宽度不足退回 E 记法；剪贴板菜单加入复制 Ans，并增加 Ans token 选区导出回归。修正 ×10^ 指数边界解析。versionCode 324，继续使用固定测试签名 SHA-256 8427d60083951dc5bceab9663c851070145182c66c11a467b1d72a734434c688，可直接用于验证从 0.3.9 覆盖安装。"
