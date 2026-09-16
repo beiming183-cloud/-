@@ -59,13 +59,15 @@ HOME 页面使用应用卡片组织不同计算功能，整体保持克制、清
 
 项目使用 Java 17、Gradle 和 Android SDK 构建。
 
-每次主要修改都会通过 GitHub Actions 执行核心回归测试并生成 Android 调试 APK。真机上的触摸手感、选区、视觉布局和震动反馈则需要在实际设备上继续验收。
+每次主要修改都会通过 GitHub Actions 执行核心回归测试并生成 Android 调试 APK。Debug APK 只用于开发验证；面向长期安装和覆盖更新的版本使用独立、固定的 Release 签名链。
 
-近期测试版本可以在仓库的 **Releases / 发行版** 页面下载。
+近期正式版本可以在仓库的 **Releases / 发行版** 页面下载。
 
 ## 开发状态
 
-Stage 2 的手机交互与真机差分验收已经完成。Stage 3 的语义编辑器代码已完成到 Android 语义触摸命中层，目前进入 0.3.14 真机集中验收阶段。
+Stage 2 的手机交互与真机差分验收已经完成。Stage 3 的语义编辑器 Step 1–7 代码已经完成，目前使用 **北北计算器 0.3.15 Release** 做集中真机验收。
+
+从 0.3.15 起，正式版本使用固定 Application ID `com.beibei.calculator` 和长期 Release 签名；正式发布流程会对版本、包名和签名做 fail-closed 校验，避免再次出现开发 Debug 签名变化导致的覆盖安装冲突。
 
 后续还会继续：
 
@@ -80,6 +82,7 @@ Stage 2 的手机交互与真机差分验收已经完成。Stage 3 的语义编�
 - [架构说明](docs/ARCHITECTURE.md)
 - [功能覆盖说明](docs/FEATURE_COVERAGE.md)
 - [迁移说明](docs/MIGRATION.md)
+- [长期发布签名说明](docs/RELEASE_SIGNING.md)
 
 ## 独立开发说明
 
