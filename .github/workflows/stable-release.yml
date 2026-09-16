@@ -4,13 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag，例如 beibei-0.3.15'
+        description: 'Release tag，例如 beibei-0.3.16'
         required: true
-        default: 'beibei-0.3.15'
       title:
-        description: 'Release 标题'
+        description: 'Release 标题，例如 北北计算器 0.3.16'
         required: true
-        default: '北北计算器 0.3.15'
 
 permissions:
   contents: write
@@ -34,6 +32,22 @@ jobs:
 
       - name: 配置 Gradle
         uses: gradle/actions/setup-gradle@v4
+
+      - name: 校验 Release tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          case "$RELEASE_TAG" in
+            beibei-[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo 'tag 必须使用 beibei-X.Y.Z 格式'; exit 1 ;;
+          esac
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo '该 Release tag 已存在，拒绝覆盖发布'
+            exit 1
+          fi
 
       - name: 恢复长期 release 签名
         shell: bash
@@ -63,26 +77,40 @@ jobs:
       - name: 构建正式 Release APK
         run: ./gradlew :app:assembleCn991Release
 
-      - name: 硬校验包名与签名指纹
+      - name: 硬校验包名、版本与签名
         shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           APK=$(find app/build/outputs/apk/cn991/release -name '*.apk' | head -n 1)
           test -n "$APK"
           BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
+
           CERT_OUTPUT=$("$BUILD_TOOLS/apksigner" verify --print-certs "$APK")
           ACTUAL_FP=$(printf '%s\n' "$CERT_OUTPUT" | grep -i 'certificate SHA-256 digest' | grep -Eio '[0-9a-f]{64}' | head -n 1 | tr '[:lower:]' '[:upper:]')
           test -n "$ACTUAL_FP" || { echo '无法解析签名指纹，禁止发布'; exit 1; }
           echo "Release certificate SHA-256: $ACTUAL_FP"
           test "$ACTUAL_FP" = "$EXPECTED_CERT_SHA256" || { echo '签名指纹不匹配，禁止发布'; exit 1; }
-          ACTUAL_APP_ID=$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest application-id "$APK")
+
+          APKANALYZER="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+          ACTUAL_APP_ID=$("$APKANALYZER" manifest application-id "$APK")
+          ACTUAL_VERSION_NAME=$("$APKANALYZER" manifest version-name "$APK")
+          ACTUAL_VERSION_CODE=$("$APKANALYZER" manifest version-code "$APK")
+          EXPECTED_VERSION_NAME="${RELEASE_TAG#beibei-}"
+
           echo "Application ID: $ACTUAL_APP_ID"
+          echo "Version name: $ACTUAL_VERSION_NAME"
+          echo "Version code: $ACTUAL_VERSION_CODE"
           test "$ACTUAL_APP_ID" = "$EXPECTED_APPLICATION_ID" || { echo '包名不匹配，禁止发布'; exit 1; }
-          VERSION="${{ inputs.tag }}"
-          VERSION="${VERSION#beibei-}"
-          OUT="$RUNNER_TEMP/beibei-calculator-$VERSION-release.apk"
+          test "$ACTUAL_VERSION_NAME" = "$EXPECTED_VERSION_NAME" || { echo 'tag 与 APK versionName 不一致，禁止发布'; exit 1; }
+          test -n "$ACTUAL_VERSION_CODE" || { echo '无法读取 versionCode，禁止发布'; exit 1; }
+
+          OUT="$RUNNER_TEMP/beibei-calculator-$EXPECTED_VERSION_NAME-release.apk"
           cp "$APK" "$OUT"
           echo "RELEASE_APK=$OUT" >> "$GITHUB_ENV"
+          echo "RELEASE_VERSION=$EXPECTED_VERSION_NAME" >> "$GITHUB_ENV"
+          echo "RELEASE_VERSION_CODE=$ACTUAL_VERSION_CODE" >> "$GITHUB_ENV"
 
       - name: 保存长期签名 APK
         uses: actions/upload-artifact@v4
@@ -100,4 +128,4 @@ jobs:
           gh release create "${{ inputs.tag }}" "$RELEASE_APK" \
             --target "$GITHUB_SHA" \
             --title "${{ inputs.title }}" \
-            --notes "北北计算器长期签名正式安装版。Application ID: $EXPECTED_APPLICATION_ID。证书 SHA-256: $EXPECTED_CERT_SHA256。后续正式版本必须保持同一包名与同一签名；CI 指纹不一致会直接失败，禁止发布。"
+            --notes "北北计算器长期签名正式安装版。Application ID: $EXPECTED_APPLICATION_ID；versionName: $RELEASE_VERSION；versionCode: $RELEASE_VERSION_CODE；证书 SHA-256: $EXPECTED_CERT_SHA256。后续正式版本必须保持同一包名与同一签名。"
