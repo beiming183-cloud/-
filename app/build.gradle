@@ -2,23 +2,25 @@ plugins {
     id 'com.android.application'
 }
 
+def releaseKeystorePath = System.getenv('BEIBEI_KEYSTORE_PATH')
+def releaseStorePassword = System.getenv('BEIBEI_STORE_PASSWORD')
+def releaseKeyAlias = System.getenv('BEIBEI_KEY_ALIAS')
+def releaseKeyPassword = System.getenv('BEIBEI_KEY_PASSWORD')
+
 android {
     namespace 'com.codex.fx991smooth'
     compileSdk 34
 
-    // Keep a named dimension so Gradle produces one explicit 991 variant;
-    // the former 999 publication is intentionally absent from this train.
+    // Internal flavor naming stays unchanged for now; public app identity is Beibei Calculator.
     flavorDimensions += 'model'
 
     defaultConfig {
-        applicationId 'com.codex.cnscientific.calculator991'
-        // The core intentionally targets the Android 8 Java API surface.
-        // API 26 provides streams/default collection methods used by the
-        // dependency-free engines without requiring a desugared JDK bundle.
+        // 0.3.15 starts the durable public install/update lineage.
+        applicationId 'com.beibei.calculator'
         minSdk 26
         targetSdk 34
-        versionCode 327
-        versionName '0.3.13'
+        versionCode 330
+        versionName '0.3.16'
         buildConfigField 'String', 'MODEL_ID', '"CN991_CW"'
         buildConfigField 'String', 'MODEL_PROFILE', '"FX_991_CN_CW"'
         buildConfigField 'String', 'MODEL_LABEL', '"北北计算器"'
@@ -31,7 +33,6 @@ android {
     productFlavors {
         cn991 {
             dimension 'model'
-            // Internal flavor/profile names are kept for compatibility; public branding is independent.
             buildConfigField 'String', 'MODEL_ID', '"CN991_CW"'
             buildConfigField 'String', 'MODEL_PROFILE', '"FX_991_CN_CW"'
             buildConfigField 'String', 'MODEL_LABEL', '"北北计算器"'
@@ -44,23 +45,26 @@ android {
         }
     }
 
-    // CI restores this exact file before building.  Override only the debug
-    // keystore path; Android's normal debug alias/password settings remain in use.
+    // Release signing is restored only from durable CI secrets. Debug signing is
+    // intentionally left to Android/AGP and is never used for user-facing releases.
     signingConfigs {
-        debug {
-            storeFile file("${System.getProperty('user.home')}/.android/debug.keystore")
+        beibeiRelease {
+            if (releaseKeystorePath && releaseStorePassword && releaseKeyAlias && releaseKeyPassword) {
+                storeFile file(releaseKeystorePath)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
         }
     }
 
-    // AGP 8 can disable BuildConfig generation for new projects.  The
-    // generated model constants above are part of the small UI/configuration
-    // contract, so keep it explicit instead of relying on a plugin default.
     buildFeatures {
         buildConfig true
     }
 
     buildTypes {
         release {
+            signingConfig signingConfigs.beibeiRelease
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

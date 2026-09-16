@@ -189,15 +189,97 @@ public final class StatisticsEngine {
             double sampleVariance, double sampleStdDev,
             double min, double q1, double median, double q3, double max) {}
 
-    public record TwoVariableResults(
-            double n, double sumX, double sumY, double sumX2, double sumY2,
-            double sumXY, double sumX3, double sumX2Y, double sumX4,
-            double meanX, double meanY,
-            double populationVarianceX, double populationVarianceY,
-            double populationStdDevX, double populationStdDevY,
-            double sampleVarianceX, double sampleVarianceY,
-            double sampleStdDevX, double sampleStdDevY,
-            double minX, double maxX, double minY, double maxY) {}
+    /**
+     * Immutable two-variable statistics result carrier.
+     *
+     * Kept as an ordinary class rather than a large Java record because R8 8.x
+     * can reject javac's generated record stack-map metadata when many double
+     * components are present. The public constructor and record-style accessor
+     * names intentionally remain unchanged for source compatibility.
+     */
+    public static final class TwoVariableResults {
+        private final double n;
+        private final double sumX;
+        private final double sumY;
+        private final double sumX2;
+        private final double sumY2;
+        private final double sumXY;
+        private final double sumX3;
+        private final double sumX2Y;
+        private final double sumX4;
+        private final double meanX;
+        private final double meanY;
+        private final double populationVarianceX;
+        private final double populationVarianceY;
+        private final double populationStdDevX;
+        private final double populationStdDevY;
+        private final double sampleVarianceX;
+        private final double sampleVarianceY;
+        private final double sampleStdDevX;
+        private final double sampleStdDevY;
+        private final double minX;
+        private final double maxX;
+        private final double minY;
+        private final double maxY;
+
+        public TwoVariableResults(
+                double n, double sumX, double sumY, double sumX2, double sumY2,
+                double sumXY, double sumX3, double sumX2Y, double sumX4,
+                double meanX, double meanY,
+                double populationVarianceX, double populationVarianceY,
+                double populationStdDevX, double populationStdDevY,
+                double sampleVarianceX, double sampleVarianceY,
+                double sampleStdDevX, double sampleStdDevY,
+                double minX, double maxX, double minY, double maxY) {
+            this.n = n;
+            this.sumX = sumX;
+            this.sumY = sumY;
+            this.sumX2 = sumX2;
+            this.sumY2 = sumY2;
+            this.sumXY = sumXY;
+            this.sumX3 = sumX3;
+            this.sumX2Y = sumX2Y;
+            this.sumX4 = sumX4;
+            this.meanX = meanX;
+            this.meanY = meanY;
+            this.populationVarianceX = populationVarianceX;
+            this.populationVarianceY = populationVarianceY;
+            this.populationStdDevX = populationStdDevX;
+            this.populationStdDevY = populationStdDevY;
+            this.sampleVarianceX = sampleVarianceX;
+            this.sampleVarianceY = sampleVarianceY;
+            this.sampleStdDevX = sampleStdDevX;
+            this.sampleStdDevY = sampleStdDevY;
+            this.minX = minX;
+            this.maxX = maxX;
+            this.minY = minY;
+            this.maxY = maxY;
+        }
+
+        public double n() { return n; }
+        public double sumX() { return sumX; }
+        public double sumY() { return sumY; }
+        public double sumX2() { return sumX2; }
+        public double sumY2() { return sumY2; }
+        public double sumXY() { return sumXY; }
+        public double sumX3() { return sumX3; }
+        public double sumX2Y() { return sumX2Y; }
+        public double sumX4() { return sumX4; }
+        public double meanX() { return meanX; }
+        public double meanY() { return meanY; }
+        public double populationVarianceX() { return populationVarianceX; }
+        public double populationVarianceY() { return populationVarianceY; }
+        public double populationStdDevX() { return populationStdDevX; }
+        public double populationStdDevY() { return populationStdDevY; }
+        public double sampleVarianceX() { return sampleVarianceX; }
+        public double sampleVarianceY() { return sampleVarianceY; }
+        public double sampleStdDevX() { return sampleStdDevX; }
+        public double sampleStdDevY() { return sampleStdDevY; }
+        public double minX() { return minX; }
+        public double maxX() { return maxX; }
+        public double minY() { return minY; }
+        public double maxY() { return maxY; }
+    }
 
     /** Coefficients use the manual's equation order: a, b, c. */
     public record RegressionResult(RegressionType type, double a, double b, double c, double r) {

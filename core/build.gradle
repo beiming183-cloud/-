@@ -71,6 +71,14 @@ tasks.register('cwAutoCloseTest', JavaExec) {
     dependsOn tasks.named('regressionClasses')
 }
 
+tasks.register('cwCursorPathTest', JavaExec) {
+    group = 'verification'
+    description = 'Runs Stage 3 semantic cursor path compatibility checks.'
+    classpath = sourceSets.regression.runtimeClasspath
+    mainClass = 'com.codex.fx991.core.CnCwCursorPathSuite'
+    dependsOn tasks.named('regressionClasses')
+}
+
 tasks.named('check') {
     dependsOn tasks.named('regressionTest')
     dependsOn tasks.named('cwRegressionTest')
@@ -79,4 +87,5 @@ tasks.named('check') {
     dependsOn tasks.named('manualFunctionsTest')
     dependsOn tasks.named('cwLayoutMetricsTest')
     dependsOn tasks.named('cwAutoCloseTest')
+    dependsOn tasks.named('cwCursorPathTest')
 }

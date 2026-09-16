@@ -28,8 +28,16 @@ public final class CnCwUiState {
     private final String displayText;
     private final CnCwExpressionNode naturalExpression;
     private final int cursor;
+    /** Stage 3 compatibility view of the cursor as a semantic editor position. */
+    private final CnCwCursorPath semanticCursor;
+    /** Editable semantic regions used by geometry-aware platform hit testing. */
+    private final List<CnCwSemanticSpan> semanticSpans;
     private final int selectionStart;
     private final int selectionEnd;
+    /** Stage 3 semantic facade for the selection's directional anchor. */
+    private final CnCwCursorPath semanticSelectionAnchor;
+    /** Stage 3 semantic facade for the selection's active focus. */
+    private final CnCwCursorPath semanticSelectionFocus;
     private final String result;
     private final double ans;
     private final boolean hasAns;
@@ -63,8 +71,12 @@ public final class CnCwUiState {
                 String displayText,
                 CnCwExpressionNode naturalExpression,
                 int cursor,
+                CnCwCursorPath semanticCursor,
+                List<CnCwSemanticSpan> semanticSpans,
                 int selectionStart,
                 int selectionEnd,
+                CnCwCursorPath semanticSelectionAnchor,
+                CnCwCursorPath semanticSelectionFocus,
                 String result,
                 double ans,
                 boolean hasAns,
@@ -97,8 +109,14 @@ public final class CnCwUiState {
         this.displayText = displayText == null ? "" : displayText;
         this.naturalExpression = Objects.requireNonNull(naturalExpression, "naturalExpression");
         this.cursor = Math.max(0, cursor);
+        this.semanticCursor = Objects.requireNonNull(semanticCursor, "semanticCursor");
+        this.semanticSpans = com.codex.fx991.core.Compat.copyList(semanticSpans);
         this.selectionStart = Math.max(0, selectionStart);
         this.selectionEnd = Math.max(this.selectionStart, selectionEnd);
+        this.semanticSelectionAnchor = Objects.requireNonNull(semanticSelectionAnchor,
+                "semanticSelectionAnchor");
+        this.semanticSelectionFocus = Objects.requireNonNull(semanticSelectionFocus,
+                "semanticSelectionFocus");
         this.result = result == null ? "" : result;
         this.ans = ans;
         this.hasAns = hasAns;
@@ -164,9 +182,22 @@ public final class CnCwUiState {
     public String displayText() { return displayText; }
     public CnCwExpressionNode naturalExpression() { return naturalExpression; }
     public int cursor() { return cursor; }
+    /**
+     * Semantic cursor facade introduced in Stage 3.
+     *
+     * <p>At the bootstrap step this mirrors the existing top-level token
+     * boundary. Fraction/power/root/function work will progressively replace
+     * the root-only path with nested slots without removing {@link #cursor()}.
+     * </p>
+     */
+    public CnCwCursorPath semanticCursor() { return semanticCursor; }
+    /** Semantic editable regions for platform hit testing; immutable snapshot. */
+    public List<CnCwSemanticSpan> semanticSpans() { return semanticSpans; }
     public boolean hasSelection() { return selectionEnd > selectionStart; }
     public int selectionStart() { return selectionStart; }
     public int selectionEnd() { return selectionEnd; }
+    public CnCwCursorPath semanticSelectionAnchor() { return semanticSelectionAnchor; }
+    public CnCwCursorPath semanticSelectionFocus() { return semanticSelectionFocus; }
     public String result() { return result; }
     public double ans() { return ans; }
     public boolean hasAns() { return hasAns; }

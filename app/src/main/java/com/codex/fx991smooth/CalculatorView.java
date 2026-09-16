@@ -18,7 +18,9 @@ import android.view.View;
 import android.widget.Toast;
 
 import com.codex.fx991.core.cw.CnCwCommand;
+import com.codex.fx991.core.cw.CnCwCursorPath;
 import com.codex.fx991.core.cw.CnCwExpressionNode;
+import com.codex.fx991.core.cw.CnCwSemanticSpan;
 import com.codex.fx991.core.cw.CnCwKey;
 import com.codex.fx991.core.cw.CnCwMachine;
 import com.codex.fx991.core.cw.CnCwScreen;
@@ -53,6 +55,7 @@ public final class CalculatorView extends View {
     private float displayDownX;
     private float displayDownY;
     private int lastDragCursor = -1;
+    private CnCwCursorPath lastDragSemantic;
     /** -1 = left handle, 0 = choose from drag direction, +1 = right handle. */
     private int selectionDragEdge;
     private boolean selectionTapCandidate;
@@ -638,8 +641,10 @@ public final class CalculatorView extends View {
     /** Draws phone-style handles at the two semantic selection boundaries. */
     private void drawSelectionHandles(Canvas canvas, RectF lcd,
                                       float contentTop, float contentBottom) {
-        float startX = displayBoundaryX(state.selectionStart());
-        float endX = displayBoundaryX(state.selectionEnd());
+        float startX = displaySemanticBoundaryX(
+                semanticSelectionPathForBoundary(state.selectionStart()));
+        float endX = displaySemanticBoundaryX(
+                semanticSelectionPathForBoundary(state.selectionEnd()));
         float top = contentTop + dp(1.5f);
         float bottom = Math.min(contentBottom - dp(10), contentTop + dp(34));
         paint.setColor(LCD_DARK);
@@ -1166,13 +1171,18 @@ public final class CalculatorView extends View {
                     displayDownX = event.getX();
                     displayDownY = event.getY();
                     lastDragCursor = state.cursor();
+                    lastDragSemantic = state.semanticCursor();
 
                     if (state.hasSelection()) {
                         RectF lcd = displayBounds(getWidth());
                         float contentTop = lcd.top + lcd.height() * 0.145f;
                         float contentBottom = lcd.bottom - dp(3);
-                        float startX = displayBoundaryX(state.selectionStart());
-                        float endX = displayBoundaryX(state.selectionEnd());
+                        CnCwCursorPath startPath = semanticSelectionPathForBoundary(
+                                state.selectionStart());
+                        CnCwCursorPath endPath = semanticSelectionPathForBoundary(
+                                state.selectionEnd());
+                        float startX = displaySemanticBoundaryX(startPath);
+                        float endX = displaySemanticBoundaryX(endPath);
                         // Keep the handles visually small, but give each boundary a much
                         // larger phone-style grab zone. Users should not need to land on
                         // the tiny knob itself before they can adjust an existing selection.
@@ -1192,6 +1202,8 @@ public final class CalculatorView extends View {
                             displaySelectionMode = true;
                             lastDragCursor = selectionDragEdge < 0
                                     ? state.selectionStart() : state.selectionEnd();
+                            lastDragSemantic = selectionDragEdge < 0
+                                    ? startPath : endPath;
                             performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
                             return true;
                         }
@@ -1231,9 +1243,11 @@ public final class CalculatorView extends View {
                                 showPasteOnlyMenu();
                                 return;
                             }
-                            int anchor = displayCursorPosition(displayDownX);
+                            CnCwCursorPath anchor = displaySemanticPosition(
+                                    displayDownX, displayDownY);
                             state = machine.selectTouchWord(anchor);
                             lastDragCursor = state.cursor();
+                            lastDragSemantic = state.semanticCursor();
                             selectionDragEdge = 0;
                             displaySelectionMode = true;
                             postInvalidateOnAnimation();
@@ -1253,7 +1267,7 @@ public final class CalculatorView extends View {
             case MotionEvent.ACTION_MOVE -> {
                 if (displayPressed) {
                     if (displaySelectionMode) {
-                        moveSelectionBoundaryToDisplayPosition(event.getX());
+                        moveSelectionBoundaryToDisplayPosition(event.getX(), event.getY());
                         return true;
                     }
                     float dx = event.getX() - displayDownX;
@@ -1266,7 +1280,7 @@ public final class CalculatorView extends View {
                     }
                     if (Math.abs(dx) > dp(4) && Math.abs(dx) > Math.abs(dy)) {
                         if (displayLongPress != null) gestureHandler.removeCallbacks(displayLongPress);
-                        moveCursorToDisplayPosition(event.getX(), true);
+                        moveCursorToDisplayPosition(event.getX(), event.getY(), true);
                     }
                     return true;
                 }
@@ -1295,7 +1309,7 @@ public final class CalculatorView extends View {
                         return true;
                     }
                     if (Math.abs(dx) < dp(18) && Math.abs(dy) < dp(18)) {
-                        moveCursorToDisplayPosition(event.getX(), false);
+                        moveCursorToDisplayPosition(event.getX(), event.getY(), false);
                     }
                     return true;
                 }
@@ -1357,8 +1371,127 @@ public final class CalculatorView extends View {
         };
     }
 
-    private void moveCursorToDisplayPosition(float x, boolean haptic) {
-        moveCursorAtomically(displayCursorPosition(x), haptic);
+    private void moveCursorToDisplayPosition(float x, float y, boolean haptic) {
+        moveCursorAtomically(displaySemanticPosition(x, y), haptic);
+    }
+
+    /**
+     * Maps screen geometry to a semantic editor position. Nested spans win when
+     * the pointer is vertically close to their visual slot; otherwise the old
+     * x-only token boundary remains the safe fallback.
+     */
+    private CnCwCursorPath displaySemanticPosition(float x, float y) {
+        int legacy = displayCursorPosition(x);
+        List<CnCwSemanticSpan> spans = state.semanticSpans();
+        if (spans.isEmpty()) return CnCwCursorPath.rootBoundary(legacy);
+
+        RectF lcd = displayBounds(getWidth());
+        float contentTop = lcd.top + lcd.height() * 0.145f;
+        float contentBottom = lcd.bottom - dp(3);
+        float baseSize = sp(25f);
+        NaturalMetrics metrics = measureNatural(state.naturalExpression(), baseSize);
+        float baseline = Math.min(contentTop + metrics.top + dp(2),
+                contentTop + (contentBottom - contentTop) * 0.54f);
+
+        CnCwSemanticSpan best = null;
+        float bestScore = Float.MAX_VALUE;
+        for (CnCwSemanticSpan span : spans) {
+            float[] range = semanticSpanXRange(span);
+            float left = Math.min(range[0], range[1]);
+            float right = Math.max(range[0], range[1]);
+            float pad = dp(12);
+            if (x < left - pad || x > right + pad) continue;
+            float centerY = semanticSlotCenterY(span.slot(), baseline, baseSize);
+            float tolerance = semanticSlotYTolerance(span.slot(), baseSize);
+            float vertical = Math.abs(y - centerY);
+            if (vertical > tolerance) continue;
+            float horizontal = x < left ? left - x : x > right ? x - right : 0f;
+            float widthPenalty = Math.max(dp(4), right - left) * 0.018f;
+            float depthBonus = span.childPath().size() * dp(1.5f);
+            float score = vertical + horizontal * 1.25f + widthPenalty - depthBonus;
+            if (score < bestScore) {
+                bestScore = score;
+                best = span;
+            }
+        }
+        if (best == null) return CnCwCursorPath.rootBoundary(legacy);
+
+        float[] range = semanticSpanXRange(best);
+        float left = Math.min(range[0], range[1]);
+        float right = Math.max(range[0], range[1]);
+        int length = best.length();
+        int offset;
+        if (length <= 0 || right - left < dp(1)) {
+            offset = 0;
+        } else {
+            float ratio = Math.max(0f, Math.min(1f, (x - left) / (right - left)));
+            offset = Math.round(ratio * length);
+        }
+        return best.position(offset);
+    }
+
+    /** Horizontal range used by one semantic slot in the current LCD layout. */
+    private float[] semanticSpanXRange(CnCwSemanticSpan span) {
+        boolean stackedFraction = span.slot() == CnCwCursorPath.Slot.FRACTION_NUMERATOR
+                || span.slot() == CnCwCursorPath.Slot.FRACTION_DENOMINATOR;
+
+        // The structural ^ token is not drawn at full-size between the base and
+        // exponent.  Legacy boundary projection nevertheless allocates width to
+        // its key label, which shifted exponent hit-testing to the right and made
+        // base/exponent dragging feel sticky.  Anchor the exponent at the base's
+        // visual end and measure only the visible exponent tokens at 0.62 scale,
+        // exactly matching drawNaturalNode(SUPERSCRIPT).
+        if (span.slot() == CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT
+                && !span.childPath().isEmpty()) {
+            int templateBoundary = Math.max(span.containerStartBoundary(),
+                    Math.min(span.containerEndBoundary(), span.childPath().get(0)));
+            float left = displayBoundaryX(templateBoundary);
+            float width = semanticTokenWidth(span.startBoundary(), span.endBoundary(), 0.62f);
+            return new float[]{left, left + Math.max(dp(5), width)};
+        }
+
+        int start = stackedFraction ? span.containerStartBoundary() : span.startBoundary();
+        int end = stackedFraction ? span.containerEndBoundary() : span.endBoundary();
+        float left = displayBoundaryX(start);
+        float right = displayBoundaryX(end);
+        if (Math.abs(right - left) < dp(4)) {
+            left = displayBoundaryX(span.containerStartBoundary());
+            right = displayBoundaryX(span.containerEndBoundary());
+        }
+        return new float[]{left, right};
+    }
+
+    /** Measures visible token labels for a semantic slot at natural-display scale. */
+    private float semanticTokenWidth(int startBoundary, int endBoundary, float textScale) {
+        List<String> labels = machine.cursorTokenDisplays();
+        int start = Math.max(0, Math.min(labels.size(), startBoundary));
+        int end = Math.max(start, Math.min(labels.size(), endBoundary));
+        paint.setTypeface(FACE_NORMAL);
+        paint.setTextSize(sp(25f) * textScale);
+        float width = 0f;
+        for (int index = start; index < end; index++) {
+            width += Math.max(dp(3), paint.measureText(labels.get(index)));
+        }
+        return width;
+    }
+
+    private float semanticSlotCenterY(CnCwCursorPath.Slot slot,
+                                      float baseline, float baseSize) {
+        return switch (slot) {
+            case FRACTION_NUMERATOR -> baseline - baseSize * 0.63f;
+            case FRACTION_DENOMINATOR -> baseline + baseSize * 0.30f;
+            case SUPERSCRIPT_EXPONENT, ROOT_INDEX -> baseline - baseSize * 0.55f;
+            case SUPERSCRIPT_BASE, RADICAL_CONTENT, ROOT_CONTENT, FUNCTION_ARGUMENT, ROW ->
+                    baseline - baseSize * 0.18f;
+        };
+    }
+
+    private float semanticSlotYTolerance(CnCwCursorPath.Slot slot, float baseSize) {
+        return switch (slot) {
+            case FRACTION_NUMERATOR, FRACTION_DENOMINATOR -> baseSize * 0.58f;
+            case SUPERSCRIPT_EXPONENT, ROOT_INDEX -> baseSize * 0.48f;
+            default -> baseSize * 0.62f;
+        };
     }
 
     /** Converts a display x-coordinate into the nearest semantic boundary. */
@@ -1421,28 +1554,57 @@ public final class CalculatorView extends View {
         return x;
     }
 
-    private void moveSelectionBoundaryToDisplayPosition(float x) {
-        int target = displayCursorPosition(x);
+    private CnCwCursorPath semanticSelectionPathForBoundary(int boundary) {
+        CnCwCursorPath anchor = state.semanticSelectionAnchor();
+        CnCwCursorPath focus = state.semanticSelectionFocus();
+        if (anchor != null && anchor.legacyTokenBoundary() == boundary) return anchor;
+        if (focus != null && focus.legacyTokenBoundary() == boundary) return focus;
+        return CnCwCursorPath.rootBoundary(boundary);
+    }
+
+    /** Projects a semantic selection/cursor boundary back onto the LCD x-axis. */
+    private float displaySemanticBoundaryX(CnCwCursorPath path) {
+        if (path == null || path.isRootBoundary()) {
+            return displayBoundaryX(path == null ? state.cursor() : path.legacyTokenBoundary());
+        }
+        for (CnCwSemanticSpan span : state.semanticSpans()) {
+            if (!span.matches(path)) continue;
+            float[] range = semanticSpanXRange(span);
+            float left = range[0];
+            float right = range[1];
+            if (span.length() <= 0) return left;
+            float ratio = Math.max(0f, Math.min(1f,
+                    path.offset() / (float) span.length()));
+            return left + (right - left) * ratio;
+        }
+        return displayBoundaryX(path.legacyTokenBoundary());
+    }
+
+    private void moveSelectionBoundaryToDisplayPosition(float x, float y) {
+        CnCwCursorPath target = displaySemanticPosition(x, y);
+        int legacy = target.legacyTokenBoundary();
         if (selectionDragEdge == 0) {
-            if (target <= state.selectionStart() || x < displayDownX) selectionDragEdge = -1;
-            else if (target >= state.selectionEnd() || x > displayDownX) selectionDragEdge = 1;
+            if (legacy <= state.selectionStart() || x < displayDownX) selectionDragEdge = -1;
+            else if (legacy >= state.selectionEnd() || x > displayDownX) selectionDragEdge = 1;
             else return;
         }
-        if (target == lastDragCursor) return;
+        if (target.equals(lastDragSemantic)) return;
         state = selectionDragEdge < 0
                 ? machine.moveTouchSelectionStart(target)
                 : machine.moveTouchSelectionEnd(target);
         lastDragCursor = selectionDragEdge < 0
                 ? state.selectionStart() : state.selectionEnd();
+        lastDragSemantic = semanticSelectionPathForBoundary(lastDragCursor);
         performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
         postInvalidateOnAnimation();
     }
 
-    private void moveCursorAtomically(int target, boolean haptic) {
-        int clamped = Math.max(0, Math.min(machine.cursorLimit(), target));
-        if (clamped == lastDragCursor && haptic) return;
-        state = machine.moveCursorTo(clamped);
-        lastDragCursor = clamped;
+    private void moveCursorAtomically(CnCwCursorPath target, boolean haptic) {
+        if (target == null) target = CnCwCursorPath.rootBoundary(state.cursor());
+        if (haptic && target.equals(lastDragSemantic)) return;
+        state = machine.moveCursorTo(target);
+        lastDragCursor = state.cursor();
+        lastDragSemantic = state.semanticCursor();
         if (haptic) performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
         postInvalidateOnAnimation();
     }

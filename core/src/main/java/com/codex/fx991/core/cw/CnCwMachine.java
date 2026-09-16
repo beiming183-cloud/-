@@ -63,6 +63,8 @@ public final class CnCwMachine {
     private CnCwSettings settings = CnCwSettings.defaults();
     private int selectedIndex;
     private int cursor;
+    /** Stage 3 nested position override; null falls back to legacy-boundary inference. */
+    private CnCwCursorPath semanticCursorOverride;
     /** Inclusive anchor and exclusive focus for semantic token selection. */
     private int selectionAnchor = -1;
     private int selectionFocus = -1;
@@ -129,6 +131,7 @@ public final class CnCwMachine {
         settings = source.settings;
         selectedIndex = source.selectedIndex;
         cursor = source.cursor;
+        semanticCursorOverride = source.semanticCursorOverride;
         selectionAnchor = source.selectionAnchor;
         selectionFocus = source.selectionFocus;
         shiftArmed = source.shiftArmed;
@@ -246,6 +249,7 @@ public final class CnCwMachine {
     /** Atomically moves the expression insertion point for direct-touch adapters. */
     public CnCwUiState moveCursorTo(int target) {
         if (!poweredOn || !screen.isApplication() || applicationLanding) return state;
+        semanticCursorOverride = null;
         cursor = Math.max(0, Math.min(tokens.size(), target));
         clearSelection();
         shiftArmed = false;
@@ -257,9 +261,89 @@ public final class CnCwMachine {
         return state;
     }
 
+    /**
+     * Semantic touch entry point used by Stage 3 platform adapters. Invalid or stale
+     * paths fail closed to their retained legacy boundary instead of corrupting a
+     * structure.
+     */
+    public CnCwUiState moveCursorTo(CnCwCursorPath target) {
+        if (!poweredOn || !screen.isApplication() || applicationLanding) return state;
+        if (!applySemanticTouchCursor(target)) {
+            semanticCursorOverride = null;
+            cursor = semanticTouchBoundary(target);
+        }
+        clearSelection();
+        shiftArmed = false;
+        result = "";
+        resultShown = false;
+        errorShown = false;
+        lastError = null;
+        publish();
+        return state;
+    }
+
+    /** Validates and installs one semantic insertion path. */
+    private boolean applySemanticTouchCursor(CnCwCursorPath target) {
+        if (target == null) return false;
+        if (target.isRootBoundary()) {
+            setRootCursor(target.legacyTokenBoundary());
+            return true;
+        }
+        if (target.childPath().isEmpty()) return false;
+        int template = target.childPath().get(0);
+        switch (target.slot()) {
+            case FRACTION_NUMERATOR, FRACTION_DENOMINATOR -> {
+                FractionBounds bounds = fractionBounds(template);
+                if (bounds == null) return false;
+                setFractionCursor(bounds, target.slot(), target.offset());
+                return true;
+            }
+            case SUPERSCRIPT_BASE, SUPERSCRIPT_EXPONENT -> {
+                PowerBounds bounds = powerBounds(template);
+                if (bounds == null) return false;
+                setPowerCursor(bounds, target.slot(), target.offset());
+                return true;
+            }
+            case RADICAL_CONTENT, ROOT_INDEX, ROOT_CONTENT -> {
+                RadicalBounds bounds = radicalBounds(template);
+                if (bounds == null) return false;
+                Token token = tokens.get(template);
+                if (target.slot() == CnCwCursorPath.Slot.ROOT_INDEX
+                        && !isGenericRootTemplate(token)) return false;
+                if (target.slot() == CnCwCursorPath.Slot.RADICAL_CONTENT
+                        && !isSquareRootTemplate(token)) return false;
+                if (target.slot() == CnCwCursorPath.Slot.ROOT_CONTENT
+                        && isSquareRootTemplate(token)) return false;
+                setRadicalCursor(bounds, target.slot(), target.offset());
+                return true;
+            }
+            case FUNCTION_ARGUMENT -> {
+                if (target.childPath().size() < 2) return false;
+                FunctionBounds bounds = functionBounds(template);
+                int argument = target.childPath().get(1);
+                if (bounds == null || argument < 0 || argument >= bounds.arguments.size()) {
+                    return false;
+                }
+                setFunctionCursor(bounds, argument, target.offset());
+                return true;
+            }
+            case ROW -> {
+                setRootCursor(target.legacyTokenBoundary());
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int semanticTouchBoundary(CnCwCursorPath target) {
+        if (target == null) return cursor;
+        return Math.max(0, Math.min(tokens.size(), target.legacyTokenBoundary()));
+    }
+
     /** Starts a touch-driven text selection at a semantic insertion boundary. */
     public CnCwUiState beginTouchSelection(int target) {
         if (!poweredOn || !screen.isApplication() || applicationLanding) return state;
+        semanticCursorOverride = null;
         cursor = Math.max(0, Math.min(tokens.size(), target));
         selectionAnchor = cursor;
         selectionFocus = cursor;
@@ -276,6 +360,7 @@ public final class CnCwMachine {
     /** Selects the semantic word/unit under a long-press before dragging. */
     public CnCwUiState selectTouchWord(int target) {
         if (!poweredOn || !screen.isApplication() || applicationLanding) return state;
+        semanticCursorOverride = null;
         int boundary = Math.max(0, Math.min(tokens.size(), target));
         if (tokens.isEmpty()) return beginTouchSelection(boundary);
         int start;
@@ -304,6 +389,7 @@ public final class CnCwMachine {
     /** Moves the active touch-selection focus without clearing its anchor. */
     public CnCwUiState extendTouchSelection(int target) {
         if (!poweredOn || !screen.isApplication() || applicationLanding) return state;
+        semanticCursorOverride = null;
         if (selectionAnchor < 0) {
             beginTouchSelection(cursor);
         }
@@ -341,6 +427,7 @@ public final class CnCwMachine {
         if (!poweredOn || !screen.isApplication() || applicationLanding || !hasSelection()) {
             return state;
         }
+        semanticCursorOverride = null;
         int currentStart = Math.min(selectionAnchor, selectionFocus);
         int currentEnd = Math.max(selectionAnchor, selectionFocus);
         int clamped = Math.max(0, Math.min(tokens.size(), target));
@@ -368,6 +455,35 @@ public final class CnCwMachine {
         return state;
     }
 
+    /** Semantic-path overloads used by the Android Stage 3 touch adapter. */
+    public CnCwUiState beginTouchSelection(CnCwCursorPath target) {
+        int boundary = semanticTouchBoundary(target);
+        CnCwUiState value = beginTouchSelection(boundary);
+        if (applySemanticTouchCursor(target)) {
+            selectionAnchor = cursor;
+            selectionFocus = cursor;
+            publish();
+            return state;
+        }
+        return value;
+    }
+
+    public CnCwUiState selectTouchWord(CnCwCursorPath target) {
+        return selectTouchWord(semanticTouchBoundary(target));
+    }
+
+    public CnCwUiState extendTouchSelection(CnCwCursorPath target) {
+        return extendTouchSelection(semanticTouchBoundary(target));
+    }
+
+    public CnCwUiState moveTouchSelectionStart(CnCwCursorPath target) {
+        return moveTouchSelectionStart(semanticTouchBoundary(target));
+    }
+
+    public CnCwUiState moveTouchSelectionEnd(CnCwCursorPath target) {
+        return moveTouchSelectionEnd(semanticTouchBoundary(target));
+    }
+
     /**
      * Snaps a dragged selection around structures that must stay intact when
      * copied or replaced. Touches may land inside a function, power, or
@@ -385,18 +501,24 @@ public final class CnCwMachine {
                 int unitStart = index;
                 int unitEnd = index + 1;
                 if (isFractionTemplate(token)) {
-                    unitStart = semanticAtomStart(index);
-                    unitEnd = semanticAtomEnd(index + 1);
-                } else if ("^".equals(token.evaluation)) {
-                    unitStart = semanticAtomStart(index);
-                    unitEnd = semanticAtomEnd(index + 1);
+                    FractionBounds fraction = fractionBounds(index);
+                    if (fraction != null) {
+                        unitStart = fraction.numeratorStart;
+                        unitEnd = fraction.denominatorEnd;
+                    }
+                } else if (isPowerTemplate(token)) {
+                    PowerBounds power = powerBounds(index);
+                    if (power != null) {
+                        unitStart = power.baseStart;
+                        unitEnd = power.exponentEnd;
+                    }
                 } else if (opensParenthesis(token)) {
                     int close = matchingClose(index);
                     unitEnd = close >= 0 ? close + 1 : unitEnd;
                 } else if (")".equals(token.evaluation)) {
                     int open = matchingOpen(index);
                     unitStart = open >= 0 ? open : unitStart;
-                } else {
+                } else if (!selectionWithinSemanticEditableSlot(start, end, index)) {
                     int enclosing = enclosingOpen(index);
                     if (enclosing >= 0) {
                         int close = matchingClose(enclosing);
@@ -448,6 +570,7 @@ public final class CnCwMachine {
         // Treat one system paste as one editor mutation.  This also makes undo
         // restore the entire pre-paste expression instead of only the last char.
         rememberUndo();
+        semanticCursorOverride = null;
         resetStatementSequence();
         formatConverted = false;
         engineeringMode = false;
@@ -643,6 +766,7 @@ public final class CnCwMachine {
         settings = CnCwSettings.defaults();
         selectedIndex = 0;
         cursor = 0;
+        semanticCursorOverride = null;
         clearSelection();
         shiftArmed = false;
         poweredOn = true;
@@ -747,11 +871,13 @@ public final class CnCwMachine {
                 }
                 case LEFT -> {
                     dismissError();
+                    semanticCursorOverride = null;
                     cursor = Math.max(0, cursor - 1);
                     return;
                 }
                 case RIGHT -> {
                     dismissError();
+                    semanticCursorOverride = null;
                     cursor = Math.min(tokens.size(), cursor + 1);
                     return;
                 }
@@ -846,10 +972,20 @@ public final class CnCwMachine {
 
         switch (key) {
             case LEFT -> {
-                if (shiftArmed) extendSelection(-1);
-                else {
+                if (shiftArmed) {
+                    semanticCursorOverride = null;
+                    extendSelection(-1);
+                } else {
+                    boolean hadSelection = selectionActive();
                     collapseSelection(-1);
-                    cursor = Math.max(0, cursor - 1);
+                    if (hadSelection) {
+                        semanticCursorOverride = null;
+                        cursor = Math.max(0, cursor - 1);
+                    } else if (!moveFractionHorizontal(-1) && !movePowerHorizontal(-1)
+                            && !moveRadicalHorizontal(-1) && !moveFunctionHorizontal(-1)) {
+                        semanticCursorOverride = null;
+                        cursor = Math.max(0, cursor - 1);
+                    }
                 }
                 shiftArmed = false;
                 result = "";
@@ -858,10 +994,20 @@ public final class CnCwMachine {
                 lastError = null;
             }
             case RIGHT -> {
-                if (shiftArmed) extendSelection(1);
-                else {
+                if (shiftArmed) {
+                    semanticCursorOverride = null;
+                    extendSelection(1);
+                } else {
+                    boolean hadSelection = selectionActive();
                     collapseSelection(1);
-                    cursor = Math.min(tokens.size(), cursor + 1);
+                    if (hadSelection) {
+                        semanticCursorOverride = null;
+                        cursor = Math.min(tokens.size(), cursor + 1);
+                    } else if (!moveFractionHorizontal(1) && !movePowerHorizontal(1)
+                            && !moveRadicalHorizontal(1) && !moveFunctionHorizontal(1)) {
+                        semanticCursorOverride = null;
+                        cursor = Math.min(tokens.size(), cursor + 1);
+                    }
                 }
                 shiftArmed = false;
                 result = "";
@@ -869,8 +1015,14 @@ public final class CnCwMachine {
                 errorShown = false;
                 lastError = null;
             }
-            case UP -> recallHistory(-1);
-            case DOWN -> recallHistory(1);
+            case UP -> {
+                if (!moveFractionVertical(-1) && !movePowerVertical(-1)
+                        && !moveRadicalVertical(-1)) recallHistory(-1);
+            }
+            case DOWN -> {
+                if (!moveFractionVertical(1) && !movePowerVertical(1)
+                        && !moveRadicalVertical(1)) recallHistory(1);
+            }
             case PAGE_UP -> recallHistory(-6);
             case PAGE_DOWN -> recallHistory(6);
             case DEL -> {
@@ -943,6 +1095,7 @@ public final class CnCwMachine {
                 ? token("i") : tokenFor(key, shiftArmed);
         shiftArmed = false;
         if (token == null) return;
+        semanticCursorOverride = null;
         resetStatementSequence();
         formatConverted = false;
         engineeringMode = false;
@@ -1016,7 +1169,12 @@ public final class CnCwMachine {
     private void deleteBeforeCursor() {
         shiftArmed = false;
         if (deleteSelectionIfPresent()) return;
+        if (deleteFractionSemantic()) return;
+        if (deletePowerSemantic()) return;
+        if (deleteRadicalSemantic()) return;
+        if (deleteFunctionSemantic()) return;
         if (cursor <= 0 || tokens.isEmpty()) return;
+        semanticCursorOverride = null;
         resetStatementSequence();
         rememberUndo();
         formatConverted = false;
@@ -1033,6 +1191,7 @@ public final class CnCwMachine {
 
     /** Moves the active end of a semantic token selection by one token. */
     private void extendSelection(int direction) {
+        semanticCursorOverride = null;
         if (selectionAnchor < 0) selectionAnchor = cursor;
         int next = semanticSelectionTarget(cursor, direction);
         cursor = next;
@@ -1052,19 +1211,20 @@ public final class CnCwMachine {
         if (direction < 0) {
             if (position <= 0) return 0;
             int atomStart = semanticAtomStart(position);
-            if (atomStart > 0
-                    && "^".equals(tokens.get(atomStart - 1).evaluation)) {
-                return semanticAtomStart(atomStart - 1);
+            if (atomStart > 0 && isPowerTemplate(tokens.get(atomStart - 1))) {
+                return powerBaseStart(atomStart - 1);
             }
             return atomStart;
         }
         if (position >= tokens.size()) return tokens.size();
         int atomEnd = semanticAtomEnd(position);
         if (atomEnd < tokens.size() && isFractionTemplate(tokens.get(atomEnd))) {
-            return semanticAtomEnd(atomEnd + 1);
+            FractionBounds fraction = fractionBounds(atomEnd);
+            return fraction == null ? semanticAtomEnd(atomEnd + 1) : fraction.denominatorEnd;
         }
-        if (atomEnd < tokens.size() && "^".equals(tokens.get(atomEnd).evaluation)) {
-            return semanticAtomEnd(atomEnd + 1);
+        if (atomEnd < tokens.size() && isPowerTemplate(tokens.get(atomEnd))) {
+            PowerBounds power = powerBounds(atomEnd);
+            return power == null ? semanticAtomEnd(atomEnd + 1) : power.exponentEnd;
         }
         return atomEnd;
     }
@@ -1076,7 +1236,10 @@ public final class CnCwMachine {
         // The fraction-template separator belongs to the structure around it;
         // never expose it as an independent selection unit.
         if (isFractionTemplate(previous)) {
-            return semanticAtomStart(safe - 1);
+            return fractionNumeratorStart(safe - 1);
+        }
+        if (isPowerTemplate(previous)) {
+            return powerBaseStart(safe - 1);
         }
         if (isNumericFragment(previous)) {
             int start = safe - 1;
@@ -1095,7 +1258,12 @@ public final class CnCwMachine {
         if (safe >= tokens.size()) return tokens.size();
         Token current = tokens.get(safe);
         if (isFractionTemplate(current)) {
-            return semanticAtomEnd(safe + 1);
+            FractionBounds fraction = fractionBounds(safe);
+            return fraction == null ? safe + 1 : fraction.denominatorEnd;
+        }
+        if (isPowerTemplate(current)) {
+            PowerBounds power = powerBounds(safe);
+            return power == null ? safe + 1 : power.exponentEnd;
         }
         if (isNumericFragment(current)) {
             int end = safe + 1;
@@ -1150,7 +1318,8 @@ public final class CnCwMachine {
     }
 
     private static boolean opensParenthesis(Token token) {
-        return token.evaluation.endsWith("(") || "(".equals(token.evaluation);
+        return token.evaluation.endsWith("(") || "(".equals(token.evaluation)
+                || isFixedRootTemplate(token);
     }
 
     /** Collapses an existing selection toward the requested movement side. */
@@ -1186,6 +1355,7 @@ public final class CnCwMachine {
         int end = selectionEnd();
         tokens.subList(start, end).clear();
         cursor = start;
+        semanticCursorOverride = null;
         clearSelection();
         resetStatementSequence();
         formatConverted = false;
@@ -1233,6 +1403,7 @@ public final class CnCwMachine {
         tokens.clear();
         tokens.addAll(undoTokens);
         cursor = Math.min(undoCursor, tokens.size());
+        semanticCursorOverride = null;
         undoTokens = current;
         undoCursor = currentCursor;
         result = "";
@@ -1676,6 +1847,7 @@ public final class CnCwMachine {
         tokens.clear();
         tokens.addAll(entry.tokens);
         cursor = tokens.size();
+        semanticCursorOverride = null;
         result = entry.result;
         resultProcessDisplay = entry.processDisplay;
         resultShown = true;
@@ -1687,6 +1859,7 @@ public final class CnCwMachine {
         resetStatementSequence();
         tokens.clear();
         cursor = 0;
+        semanticCursorOverride = null;
         clearSelection();
         shiftArmed = false;
         result = "";
@@ -2099,6 +2272,7 @@ public final class CnCwMachine {
         if (token == null) return;
         closeAllPopups();
         applicationLanding = false;
+        semanticCursorOverride = null;
         rememberUndo();
         if (prepareContinuousVerification(token)) return;
         tokens.add(cursor, token);
@@ -2581,7 +2755,9 @@ public final class CnCwMachine {
         if (itemCount > 0) selectedIndex = Math.min(selectedIndex, itemCount - 1);
         state = new CnCwUiState(model, screen, application, selectedIndex,
                 menus, homeItems(), modeCommands(application), expression(), displayText(),
-                naturalExpression(), cursor, selectionStartIndex(), selectionEndIndex(),
+                naturalExpression(), cursor, semanticCursorPath(), semanticSpans(),
+                selectionStartIndex(), selectionEndIndex(),
+                semanticSelectionPath(selectionAnchor), semanticSelectionPath(selectionFocus),
                 result, ans, hasAns, status, settings, shiftArmed, poweredOn, overwriteMode,
                 verificationMode, engineeringMode,
                 !statementSequence.isEmpty() && statementSequenceIndex < statementSequence.size(),
@@ -2592,6 +2768,1375 @@ public final class CnCwMachine {
                 spreadsheetGrid ? spreadsheetCellsSnapshot() : com.codex.fx991.core.Compat.list(),
                 spreadsheetGrid ? spreadsheet.input(spreadsheetAddress()) : "",
                 navigationPath());
+    }
+
+    /**
+     * Returns the best semantic position for the current legacy token boundary.
+     * A Stage 3 override is required at fraction entry/exit boundaries because
+     * the same legacy boundary can mean either a nested slot or the root row.
+     */
+    private CnCwCursorPath semanticCursorPath() {
+        if (semanticCursorOverride != null
+                && semanticCursorOverride.legacyTokenBoundary() == cursor) {
+            return semanticCursorOverride;
+        }
+        FractionCursor fraction = fractionCursorAt(cursor);
+        if (fraction != null) {
+            return CnCwCursorPath.nested(
+                    com.codex.fx991.core.Compat.list(fraction.templateIndex),
+                    fraction.slot, fraction.offset, cursor);
+        }
+        PowerCursor power = powerCursorAt(cursor);
+        if (power != null) {
+            return CnCwCursorPath.nested(
+                    com.codex.fx991.core.Compat.list(power.templateIndex),
+                    power.slot, power.offset, cursor);
+        }
+        RadicalCursor radical = radicalCursorAt(cursor);
+        if (radical != null) {
+            return CnCwCursorPath.nested(
+                    com.codex.fx991.core.Compat.list(radical.templateIndex),
+                    radical.slot, radical.offset, cursor);
+        }
+        FunctionCursor function = functionCursorAt(cursor);
+        if (function != null) {
+            return CnCwCursorPath.nested(
+                    com.codex.fx991.core.Compat.list(function.templateIndex, function.argumentIndex),
+                    CnCwCursorPath.Slot.FUNCTION_ARGUMENT, function.offset, cursor);
+        }
+        return CnCwCursorPath.rootBoundary(cursor);
+    }
+
+    private FractionBounds fractionBounds(int templateIndex) {
+        if (templateIndex < 0 || templateIndex >= tokens.size()
+                || !isFractionTemplate(tokens.get(templateIndex))) return null;
+        int numeratorStart = fractionNumeratorStart(templateIndex);
+        int numeratorEnd = templateIndex;
+        int denominatorStart = templateIndex + 1;
+        int denominatorEnd = fractionDenominatorEnd(denominatorStart, tokens.size());
+        return new FractionBounds(templateIndex, numeratorStart, numeratorEnd,
+                denominatorStart, denominatorEnd);
+    }
+
+    /** Empty numerators remain a valid editor slot instead of absorbing a binary token. */
+    private int fractionNumeratorStart(int templateIndex) {
+        if (templateIndex <= 0) return Math.max(0, templateIndex);
+        Token previous = tokens.get(templateIndex - 1);
+        if (previous.binary) return templateIndex;
+        return semanticAtomStart(templateIndex);
+    }
+
+    /** Empty denominators stop before the following top-level binary operator. */
+    private int fractionDenominatorEnd(int start, int limit) {
+        int safe = Math.max(0, Math.min(limit, start));
+        if (safe >= limit) return safe;
+        if (tokens.get(safe).binary) return safe;
+        return naturalExponentEnd(safe, limit, false);
+    }
+
+    /** Finds the smallest fraction structure owning the requested insertion boundary. */
+    private FractionCursor fractionCursorAt(int boundary) {
+        int safe = Math.max(0, Math.min(tokens.size(), boundary));
+        FractionCursor best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            FractionBounds bounds = fractionBounds(template);
+            if (bounds == null) continue;
+            CnCwCursorPath.Slot slot = null;
+            int offset = 0;
+            if (safe >= bounds.numeratorStart && safe <= bounds.numeratorEnd) {
+                slot = CnCwCursorPath.Slot.FRACTION_NUMERATOR;
+                offset = safe - bounds.numeratorStart;
+            } else if (safe >= bounds.denominatorStart && safe <= bounds.denominatorEnd) {
+                slot = CnCwCursorPath.Slot.FRACTION_DENOMINATOR;
+                offset = safe - bounds.denominatorStart;
+            }
+            if (slot == null) continue;
+            int span = bounds.denominatorEnd - bounds.numeratorStart;
+            if (span < bestSpan) {
+                bestSpan = span;
+                best = new FractionCursor(template, bounds.numeratorStart, bounds.numeratorEnd,
+                        bounds.denominatorStart, bounds.denominatorEnd, slot, offset);
+            }
+        }
+        return best;
+    }
+
+    private FractionCursor fractionCursorFromPath(CnCwCursorPath path) {
+        if (path == null || path.isRootBoundary() || path.childPath().isEmpty()) return null;
+        CnCwCursorPath.Slot slot = path.slot();
+        if (slot != CnCwCursorPath.Slot.FRACTION_NUMERATOR
+                && slot != CnCwCursorPath.Slot.FRACTION_DENOMINATOR) return null;
+        int template = path.childPath().get(0);
+        FractionBounds bounds = fractionBounds(template);
+        if (bounds == null) return null;
+        int length = slot == CnCwCursorPath.Slot.FRACTION_NUMERATOR
+                ? bounds.numeratorEnd - bounds.numeratorStart
+                : bounds.denominatorEnd - bounds.denominatorStart;
+        int offset = Math.max(0, Math.min(length, path.offset()));
+        return new FractionCursor(template, bounds.numeratorStart, bounds.numeratorEnd,
+                bounds.denominatorStart, bounds.denominatorEnd, slot, offset);
+    }
+
+    private FractionBounds fractionStartingAtBoundary(int boundary) {
+        FractionBounds best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            FractionBounds value = fractionBounds(template);
+            if (value == null || value.numeratorStart != boundary) continue;
+            int span = value.denominatorEnd - value.numeratorStart;
+            if (span < bestSpan) { best = value; bestSpan = span; }
+        }
+        return best;
+    }
+
+    private FractionBounds fractionEndingAtBoundary(int boundary) {
+        FractionBounds best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            FractionBounds value = fractionBounds(template);
+            if (value == null || value.denominatorEnd != boundary) continue;
+            int span = value.denominatorEnd - value.numeratorStart;
+            if (span < bestSpan) { best = value; bestSpan = span; }
+        }
+        return best;
+    }
+
+    private void setFractionCursor(FractionBounds fraction, CnCwCursorPath.Slot slot, int offset) {
+        int length = slot == CnCwCursorPath.Slot.FRACTION_NUMERATOR
+                ? fraction.numeratorEnd - fraction.numeratorStart
+                : fraction.denominatorEnd - fraction.denominatorStart;
+        int local = Math.max(0, Math.min(length, offset));
+        cursor = (slot == CnCwCursorPath.Slot.FRACTION_NUMERATOR
+                ? fraction.numeratorStart : fraction.denominatorStart) + local;
+        semanticCursorOverride = CnCwCursorPath.nested(
+                com.codex.fx991.core.Compat.list(fraction.templateIndex), slot, local, cursor);
+    }
+
+    private void setRootCursor(int boundary) {
+        cursor = Math.max(0, Math.min(tokens.size(), boundary));
+        semanticCursorOverride = CnCwCursorPath.rootBoundary(cursor);
+    }
+
+    private void finishSemanticCursorMove() {
+        clearSelection();
+        shiftArmed = false;
+        result = "";
+        resultShown = false;
+        errorShown = false;
+        lastError = null;
+        status = applicationStatus();
+    }
+
+    /**
+     * Horizontal navigation has explicit same-boundary entry/exit states:
+     * root-before → numerator → denominator → root-after.
+     */
+    private boolean moveFractionHorizontal(int direction) {
+        if (resultShown || errorShown || selectionActive()) return false;
+        CnCwCursorPath path = semanticCursorPath();
+        if (path.isRootBoundary()) {
+            FractionBounds target = direction > 0
+                    ? fractionStartingAtBoundary(cursor) : fractionEndingAtBoundary(cursor);
+            if (target == null) return false;
+            if (direction > 0) {
+                setFractionCursor(target, CnCwCursorPath.Slot.FRACTION_NUMERATOR, 0);
+            } else {
+                setFractionCursor(target, CnCwCursorPath.Slot.FRACTION_DENOMINATOR,
+                        target.denominatorEnd - target.denominatorStart);
+            }
+            finishSemanticCursorMove();
+            return true;
+        }
+
+        FractionCursor fraction = fractionCursorFromPath(path);
+        if (fraction == null) return false;
+        FractionBounds bounds = fractionBounds(fraction.templateIndex);
+        if (bounds == null) return false;
+
+        if (fraction.slot == CnCwCursorPath.Slot.FRACTION_NUMERATOR) {
+            int length = bounds.numeratorEnd - bounds.numeratorStart;
+            if (direction < 0) {
+                if (fraction.offset == 0) setRootCursor(bounds.numeratorStart);
+                else setFractionCursor(bounds, fraction.slot, fraction.offset - 1);
+            } else {
+                if (fraction.offset < length) {
+                    setFractionCursor(bounds, fraction.slot, fraction.offset + 1);
+                } else {
+                    setFractionCursor(bounds, CnCwCursorPath.Slot.FRACTION_DENOMINATOR, 0);
+                }
+            }
+        } else {
+            int length = bounds.denominatorEnd - bounds.denominatorStart;
+            if (direction < 0) {
+                if (fraction.offset > 0) {
+                    setFractionCursor(bounds, fraction.slot, fraction.offset - 1);
+                } else {
+                    setFractionCursor(bounds, CnCwCursorPath.Slot.FRACTION_NUMERATOR,
+                            bounds.numeratorEnd - bounds.numeratorStart);
+                }
+            } else {
+                if (fraction.offset < length) {
+                    setFractionCursor(bounds, fraction.slot, fraction.offset + 1);
+                } else {
+                    setRootCursor(bounds.denominatorEnd);
+                }
+            }
+        }
+        finishSemanticCursorMove();
+        return true;
+    }
+
+    /** Moves between numerator and denominator without invoking history recall. */
+    private boolean moveFractionVertical(int direction) {
+        if (resultShown || errorShown || selectionActive()) return false;
+        CnCwCursorPath path = semanticCursorPath();
+        FractionCursor fraction = fractionCursorFromPath(path);
+        if (fraction == null) return false;
+        FractionBounds bounds = fractionBounds(fraction.templateIndex);
+        if (bounds == null) return false;
+
+        if (direction < 0 && fraction.slot == CnCwCursorPath.Slot.FRACTION_DENOMINATOR) {
+            setFractionCursor(bounds, CnCwCursorPath.Slot.FRACTION_NUMERATOR,
+                    Math.min(fraction.offset, bounds.numeratorEnd - bounds.numeratorStart));
+        } else if (direction > 0
+                && fraction.slot == CnCwCursorPath.Slot.FRACTION_NUMERATOR) {
+            setFractionCursor(bounds, CnCwCursorPath.Slot.FRACTION_DENOMINATOR,
+                    Math.min(fraction.offset, bounds.denominatorEnd - bounds.denominatorStart));
+        }
+        finishSemanticCursorMove();
+        return true;
+    }
+
+    /**
+     * DEL inside a fraction removes only slot content. At a slot boundary it
+     * navigates instead of deleting the structural separator. From root-after,
+     * DEL removes the complete fraction atomically.
+     */
+    private boolean deleteFractionSemantic() {
+        if (tokens.isEmpty()) return false;
+        CnCwCursorPath path = semanticCursorPath();
+        if (path.isRootBoundary()) {
+            if (semanticCursorOverride == null) return false;
+            FractionBounds fraction = fractionEndingAtBoundary(cursor);
+            if (fraction == null) return false;
+            rememberUndo();
+            tokens.subList(fraction.numeratorStart, fraction.denominatorEnd).clear();
+            setRootCursor(fraction.numeratorStart);
+            finishSemanticEditMutation();
+            return true;
+        }
+
+        FractionCursor fraction = fractionCursorFromPath(path);
+        if (fraction == null) return false;
+        FractionBounds bounds = fractionBounds(fraction.templateIndex);
+        if (bounds == null) return false;
+
+        if (fraction.slot == CnCwCursorPath.Slot.FRACTION_NUMERATOR) {
+            if (fraction.offset == 0) {
+                setRootCursor(bounds.numeratorStart);
+                finishSemanticCursorMove();
+                return true;
+            }
+            int deleteIndex = cursor - 1;
+            if (deleteIndex < bounds.numeratorStart || deleteIndex >= bounds.numeratorEnd) return false;
+            rememberUndo();
+            tokens.remove(deleteIndex);
+            cursor--;
+            int newTemplate = Math.max(0, fraction.templateIndex - 1);
+            semanticCursorOverride = CnCwCursorPath.nested(
+                    com.codex.fx991.core.Compat.list(newTemplate),
+                    CnCwCursorPath.Slot.FRACTION_NUMERATOR,
+                    Math.max(0, fraction.offset - 1), cursor);
+            finishSemanticEditMutation();
+            return true;
+        }
+
+        if (fraction.offset == 0) {
+            setFractionCursor(bounds, CnCwCursorPath.Slot.FRACTION_NUMERATOR,
+                    bounds.numeratorEnd - bounds.numeratorStart);
+            finishSemanticCursorMove();
+            return true;
+        }
+        int deleteIndex = cursor - 1;
+        if (deleteIndex < bounds.denominatorStart || deleteIndex >= bounds.denominatorEnd) return false;
+        rememberUndo();
+        tokens.remove(deleteIndex);
+        cursor--;
+        semanticCursorOverride = CnCwCursorPath.nested(
+                com.codex.fx991.core.Compat.list(fraction.templateIndex),
+                CnCwCursorPath.Slot.FRACTION_DENOMINATOR,
+                Math.max(0, fraction.offset - 1), cursor);
+        finishSemanticEditMutation();
+        return true;
+    }
+
+    private void finishSemanticEditMutation() {
+        clearSelection();
+        resetStatementSequence();
+        formatConverted = false;
+        engineeringMode = false;
+        originalResult = "";
+        result = "";
+        resultShown = false;
+        errorShown = false;
+        lastError = null;
+        lastExactResult = null;
+        status = applicationStatus();
+    }
+
+    private static boolean isPowerTemplate(Token token) {
+        return "^".equals(token.evaluation) && "^".equals(token.display);
+    }
+
+    private PowerBounds powerBounds(int templateIndex) {
+        if (templateIndex < 0 || templateIndex >= tokens.size()
+                || !isPowerTemplate(tokens.get(templateIndex))) return null;
+        int baseStart = powerBaseStart(templateIndex);
+        int baseEnd = templateIndex;
+        int exponentStart = templateIndex + 1;
+        int exponentEnd = powerExponentEnd(exponentStart, tokens.size());
+        return new PowerBounds(templateIndex, baseStart, baseEnd, exponentStart, exponentEnd);
+    }
+
+    /** Keeps a complete fraction as the base of a power when one ends at ^. */
+    private int powerBaseStart(int templateIndex) {
+        if (templateIndex <= 0) return Math.max(0, templateIndex);
+        Token previous = tokens.get(templateIndex - 1);
+        if (previous.binary) return templateIndex;
+        FractionBounds fraction = fractionEndingAtBoundary(templateIndex);
+        if (fraction != null) return fraction.numeratorStart;
+
+        // Chained powers use the complete previous power as the next base.
+        PowerBounds previousPower = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int candidate = 0; candidate < templateIndex; candidate++) {
+            if (!isPowerTemplate(tokens.get(candidate))) continue;
+            int candidateEnd = powerExponentEnd(candidate + 1, templateIndex);
+            if (candidateEnd != templateIndex) continue;
+            int candidateStart = candidate <= 0 ? candidate : semanticAtomStart(candidate);
+            int span = templateIndex - candidateStart;
+            if (span < bestSpan) {
+                bestSpan = span;
+                previousPower = new PowerBounds(candidate, candidateStart, candidate,
+                        candidate + 1, templateIndex);
+            }
+        }
+        if (previousPower != null) return previousPower.baseStart;
+        return semanticAtomStart(templateIndex);
+    }
+
+    /** Empty exponents stop before the following top-level binary operator. */
+    private int powerExponentEnd(int start, int limit) {
+        int safe = Math.max(0, Math.min(limit, start));
+        if (safe >= limit) return safe;
+        if (tokens.get(safe).binary) return safe;
+        return naturalExponentEnd(safe, limit, false);
+    }
+
+    private PowerCursor powerCursorAt(int boundary) {
+        int safe = Math.max(0, Math.min(tokens.size(), boundary));
+        PowerCursor best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            PowerBounds bounds = powerBounds(template);
+            if (bounds == null) continue;
+            CnCwCursorPath.Slot slot = null;
+            int offset = 0;
+            if (safe >= bounds.baseStart && safe <= bounds.baseEnd) {
+                slot = CnCwCursorPath.Slot.SUPERSCRIPT_BASE;
+                offset = safe - bounds.baseStart;
+            } else if (safe >= bounds.exponentStart && safe <= bounds.exponentEnd) {
+                slot = CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT;
+                offset = safe - bounds.exponentStart;
+            }
+            if (slot == null) continue;
+            int span = bounds.exponentEnd - bounds.baseStart;
+            if (span < bestSpan) {
+                bestSpan = span;
+                best = new PowerCursor(template, bounds.baseStart, bounds.baseEnd,
+                        bounds.exponentStart, bounds.exponentEnd, slot, offset);
+            }
+        }
+        return best;
+    }
+
+    private PowerCursor powerCursorFromPath(CnCwCursorPath path) {
+        if (path == null || path.isRootBoundary() || path.childPath().isEmpty()) return null;
+        CnCwCursorPath.Slot slot = path.slot();
+        if (slot != CnCwCursorPath.Slot.SUPERSCRIPT_BASE
+                && slot != CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT) return null;
+        int template = path.childPath().get(0);
+        PowerBounds bounds = powerBounds(template);
+        if (bounds == null) return null;
+        int length = slot == CnCwCursorPath.Slot.SUPERSCRIPT_BASE
+                ? bounds.baseEnd - bounds.baseStart
+                : bounds.exponentEnd - bounds.exponentStart;
+        int offset = Math.max(0, Math.min(length, path.offset()));
+        return new PowerCursor(template, bounds.baseStart, bounds.baseEnd,
+                bounds.exponentStart, bounds.exponentEnd, slot, offset);
+    }
+
+    private PowerBounds powerStartingAtBoundary(int boundary) {
+        PowerBounds best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            PowerBounds value = powerBounds(template);
+            if (value == null || value.baseStart != boundary) continue;
+            int span = value.exponentEnd - value.baseStart;
+            if (span < bestSpan) { best = value; bestSpan = span; }
+        }
+        return best;
+    }
+
+    private PowerBounds powerEndingAtBoundary(int boundary) {
+        PowerBounds best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            PowerBounds value = powerBounds(template);
+            if (value == null || value.exponentEnd != boundary) continue;
+            int span = value.exponentEnd - value.baseStart;
+            if (span < bestSpan) { best = value; bestSpan = span; }
+        }
+        return best;
+    }
+
+    private void setPowerCursor(PowerBounds power, CnCwCursorPath.Slot slot, int offset) {
+        int length = slot == CnCwCursorPath.Slot.SUPERSCRIPT_BASE
+                ? power.baseEnd - power.baseStart
+                : power.exponentEnd - power.exponentStart;
+        int local = Math.max(0, Math.min(length, offset));
+        cursor = (slot == CnCwCursorPath.Slot.SUPERSCRIPT_BASE
+                ? power.baseStart : power.exponentStart) + local;
+        semanticCursorOverride = CnCwCursorPath.nested(
+                com.codex.fx991.core.Compat.list(power.templateIndex), slot, local, cursor);
+    }
+
+    /** root-before → base → exponent → root-after. */
+    private boolean movePowerHorizontal(int direction) {
+        if (resultShown || errorShown || selectionActive()) return false;
+        CnCwCursorPath path = semanticCursorPath();
+        if (path.isRootBoundary()) {
+            PowerBounds target = direction > 0
+                    ? powerStartingAtBoundary(cursor) : powerEndingAtBoundary(cursor);
+            if (target == null) return false;
+            if (direction > 0) {
+                setPowerCursor(target, CnCwCursorPath.Slot.SUPERSCRIPT_BASE, 0);
+            } else {
+                setPowerCursor(target, CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT,
+                        target.exponentEnd - target.exponentStart);
+            }
+            finishSemanticCursorMove();
+            return true;
+        }
+
+        PowerCursor power = powerCursorFromPath(path);
+        if (power == null) return false;
+        PowerBounds bounds = powerBounds(power.templateIndex);
+        if (bounds == null) return false;
+
+        if (power.slot == CnCwCursorPath.Slot.SUPERSCRIPT_BASE) {
+            int length = bounds.baseEnd - bounds.baseStart;
+            if (direction < 0) {
+                if (power.offset == 0) setRootCursor(bounds.baseStart);
+                else setPowerCursor(bounds, power.slot, power.offset - 1);
+            } else {
+                if (power.offset < length) {
+                    setPowerCursor(bounds, power.slot, power.offset + 1);
+                } else {
+                    setPowerCursor(bounds, CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT, 0);
+                }
+            }
+        } else {
+            int length = bounds.exponentEnd - bounds.exponentStart;
+            if (direction < 0) {
+                if (power.offset > 0) {
+                    setPowerCursor(bounds, power.slot, power.offset - 1);
+                } else {
+                    setPowerCursor(bounds, CnCwCursorPath.Slot.SUPERSCRIPT_BASE,
+                            bounds.baseEnd - bounds.baseStart);
+                }
+            } else {
+                if (power.offset < length) {
+                    setPowerCursor(bounds, power.slot, power.offset + 1);
+                } else {
+                    setRootCursor(bounds.exponentEnd);
+                }
+            }
+        }
+        finishSemanticCursorMove();
+        return true;
+    }
+
+    /**
+     * UP/DOWN follow visual geometry rather than reusing the same local token
+     * offset.  A superscript is drawn to the upper-right of the base, so the
+     * nearest lower insertion point is the base end; conversely entering the
+     * exponent from the base starts at the exponent's left edge.  Reusing the
+     * numeric offset made multi-digit bases jump into their middle and could
+     * make repeated base/exponent movement feel stuck on-device.
+     */
+    private boolean movePowerVertical(int direction) {
+        if (resultShown || errorShown || selectionActive()) return false;
+        PowerCursor power = powerCursorFromPath(semanticCursorPath());
+        if (power == null) return false;
+        PowerBounds bounds = powerBounds(power.templateIndex);
+        if (bounds == null) return false;
+
+        if (direction < 0 && power.slot == CnCwCursorPath.Slot.SUPERSCRIPT_BASE) {
+            setPowerCursor(bounds, CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT, 0);
+        } else if (direction > 0
+                && power.slot == CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT) {
+            setPowerCursor(bounds, CnCwCursorPath.Slot.SUPERSCRIPT_BASE,
+                    bounds.baseEnd - bounds.baseStart);
+        }
+        finishSemanticCursorMove();
+        return true;
+    }
+
+    /**
+     * DEL never removes ^ by itself. Inside a slot it deletes slot content;
+     * slot-start DEL navigates to the preceding semantic position. From an
+     * explicit root-after position, DEL removes the complete power atomically.
+     */
+    private boolean deletePowerSemantic() {
+        if (tokens.isEmpty()) return false;
+        CnCwCursorPath path = semanticCursorPath();
+        if (path.isRootBoundary()) {
+            if (semanticCursorOverride == null) return false;
+            PowerBounds power = powerEndingAtBoundary(cursor);
+            if (power == null) return false;
+            rememberUndo();
+            tokens.subList(power.baseStart, power.exponentEnd).clear();
+            setRootCursor(power.baseStart);
+            finishSemanticEditMutation();
+            return true;
+        }
+
+        PowerCursor power = powerCursorFromPath(path);
+        if (power == null) return false;
+        PowerBounds bounds = powerBounds(power.templateIndex);
+        if (bounds == null) return false;
+
+        if (power.slot == CnCwCursorPath.Slot.SUPERSCRIPT_BASE) {
+            if (power.offset == 0) {
+                setRootCursor(bounds.baseStart);
+                finishSemanticCursorMove();
+                return true;
+            }
+            int deleteIndex = cursor - 1;
+            if (deleteIndex < bounds.baseStart || deleteIndex >= bounds.baseEnd) return false;
+            rememberUndo();
+            tokens.remove(deleteIndex);
+            cursor--;
+            int newTemplate = Math.max(0, power.templateIndex - 1);
+            semanticCursorOverride = CnCwCursorPath.nested(
+                    com.codex.fx991.core.Compat.list(newTemplate),
+                    CnCwCursorPath.Slot.SUPERSCRIPT_BASE,
+                    Math.max(0, power.offset - 1), cursor);
+            finishSemanticEditMutation();
+            return true;
+        }
+
+        if (power.offset == 0) {
+            setPowerCursor(bounds, CnCwCursorPath.Slot.SUPERSCRIPT_BASE,
+                    bounds.baseEnd - bounds.baseStart);
+            finishSemanticCursorMove();
+            return true;
+        }
+        int deleteIndex = cursor - 1;
+        if (deleteIndex < bounds.exponentStart || deleteIndex >= bounds.exponentEnd) return false;
+        rememberUndo();
+        tokens.remove(deleteIndex);
+        cursor--;
+        semanticCursorOverride = CnCwCursorPath.nested(
+                com.codex.fx991.core.Compat.list(power.templateIndex),
+                CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT,
+                Math.max(0, power.offset - 1), cursor);
+        finishSemanticEditMutation();
+        return true;
+    }
+
+    private static boolean isSquareRootTemplate(Token token) {
+        return "sqrt(".equals(token.evaluation);
+    }
+
+    private static boolean isGenericRootTemplate(Token token) {
+        return "root(".equals(token.evaluation);
+    }
+
+    private static boolean isFixedRootTemplate(Token token) {
+        return token.evaluation.startsWith("root(")
+                && token.evaluation.endsWith(",")
+                && !isGenericRootTemplate(token);
+    }
+
+    private static boolean isRadicalTemplate(Token token) {
+        return isSquareRootTemplate(token) || isGenericRootTemplate(token)
+                || isFixedRootTemplate(token);
+    }
+
+    /** Closing parenthesis owned by sqrt/root, or -1 for the live unclosed slot. */
+    private int radicalCloseIndex(int templateIndex) {
+        int depth = 0;
+        for (int index = templateIndex + 1; index < tokens.size(); index++) {
+            Token token = tokens.get(index);
+            if (")".equals(token.evaluation)) {
+                if (depth == 0) return index;
+                depth--;
+            } else if (opensParenthesis(token)) {
+                depth++;
+            }
+        }
+        return -1;
+    }
+
+    /** First top-level comma separating root(index, content). */
+    private int rootSeparatorIndex(int templateIndex, int innerEnd) {
+        int depth = 0;
+        for (int index = templateIndex + 1; index < innerEnd; index++) {
+            Token token = tokens.get(index);
+            if (")".equals(token.evaluation)) {
+                if (depth > 0) depth--;
+                continue;
+            }
+            if (depth == 0 && ",".equals(token.evaluation)) return index;
+            if (opensParenthesis(token)) depth++;
+        }
+        return -1;
+    }
+
+    private RadicalBounds radicalBounds(int templateIndex) {
+        if (templateIndex < 0 || templateIndex >= tokens.size()) return null;
+        Token template = tokens.get(templateIndex);
+        if (!isRadicalTemplate(template)) return null;
+        int close = radicalCloseIndex(templateIndex);
+        int innerEnd = close >= 0 ? close : tokens.size();
+        int endExclusive = close >= 0 ? close + 1 : innerEnd;
+        if (isGenericRootTemplate(template)) {
+            int separator = rootSeparatorIndex(templateIndex, innerEnd);
+            if (separator >= 0) {
+                return new RadicalBounds(templateIndex, templateIndex + 1, separator,
+                        separator, separator + 1, innerEnd, close, endExclusive);
+            }
+            return new RadicalBounds(templateIndex, templateIndex + 1, innerEnd,
+                    -1, innerEnd, innerEnd, close, endExclusive);
+        }
+        return new RadicalBounds(templateIndex, -1, -1, -1,
+                templateIndex + 1, innerEnd, close, endExclusive);
+    }
+
+    /** Finds the smallest root/radical slot owning an insertion boundary. */
+    private RadicalCursor radicalCursorAt(int boundary) {
+        int safe = Math.max(0, Math.min(tokens.size(), boundary));
+        RadicalCursor best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            RadicalBounds bounds = radicalBounds(template);
+            if (bounds == null) continue;
+            Token token = tokens.get(template);
+            CnCwCursorPath.Slot slot = null;
+            int offset = 0;
+            if (isGenericRootTemplate(token)) {
+                if (safe >= bounds.indexStart && safe <= bounds.indexEnd) {
+                    slot = CnCwCursorPath.Slot.ROOT_INDEX;
+                    offset = safe - bounds.indexStart;
+                } else if (bounds.separatorIndex >= 0
+                        && safe >= bounds.contentStart && safe <= bounds.contentEnd) {
+                    slot = CnCwCursorPath.Slot.ROOT_CONTENT;
+                    offset = safe - bounds.contentStart;
+                }
+            } else if (safe >= bounds.contentStart && safe <= bounds.contentEnd) {
+                slot = isSquareRootTemplate(token)
+                        ? CnCwCursorPath.Slot.RADICAL_CONTENT
+                        : CnCwCursorPath.Slot.ROOT_CONTENT;
+                offset = safe - bounds.contentStart;
+            }
+            if (slot == null) continue;
+            int span = bounds.endExclusive - bounds.templateIndex;
+            if (span < bestSpan) {
+                bestSpan = span;
+                best = new RadicalCursor(template, slot, offset);
+            }
+        }
+        return best;
+    }
+
+    private RadicalCursor radicalCursorFromPath(CnCwCursorPath path) {
+        if (path == null || path.isRootBoundary() || path.childPath().isEmpty()) return null;
+        CnCwCursorPath.Slot slot = path.slot();
+        if (slot != CnCwCursorPath.Slot.RADICAL_CONTENT
+                && slot != CnCwCursorPath.Slot.ROOT_INDEX
+                && slot != CnCwCursorPath.Slot.ROOT_CONTENT) return null;
+        int template = path.childPath().get(0);
+        RadicalBounds bounds = radicalBounds(template);
+        if (bounds == null) return null;
+        Token token = tokens.get(template);
+        int length;
+        if (slot == CnCwCursorPath.Slot.ROOT_INDEX) {
+            if (!isGenericRootTemplate(token)) return null;
+            length = bounds.indexEnd - bounds.indexStart;
+        } else {
+            if (slot == CnCwCursorPath.Slot.RADICAL_CONTENT
+                    && !isSquareRootTemplate(token)) return null;
+            if (slot == CnCwCursorPath.Slot.ROOT_CONTENT
+                    && isSquareRootTemplate(token)) return null;
+            if (isGenericRootTemplate(token) && bounds.separatorIndex < 0) return null;
+            length = bounds.contentEnd - bounds.contentStart;
+        }
+        return new RadicalCursor(template, slot,
+                Math.max(0, Math.min(length, path.offset())));
+    }
+
+    private RadicalBounds radicalStartingAtBoundary(int boundary) {
+        RadicalBounds best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            RadicalBounds value = radicalBounds(template);
+            if (value == null || value.templateIndex != boundary) continue;
+            int span = value.endExclusive - value.templateIndex;
+            if (span < bestSpan) { best = value; bestSpan = span; }
+        }
+        return best;
+    }
+
+    private RadicalBounds radicalEndingAtBoundary(int boundary) {
+        RadicalBounds best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            RadicalBounds value = radicalBounds(template);
+            if (value == null || value.endExclusive != boundary) continue;
+            int span = value.endExclusive - value.templateIndex;
+            if (span < bestSpan) { best = value; bestSpan = span; }
+        }
+        return best;
+    }
+
+    private RadicalBounds radicalContainingToken(int tokenIndex) {
+        RadicalBounds best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            RadicalBounds value = radicalBounds(template);
+            if (value == null) continue;
+            boolean inIndex = value.indexStart >= 0
+                    && tokenIndex >= value.indexStart && tokenIndex < value.indexEnd;
+            boolean inContent = tokenIndex >= value.contentStart && tokenIndex < value.contentEnd;
+            if (!inIndex && !inContent) continue;
+            int span = value.endExclusive - value.templateIndex;
+            if (span < bestSpan) { best = value; bestSpan = span; }
+        }
+        return best;
+    }
+
+    private boolean selectionWithinRadicalSlot(int start, int end, RadicalBounds bounds) {
+        boolean withinIndex = bounds.indexStart >= 0
+                && start >= bounds.indexStart && end <= bounds.indexEnd;
+        boolean withinContent = start >= bounds.contentStart && end <= bounds.contentEnd;
+        return withinIndex || withinContent;
+    }
+
+    private void setRadicalCursor(RadicalBounds radical, CnCwCursorPath.Slot slot, int offset) {
+        int start;
+        int length;
+        if (slot == CnCwCursorPath.Slot.ROOT_INDEX) {
+            start = radical.indexStart;
+            length = radical.indexEnd - radical.indexStart;
+        } else {
+            start = radical.contentStart;
+            length = radical.contentEnd - radical.contentStart;
+        }
+        int local = Math.max(0, Math.min(length, offset));
+        cursor = start + local;
+        semanticCursorOverride = CnCwCursorPath.nested(
+                com.codex.fx991.core.Compat.list(radical.templateIndex), slot, local, cursor);
+    }
+
+    /** root-before -> content, or root-before -> index -> content for n-th root. */
+    private boolean moveRadicalHorizontal(int direction) {
+        if (resultShown || errorShown || selectionActive()) return false;
+        CnCwCursorPath path = semanticCursorPath();
+        if (path.isRootBoundary()) {
+            RadicalBounds target = direction > 0
+                    ? radicalStartingAtBoundary(cursor) : radicalEndingAtBoundary(cursor);
+            if (target == null) return false;
+            Token template = tokens.get(target.templateIndex);
+            if (direction > 0) {
+                if (isGenericRootTemplate(template)) {
+                    setRadicalCursor(target, CnCwCursorPath.Slot.ROOT_INDEX, 0);
+                } else {
+                    setRadicalCursor(target,
+                            isSquareRootTemplate(template)
+                                    ? CnCwCursorPath.Slot.RADICAL_CONTENT
+                                    : CnCwCursorPath.Slot.ROOT_CONTENT,
+                            0);
+                }
+            } else if (isGenericRootTemplate(template) && target.separatorIndex < 0) {
+                setRadicalCursor(target, CnCwCursorPath.Slot.ROOT_INDEX,
+                        target.indexEnd - target.indexStart);
+            } else {
+                setRadicalCursor(target,
+                        isSquareRootTemplate(template)
+                                ? CnCwCursorPath.Slot.RADICAL_CONTENT
+                                : CnCwCursorPath.Slot.ROOT_CONTENT,
+                        target.contentEnd - target.contentStart);
+            }
+            finishSemanticCursorMove();
+            return true;
+        }
+
+        RadicalCursor radical = radicalCursorFromPath(path);
+        if (radical == null) return false;
+        RadicalBounds bounds = radicalBounds(radical.templateIndex);
+        if (bounds == null) return false;
+        Token template = tokens.get(bounds.templateIndex);
+
+        if (radical.slot == CnCwCursorPath.Slot.ROOT_INDEX) {
+            int length = bounds.indexEnd - bounds.indexStart;
+            if (direction < 0) {
+                if (radical.offset == 0) setRootCursor(bounds.templateIndex);
+                else setRadicalCursor(bounds, radical.slot, radical.offset - 1);
+            } else if (radical.offset < length) {
+                setRadicalCursor(bounds, radical.slot, radical.offset + 1);
+            } else if (bounds.separatorIndex >= 0) {
+                setRadicalCursor(bounds, CnCwCursorPath.Slot.ROOT_CONTENT, 0);
+            } else {
+                setRootCursor(bounds.endExclusive);
+            }
+            finishSemanticCursorMove();
+            return true;
+        }
+
+        int length = bounds.contentEnd - bounds.contentStart;
+        if (direction < 0) {
+            if (radical.offset > 0) {
+                setRadicalCursor(bounds, radical.slot, radical.offset - 1);
+            } else if (isGenericRootTemplate(template) && bounds.separatorIndex >= 0) {
+                setRadicalCursor(bounds, CnCwCursorPath.Slot.ROOT_INDEX,
+                        bounds.indexEnd - bounds.indexStart);
+            } else {
+                setRootCursor(bounds.templateIndex);
+            }
+        } else if (radical.offset < length) {
+            setRadicalCursor(bounds, radical.slot, radical.offset + 1);
+        } else {
+            setRootCursor(bounds.endExclusive);
+        }
+        finishSemanticCursorMove();
+        return true;
+    }
+
+    /** Root index is visually above content; simple/fixed roots consume arrows in-place. */
+    private boolean moveRadicalVertical(int direction) {
+        if (resultShown || errorShown || selectionActive()) return false;
+        CnCwCursorPath path = semanticCursorPath();
+        RadicalCursor radical = radicalCursorFromPath(path);
+        if (radical == null) return false;
+        RadicalBounds bounds = radicalBounds(radical.templateIndex);
+        if (bounds == null) return false;
+        Token template = tokens.get(bounds.templateIndex);
+        if (isGenericRootTemplate(template) && bounds.separatorIndex >= 0) {
+            if (direction < 0 && radical.slot == CnCwCursorPath.Slot.ROOT_CONTENT) {
+                setRadicalCursor(bounds, CnCwCursorPath.Slot.ROOT_INDEX,
+                        Math.min(radical.offset, bounds.indexEnd - bounds.indexStart));
+            } else if (direction > 0 && radical.slot == CnCwCursorPath.Slot.ROOT_INDEX) {
+                setRadicalCursor(bounds, CnCwCursorPath.Slot.ROOT_CONTENT,
+                        Math.min(radical.offset, bounds.contentEnd - bounds.contentStart));
+            }
+        }
+        finishSemanticCursorMove();
+        return true;
+    }
+
+    /** Never delete sqrt/root templates, commas, or their closing parenthesis piecemeal. */
+    private boolean deleteRadicalSemantic() {
+        if (tokens.isEmpty()) return false;
+        CnCwCursorPath path = semanticCursorPath();
+        if (path.isRootBoundary()) {
+            RadicalBounds radical = radicalEndingAtBoundary(cursor);
+            if (radical == null) return false;
+            rememberUndo();
+            tokens.subList(radical.templateIndex, radical.endExclusive).clear();
+            setRootCursor(radical.templateIndex);
+            finishSemanticEditMutation();
+            return true;
+        }
+
+        RadicalCursor radical = radicalCursorFromPath(path);
+        if (radical == null) return false;
+        RadicalBounds bounds = radicalBounds(radical.templateIndex);
+        if (bounds == null) return false;
+
+        if (radical.slot == CnCwCursorPath.Slot.ROOT_INDEX) {
+            if (radical.offset == 0) {
+                setRootCursor(bounds.templateIndex);
+                finishSemanticCursorMove();
+                return true;
+            }
+            int deleteIndex = cursor - 1;
+            if (deleteIndex < bounds.indexStart || deleteIndex >= bounds.indexEnd) return false;
+            rememberUndo();
+            tokens.remove(deleteIndex);
+            cursor--;
+            RadicalBounds updated = radicalBounds(radical.templateIndex);
+            if (updated == null) return false;
+            setRadicalCursor(updated, CnCwCursorPath.Slot.ROOT_INDEX,
+                    Math.max(0, radical.offset - 1));
+            finishSemanticEditMutation();
+            return true;
+        }
+
+        if (radical.offset == 0) {
+            Token template = tokens.get(bounds.templateIndex);
+            if (isGenericRootTemplate(template) && bounds.separatorIndex >= 0) {
+                setRadicalCursor(bounds, CnCwCursorPath.Slot.ROOT_INDEX,
+                        bounds.indexEnd - bounds.indexStart);
+            } else {
+                setRootCursor(bounds.templateIndex);
+            }
+            finishSemanticCursorMove();
+            return true;
+        }
+        int deleteIndex = cursor - 1;
+        if (deleteIndex < bounds.contentStart || deleteIndex >= bounds.contentEnd) return false;
+        rememberUndo();
+        tokens.remove(deleteIndex);
+        cursor--;
+        RadicalBounds updated = radicalBounds(radical.templateIndex);
+        if (updated == null) return false;
+        setRadicalCursor(updated, radical.slot, Math.max(0, radical.offset - 1));
+        finishSemanticEditMutation();
+        return true;
+    }
+
+    /** Ordinary parenthesized function; radicals keep their dedicated Step 4 semantics. */
+    private static boolean isFunctionTemplate(Token token) {
+        String value = token.evaluation;
+        if (!value.endsWith("(") || "(".equals(value) || isRadicalTemplate(token)) return false;
+        // These are exponent-entry templates rather than ordinary function calls.
+        return !"e^(".equals(value) && !"*10^(".equals(value);
+    }
+
+    private FunctionBounds functionBounds(int templateIndex) {
+        if (templateIndex < 0 || templateIndex >= tokens.size()
+                || !isFunctionTemplate(tokens.get(templateIndex))) return null;
+        int close = matchingClose(templateIndex);
+        int innerEnd = close >= 0 ? close : tokens.size();
+        int endExclusive = close >= 0 ? close + 1 : innerEnd;
+        List<FunctionArgumentBounds> arguments = new ArrayList<>();
+        int argumentStart = templateIndex + 1;
+        int depth = 0;
+        for (int index = argumentStart; index < innerEnd; index++) {
+            Token token = tokens.get(index);
+            if (")".equals(token.evaluation)) {
+                if (depth > 0) depth--;
+                continue;
+            }
+            if (depth == 0 && ",".equals(token.evaluation)) {
+                arguments.add(new FunctionArgumentBounds(argumentStart, index));
+                argumentStart = index + 1;
+                continue;
+            }
+            if (opensParenthesis(token)) depth++;
+        }
+        // Even an empty function owns one editable argument slot.
+        arguments.add(new FunctionArgumentBounds(argumentStart, innerEnd));
+        return new FunctionBounds(templateIndex,
+                com.codex.fx991.core.Compat.copyList(arguments), close, endExclusive);
+    }
+
+    /** Smallest ordinary function owning this insertion boundary. */
+    private FunctionCursor functionCursorAt(int boundary) {
+        int safe = Math.max(0, Math.min(tokens.size(), boundary));
+        FunctionCursor best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            FunctionBounds bounds = functionBounds(template);
+            if (bounds == null) continue;
+            for (int argumentIndex = 0; argumentIndex < bounds.arguments.size(); argumentIndex++) {
+                FunctionArgumentBounds argument = bounds.arguments.get(argumentIndex);
+                if (safe < argument.start || safe > argument.end) continue;
+                int span = bounds.endExclusive - bounds.templateIndex;
+                if (span < bestSpan) {
+                    bestSpan = span;
+                    best = new FunctionCursor(template, argumentIndex,
+                            safe - argument.start);
+                }
+            }
+        }
+        return best;
+    }
+
+    private FunctionCursor functionCursorFromPath(CnCwCursorPath path) {
+        if (path == null || path.isRootBoundary()
+                || path.slot() != CnCwCursorPath.Slot.FUNCTION_ARGUMENT
+                || path.childPath().size() < 2) return null;
+        int template = path.childPath().get(0);
+        int argumentIndex = path.childPath().get(1);
+        FunctionBounds bounds = functionBounds(template);
+        if (bounds == null || argumentIndex < 0 || argumentIndex >= bounds.arguments.size()) {
+            return null;
+        }
+        FunctionArgumentBounds argument = bounds.arguments.get(argumentIndex);
+        int length = argument.end - argument.start;
+        return new FunctionCursor(template, argumentIndex,
+                Math.max(0, Math.min(length, path.offset())));
+    }
+
+    private FunctionBounds functionStartingAtBoundary(int boundary) {
+        FunctionBounds best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            FunctionBounds value = functionBounds(template);
+            if (value == null || value.templateIndex != boundary) continue;
+            int span = value.endExclusive - value.templateIndex;
+            if (span < bestSpan) { best = value; bestSpan = span; }
+        }
+        return best;
+    }
+
+    private FunctionBounds functionEndingAtBoundary(int boundary) {
+        FunctionBounds best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            FunctionBounds value = functionBounds(template);
+            if (value == null || value.endExclusive != boundary) continue;
+            int span = value.endExclusive - value.templateIndex;
+            if (span < bestSpan) { best = value; bestSpan = span; }
+        }
+        return best;
+    }
+
+    /** Smallest function whose concrete argument token contains tokenIndex. */
+    private FunctionBounds functionContainingToken(int tokenIndex) {
+        FunctionBounds best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (int template = 0; template < tokens.size(); template++) {
+            FunctionBounds value = functionBounds(template);
+            if (value == null) continue;
+            boolean inArgument = false;
+            for (FunctionArgumentBounds argument : value.arguments) {
+                if (tokenIndex >= argument.start && tokenIndex < argument.end) {
+                    inArgument = true;
+                    break;
+                }
+            }
+            if (!inArgument) continue;
+            int span = value.endExclusive - value.templateIndex;
+            if (span < bestSpan) { best = value; bestSpan = span; }
+        }
+        return best;
+    }
+
+    private boolean selectionWithinFunctionArgument(int start, int end, FunctionBounds function) {
+        for (FunctionArgumentBounds argument : function.arguments) {
+            if (start >= argument.start && end <= argument.end) return true;
+        }
+        return false;
+    }
+
+
+    /**
+     * True when a touch range remains inside the smallest nested editable slot
+     * owning tokenIndex. This keeps fine selection inside radical/function
+     * content while still snapping across structural commas or parentheses.
+     */
+    private boolean selectionWithinSemanticEditableSlot(int start, int end, int tokenIndex) {
+        RadicalBounds radical = radicalContainingToken(tokenIndex);
+        if (radical != null && selectionWithinRadicalSlot(start, end, radical)) return true;
+        FunctionBounds function = functionContainingToken(tokenIndex);
+        return function != null && selectionWithinFunctionArgument(start, end, function);
+    }
+
+    /**
+     * Publishes every currently editable nested slot. The Android adapter uses
+     * these spans for geometry-aware hit testing while legacy token boundaries
+     * remain available as a fallback.
+     */
+    private List<CnCwSemanticSpan> semanticSpans() {
+        List<CnCwSemanticSpan> spans = new ArrayList<>();
+        for (int template = 0; template < tokens.size(); template++) {
+            FractionBounds fraction = fractionBounds(template);
+            if (fraction != null) {
+                spans.add(new CnCwSemanticSpan(
+                        com.codex.fx991.core.Compat.list(template),
+                        CnCwCursorPath.Slot.FRACTION_NUMERATOR,
+                        fraction.numeratorStart, fraction.numeratorEnd,
+                        fraction.numeratorStart, fraction.denominatorEnd));
+                spans.add(new CnCwSemanticSpan(
+                        com.codex.fx991.core.Compat.list(template),
+                        CnCwCursorPath.Slot.FRACTION_DENOMINATOR,
+                        fraction.denominatorStart, fraction.denominatorEnd,
+                        fraction.numeratorStart, fraction.denominatorEnd));
+            }
+
+            PowerBounds power = powerBounds(template);
+            if (power != null) {
+                spans.add(new CnCwSemanticSpan(
+                        com.codex.fx991.core.Compat.list(template),
+                        CnCwCursorPath.Slot.SUPERSCRIPT_BASE,
+                        power.baseStart, power.baseEnd,
+                        power.baseStart, power.exponentEnd));
+                spans.add(new CnCwSemanticSpan(
+                        com.codex.fx991.core.Compat.list(template),
+                        CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT,
+                        power.exponentStart, power.exponentEnd,
+                        power.baseStart, power.exponentEnd));
+            }
+
+            RadicalBounds radical = radicalBounds(template);
+            if (radical != null) {
+                Token token = tokens.get(template);
+                if (radical.indexStart >= 0) {
+                    spans.add(new CnCwSemanticSpan(
+                            com.codex.fx991.core.Compat.list(template),
+                            CnCwCursorPath.Slot.ROOT_INDEX,
+                            radical.indexStart, radical.indexEnd,
+                            radical.templateIndex, radical.endExclusive));
+                }
+                CnCwCursorPath.Slot contentSlot = isSquareRootTemplate(token)
+                        ? CnCwCursorPath.Slot.RADICAL_CONTENT
+                        : CnCwCursorPath.Slot.ROOT_CONTENT;
+                spans.add(new CnCwSemanticSpan(
+                        com.codex.fx991.core.Compat.list(template), contentSlot,
+                        radical.contentStart, radical.contentEnd,
+                        radical.templateIndex, radical.endExclusive));
+            }
+
+            FunctionBounds function = functionBounds(template);
+            if (function != null) {
+                for (int argumentIndex = 0; argumentIndex < function.arguments.size();
+                     argumentIndex++) {
+                    FunctionArgumentBounds argument = function.arguments.get(argumentIndex);
+                    spans.add(new CnCwSemanticSpan(
+                            com.codex.fx991.core.Compat.list(template, argumentIndex),
+                            CnCwCursorPath.Slot.FUNCTION_ARGUMENT,
+                            argument.start, argument.end,
+                            function.templateIndex, function.endExclusive));
+                }
+            }
+        }
+        return com.codex.fx991.core.Compat.copyList(spans);
+    }
+
+    /** Smallest semantic slot containing the complete normalized selection. */
+    private SemanticSelectionScope semanticSelectionScope(int start, int end) {
+        if (start < 0 || end < 0 || start == end) return null;
+        int lo = Math.min(start, end);
+        int hi = Math.max(start, end);
+        SemanticSelectionScope best = null;
+
+        for (int template = 0; template < tokens.size(); template++) {
+            FractionBounds fraction = fractionBounds(template);
+            if (fraction != null) {
+                best = preferSelectionScope(best, containedSelectionScope(lo, hi,
+                        com.codex.fx991.core.Compat.list(template),
+                        CnCwCursorPath.Slot.FRACTION_NUMERATOR,
+                        fraction.numeratorStart, fraction.numeratorEnd));
+                best = preferSelectionScope(best, containedSelectionScope(lo, hi,
+                        com.codex.fx991.core.Compat.list(template),
+                        CnCwCursorPath.Slot.FRACTION_DENOMINATOR,
+                        fraction.denominatorStart, fraction.denominatorEnd));
+            }
+
+            PowerBounds power = powerBounds(template);
+            if (power != null) {
+                best = preferSelectionScope(best, containedSelectionScope(lo, hi,
+                        com.codex.fx991.core.Compat.list(template),
+                        CnCwCursorPath.Slot.SUPERSCRIPT_BASE,
+                        power.baseStart, power.baseEnd));
+                best = preferSelectionScope(best, containedSelectionScope(lo, hi,
+                        com.codex.fx991.core.Compat.list(template),
+                        CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT,
+                        power.exponentStart, power.exponentEnd));
+            }
+
+            RadicalBounds radical = radicalBounds(template);
+            if (radical != null) {
+                if (radical.indexStart >= 0) {
+                    best = preferSelectionScope(best, containedSelectionScope(lo, hi,
+                            com.codex.fx991.core.Compat.list(template),
+                            CnCwCursorPath.Slot.ROOT_INDEX,
+                            radical.indexStart, radical.indexEnd));
+                }
+                CnCwCursorPath.Slot contentSlot = isSquareRootTemplate(tokens.get(template))
+                        ? CnCwCursorPath.Slot.RADICAL_CONTENT
+                        : CnCwCursorPath.Slot.ROOT_CONTENT;
+                best = preferSelectionScope(best, containedSelectionScope(lo, hi,
+                        com.codex.fx991.core.Compat.list(template), contentSlot,
+                        radical.contentStart, radical.contentEnd));
+            }
+
+            FunctionBounds function = functionBounds(template);
+            if (function != null) {
+                for (int argumentIndex = 0; argumentIndex < function.arguments.size(); argumentIndex++) {
+                    FunctionArgumentBounds argument = function.arguments.get(argumentIndex);
+                    best = preferSelectionScope(best, containedSelectionScope(lo, hi,
+                            com.codex.fx991.core.Compat.list(template, argumentIndex),
+                            CnCwCursorPath.Slot.FUNCTION_ARGUMENT,
+                            argument.start, argument.end));
+                }
+            }
+        }
+        return best;
+    }
+
+    private SemanticSelectionScope containedSelectionScope(int start, int end,
+                                                            List<Integer> childPath,
+                                                            CnCwCursorPath.Slot slot,
+                                                            int slotStart, int slotEnd) {
+        if (slotStart < 0 || slotEnd < slotStart || start < slotStart || end > slotEnd) {
+            return null;
+        }
+        return new SemanticSelectionScope(childPath, slot, slotStart, slotEnd);
+    }
+
+    private SemanticSelectionScope preferSelectionScope(SemanticSelectionScope current,
+                                                         SemanticSelectionScope candidate) {
+        if (candidate == null) return current;
+        if (current == null) return candidate;
+        int currentSpan = current.slotEnd - current.slotStart;
+        int candidateSpan = candidate.slotEnd - candidate.slotStart;
+        if (candidateSpan < currentSpan) return candidate;
+        if (candidateSpan == currentSpan
+                && candidate.childPath.size() > current.childPath.size()) return candidate;
+        return current;
+    }
+
+    /** Semantic facade for legacy selection anchor/focus boundaries. */
+    private CnCwCursorPath semanticSelectionPath(int boundary) {
+        if (!selectionActive()) return semanticCursorPath();
+        int safe = Math.max(0, Math.min(tokens.size(), boundary));
+        SemanticSelectionScope scope = semanticSelectionScope(selectionStart(), selectionEnd());
+        if (scope == null || safe < scope.slotStart || safe > scope.slotEnd) {
+            return CnCwCursorPath.rootBoundary(safe);
+        }
+        return CnCwCursorPath.nested(scope.childPath, scope.slot,
+                safe - scope.slotStart, safe);
+    }
+
+    private void setFunctionCursor(FunctionBounds function, int argumentIndex, int offset) {
+        if (function.arguments.isEmpty()) {
+            setRootCursor(function.templateIndex);
+            return;
+        }
+        int safeArgument = Math.max(0, Math.min(function.arguments.size() - 1, argumentIndex));
+        FunctionArgumentBounds argument = function.arguments.get(safeArgument);
+        int length = argument.end - argument.start;
+        int local = Math.max(0, Math.min(length, offset));
+        cursor = argument.start + local;
+        semanticCursorOverride = CnCwCursorPath.nested(
+                com.codex.fx991.core.Compat.list(function.templateIndex, safeArgument),
+                CnCwCursorPath.Slot.FUNCTION_ARGUMENT, local, cursor);
+    }
+
+    /** root-before -> arg0 -> arg1 ... -> root-after, never landing on a separator comma. */
+    private boolean moveFunctionHorizontal(int direction) {
+        if (resultShown || errorShown || selectionActive()) return false;
+        CnCwCursorPath path = semanticCursorPath();
+        if (path.isRootBoundary()) {
+            FunctionBounds target = direction > 0
+                    ? functionStartingAtBoundary(cursor) : functionEndingAtBoundary(cursor);
+            if (target == null || target.arguments.isEmpty()) return false;
+            if (direction > 0) {
+                setFunctionCursor(target, 0, 0);
+            } else {
+                int last = target.arguments.size() - 1;
+                FunctionArgumentBounds argument = target.arguments.get(last);
+                setFunctionCursor(target, last, argument.end - argument.start);
+            }
+            finishSemanticCursorMove();
+            return true;
+        }
+
+        FunctionCursor function = functionCursorFromPath(path);
+        if (function == null) return false;
+        FunctionBounds bounds = functionBounds(function.templateIndex);
+        if (bounds == null || function.argumentIndex >= bounds.arguments.size()) return false;
+        FunctionArgumentBounds argument = bounds.arguments.get(function.argumentIndex);
+        int length = argument.end - argument.start;
+        if (direction < 0) {
+            if (function.offset > 0) {
+                setFunctionCursor(bounds, function.argumentIndex, function.offset - 1);
+            } else if (function.argumentIndex > 0) {
+                int previousIndex = function.argumentIndex - 1;
+                FunctionArgumentBounds previous = bounds.arguments.get(previousIndex);
+                setFunctionCursor(bounds, previousIndex, previous.end - previous.start);
+            } else {
+                setRootCursor(bounds.templateIndex);
+            }
+        } else {
+            if (function.offset < length) {
+                setFunctionCursor(bounds, function.argumentIndex, function.offset + 1);
+            } else if (function.argumentIndex + 1 < bounds.arguments.size()) {
+                setFunctionCursor(bounds, function.argumentIndex + 1, 0);
+            } else {
+                setRootCursor(bounds.endExclusive);
+            }
+        }
+        finishSemanticCursorMove();
+        return true;
+    }
+
+    /**
+     * DEL removes only the current function argument content. At an argument
+     * boundary it navigates over the structural comma/template instead of
+     * deleting it. From root-after a complete function is removed atomically.
+     */
+    private boolean deleteFunctionSemantic() {
+        if (tokens.isEmpty()) return false;
+        CnCwCursorPath path = semanticCursorPath();
+        if (path.isRootBoundary()) {
+            FunctionBounds function = functionEndingAtBoundary(cursor);
+            if (function == null) return false;
+            rememberUndo();
+            tokens.subList(function.templateIndex, function.endExclusive).clear();
+            setRootCursor(function.templateIndex);
+            finishSemanticEditMutation();
+            return true;
+        }
+
+        FunctionCursor function = functionCursorFromPath(path);
+        if (function == null) return false;
+        FunctionBounds bounds = functionBounds(function.templateIndex);
+        if (bounds == null || function.argumentIndex >= bounds.arguments.size()) return false;
+        FunctionArgumentBounds argument = bounds.arguments.get(function.argumentIndex);
+        if (function.offset == 0) {
+            if (function.argumentIndex > 0) {
+                int previousIndex = function.argumentIndex - 1;
+                FunctionArgumentBounds previous = bounds.arguments.get(previousIndex);
+                setFunctionCursor(bounds, previousIndex, previous.end - previous.start);
+                finishSemanticCursorMove();
+                return true;
+            }
+            // Stage 2 contract: a freshly inserted bare function token such as
+            // sin( is one semantic token, so DEL removes it in one press.
+            if (bounds.closeIndex < 0 && bounds.arguments.size() == 1
+                    && argument.start == argument.end
+                    && bounds.endExclusive == bounds.templateIndex + 1) {
+                rememberUndo();
+                tokens.remove(bounds.templateIndex);
+                setRootCursor(bounds.templateIndex);
+                finishSemanticEditMutation();
+                return true;
+            }
+            setRootCursor(bounds.templateIndex);
+            finishSemanticCursorMove();
+            return true;
+        }
+
+        int deleteIndex = cursor - 1;
+        if (deleteIndex < argument.start || deleteIndex >= argument.end) return false;
+        rememberUndo();
+        tokens.remove(deleteIndex);
+        cursor--;
+        FunctionBounds updated = functionBounds(function.templateIndex);
+        if (updated == null || function.argumentIndex >= updated.arguments.size()) {
+            setRootCursor(Math.min(cursor, tokens.size()));
+        } else {
+            setFunctionCursor(updated, function.argumentIndex, Math.max(0, function.offset - 1));
+        }
+        finishSemanticEditMutation();
+        return true;
     }
 
     private List<String> spreadsheetCellsSnapshot() {
@@ -2617,50 +4162,105 @@ public final class CnCwMachine {
      * to both the legacy string renderer and the natural-display renderer.
      */
     private CnCwExpressionNode naturalExpression() {
-        return naturalRow(0, tokens.size());
+        CnCwCursorPath semantic = semanticCursorPath();
+        if (semanticCursorOverride != null && semantic.isRootBoundary()) {
+            CnCwExpressionNode before = naturalRow(0, cursor, -1);
+            CnCwExpressionNode after = naturalRow(cursor, tokens.size(), -1);
+            List<CnCwExpressionNode> children = new ArrayList<>(
+                    before.children().size() + after.children().size() + 1);
+            children.addAll(before.children());
+            children.add(CnCwExpressionNode.cursor());
+            children.addAll(after.children());
+            return CnCwExpressionNode.row(children);
+        }
+        return naturalRow(0, tokens.size(), cursor);
+    }
+
+    /** Compatibility wrapper for non-Stage-3 callers inside this class. */
+    private CnCwExpressionNode naturalRow(int start, int end) {
+        return naturalRow(start, end, cursor);
     }
 
     /** Builds a visual tree without changing the semantic expression tokens. */
-    private CnCwExpressionNode naturalRow(int start, int end) {
+    private CnCwExpressionNode naturalRow(int start, int end, int renderCursor) {
         List<CnCwExpressionNode> children = new ArrayList<>(Math.max(1, end - start + 1));
         int cursorHandledAt = -1;
         int index = start;
         while (index < end) {
-            if (index == cursor && index != cursorHandledAt) {
+            if (index == renderCursor && index != cursorHandledAt) {
                 children.add(CnCwExpressionNode.cursor());
             }
             Token token = tokens.get(index);
-            if ("^".equals(token.evaluation) && index != cursor && !children.isEmpty()) {
-                int exponentEnd = naturalExponentEnd(index + 1, end, false);
-                CnCwExpressionNode base = children.remove(children.size() - 1);
-                CnCwExpressionNode exponent = naturalRow(index + 1, exponentEnd);
-                children.add(CnCwExpressionNode.compound(CnCwExpressionNode.Kind.SUPERSCRIPT,
-                        com.codex.fx991.core.Compat.list(base, exponent), false));
-                if (exponent.containsCursor() && cursor == exponentEnd) {
-                    cursorHandledAt = exponentEnd;
+            if (isPowerTemplate(token)) {
+                PowerBounds bounds = powerBounds(index);
+                if (bounds != null) {
+                    int baseStart = Math.max(start, bounds.baseStart);
+                    int exponentEnd = Math.min(end, bounds.exponentEnd);
+                    CnCwCursorPath semantic = semanticCursorPath();
+                    boolean ownsCursor = !semantic.isRootBoundary()
+                            && !semantic.childPath().isEmpty()
+                            && semantic.childPath().get(0) == index
+                            && (semantic.slot() == CnCwCursorPath.Slot.SUPERSCRIPT_BASE
+                            || semantic.slot() == CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT);
+                    int prefixCursor = ownsCursor ? -1 : renderCursor;
+                    int baseCursor = ownsCursor
+                            && semantic.slot() != CnCwCursorPath.Slot.SUPERSCRIPT_BASE
+                            ? -1 : renderCursor;
+                    int exponentCursor = ownsCursor
+                            && semantic.slot() != CnCwCursorPath.Slot.SUPERSCRIPT_EXPONENT
+                            ? -1 : renderCursor;
+                    CnCwExpressionNode prefix = naturalRow(start, baseStart, prefixCursor);
+                    CnCwExpressionNode base = naturalRow(baseStart, index, baseCursor);
+                    CnCwExpressionNode exponent = naturalRow(index + 1, exponentEnd, exponentCursor);
+                    children.clear();
+                    children.addAll(prefix.children());
+                    children.add(CnCwExpressionNode.compound(CnCwExpressionNode.Kind.SUPERSCRIPT,
+                            com.codex.fx991.core.Compat.list(base, exponent), false));
+                    if (base.containsCursor() || exponent.containsCursor()) {
+                        cursorHandledAt = renderCursor;
+                    }
+                    index = exponentEnd;
+                    continue;
                 }
-                index = exponentEnd;
-                continue;
             }
-            if (isFractionTemplate(token) && index != cursor && !children.isEmpty()) {
-                int denominatorEnd = naturalExponentEnd(index + 1, end, false);
-                CnCwExpressionNode numerator = children.remove(children.size() - 1);
-                CnCwExpressionNode denominator = naturalRow(index + 1, denominatorEnd);
-                children.add(CnCwExpressionNode.compound(CnCwExpressionNode.Kind.FRACTION,
-                        com.codex.fx991.core.Compat.list(numerator, denominator), false));
-                if (denominator.containsCursor() && cursor == denominatorEnd) {
-                    cursorHandledAt = denominatorEnd;
+            if (isFractionTemplate(token)) {
+                FractionBounds bounds = fractionBounds(index);
+                if (bounds != null) {
+                    int numeratorStart = Math.max(start, bounds.numeratorStart);
+                    int denominatorEnd = Math.min(end, bounds.denominatorEnd);
+                    CnCwCursorPath semantic = semanticCursorPath();
+                    boolean ownsCursor = !semantic.isRootBoundary()
+                            && !semantic.childPath().isEmpty()
+                            && semantic.childPath().get(0) == index;
+                    int prefixCursor = ownsCursor ? -1 : renderCursor;
+                    int numeratorCursor = ownsCursor
+                            && semantic.slot() != CnCwCursorPath.Slot.FRACTION_NUMERATOR
+                            ? -1 : renderCursor;
+                    int denominatorCursor = ownsCursor
+                            && semantic.slot() != CnCwCursorPath.Slot.FRACTION_DENOMINATOR
+                            ? -1 : renderCursor;
+                    CnCwExpressionNode prefix = naturalRow(start, numeratorStart, prefixCursor);
+                    CnCwExpressionNode numerator = naturalRow(numeratorStart, index, numeratorCursor);
+                    CnCwExpressionNode denominator = naturalRow(index + 1, denominatorEnd,
+                            denominatorCursor);
+                    children.clear();
+                    children.addAll(prefix.children());
+                    children.add(CnCwExpressionNode.compound(CnCwExpressionNode.Kind.FRACTION,
+                            com.codex.fx991.core.Compat.list(numerator, denominator), false));
+                    if (numerator.containsCursor() || denominator.containsCursor()) {
+                        cursorHandledAt = renderCursor;
+                    }
+                    index = denominatorEnd;
+                    continue;
                 }
-                index = denominatorEnd;
-                continue;
             }
-            if ("*10^(".equals(token.evaluation) && index != cursor) {
+            if ("*10^(".equals(token.evaluation) && index != renderCursor) {
                 int exponentEnd = naturalExponentEnd(index + 1, end, true);
-                CnCwExpressionNode exponent = naturalRow(index + 1, exponentEnd);
+                CnCwExpressionNode exponent = naturalRow(index + 1, exponentEnd, renderCursor);
                 CnCwExpressionNode ten = CnCwExpressionNode.text("\u00d710", false);
                 children.add(CnCwExpressionNode.compound(CnCwExpressionNode.Kind.SUPERSCRIPT,
                         com.codex.fx991.core.Compat.list(ten, exponent), false));
-                if (exponent.containsCursor() && cursor == exponentEnd) {
+                if (exponent.containsCursor() && renderCursor == exponentEnd) {
                     cursorHandledAt = exponentEnd;
                 }
                 index = exponentEnd;
@@ -2670,7 +4270,7 @@ public final class CnCwMachine {
             children.add(CnCwExpressionNode.text(token.display, isTokenSelected(index)));
             index++;
         }
-        if (cursor == end && cursor != cursorHandledAt) {
+        if (renderCursor == end && renderCursor != cursorHandledAt) {
             children.add(CnCwExpressionNode.cursor());
         }
         return CnCwExpressionNode.row(children);
@@ -3103,6 +4703,26 @@ public final class CnCwMachine {
     private record Navigation(CnCwScreen screen, int selectedIndex) { }
     private record HistoryEntry(List<Token> tokens, String result, String processDisplay) { }
     private record CoordinateCall(boolean polar, String first, String second) { }
+    private record FractionBounds(int templateIndex, int numeratorStart, int numeratorEnd,
+                                  int denominatorStart, int denominatorEnd) { }
+    private record FractionCursor(int templateIndex, int numeratorStart, int numeratorEnd,
+                                  int denominatorStart, int denominatorEnd,
+                                  CnCwCursorPath.Slot slot, int offset) { }
+    private record PowerBounds(int templateIndex, int baseStart, int baseEnd,
+                               int exponentStart, int exponentEnd) { }
+    private record PowerCursor(int templateIndex, int baseStart, int baseEnd,
+                               int exponentStart, int exponentEnd,
+                               CnCwCursorPath.Slot slot, int offset) { }
+    private record RadicalBounds(int templateIndex, int indexStart, int indexEnd,
+                                 int separatorIndex, int contentStart, int contentEnd,
+                                 int closeIndex, int endExclusive) { }
+    private record RadicalCursor(int templateIndex, CnCwCursorPath.Slot slot, int offset) { }
+    private record FunctionArgumentBounds(int start, int end) { }
+    private record FunctionBounds(int templateIndex, List<FunctionArgumentBounds> arguments,
+                                  int closeIndex, int endExclusive) { }
+    private record FunctionCursor(int templateIndex, int argumentIndex, int offset) { }
+    private record SemanticSelectionScope(List<Integer> childPath, CnCwCursorPath.Slot slot,
+                                          int slotStart, int slotEnd) { }
     private record SelectionRange(int start, int end) { }
     private record SimplificationResult(long originalNumerator, long originalDenominator,
                                         long displayNumerator, long displayDenominator,
