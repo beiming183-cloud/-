@@ -297,6 +297,47 @@ public final class CnCwMachine {
         return state;
     }
 
+    /** Moves only the left touch-selection handle, preserving the right edge. */
+    public CnCwUiState moveTouchSelectionStart(int target) {
+        return moveTouchSelectionBoundary(true, target);
+    }
+
+    /** Moves only the right touch-selection handle, preserving the left edge. */
+    public CnCwUiState moveTouchSelectionEnd(int target) {
+        return moveTouchSelectionBoundary(false, target);
+    }
+
+    private CnCwUiState moveTouchSelectionBoundary(boolean startBoundary, int target) {
+        if (!poweredOn || !screen.isApplication() || applicationLanding || !hasSelection()) {
+            return state;
+        }
+        int currentStart = Math.min(selectionAnchor, selectionFocus);
+        int currentEnd = Math.max(selectionAnchor, selectionFocus);
+        int clamped = Math.max(0, Math.min(tokens.size(), target));
+        SelectionRange range;
+        if (startBoundary) {
+            clamped = Math.min(clamped, currentEnd - 1);
+            range = normalizeTouchSelectionRange(clamped, currentEnd);
+            selectionAnchor = range.start;
+            selectionFocus = range.end;
+            cursor = range.start;
+        } else {
+            clamped = Math.max(clamped, currentStart + 1);
+            range = normalizeTouchSelectionRange(currentStart, clamped);
+            selectionAnchor = range.start;
+            selectionFocus = range.end;
+            cursor = range.end;
+        }
+        shiftArmed = false;
+        result = "";
+        resultShown = false;
+        errorShown = false;
+        lastError = null;
+        status = applicationStatus();
+        publish();
+        return state;
+    }
+
     /**
      * Snaps a dragged selection around structures that must stay intact when
      * copied or replaced. Touches may land inside a function, power, or

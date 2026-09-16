@@ -48,6 +48,7 @@ public final class CnCwMachineSuite {
         semanticDeleteAndCursor();
         semanticSelectionSupportsDeleteAndReplace();
         touchSelectionCanAnchorAndExtend();
+        touchSelectionHandlesMoveIndependently();
         directTouchCursorMovesAtomically();
         shiftedDeleteTogglesOverwriteAndOnIsDistinct();
         settingsAreMachineOwned();
@@ -622,6 +623,39 @@ public final class CnCwMachineSuite {
         machine.selectTouchWord(1);
         equal("123", machine.selectedExpression(),
                 "long-press selects the complete numeric word before dragging");
+    }
+
+    private void touchSelectionHandlesMoveIndependently() {
+        CnCwMachine machine = calculateMachine();
+        press(machine, CnCwKey.DIGIT_1, CnCwKey.DIGIT_2, CnCwKey.DIGIT_3,
+                CnCwKey.DIGIT_4, CnCwKey.DIGIT_5);
+        machine.beginTouchSelection(0);
+        machine.extendTouchSelection(5);
+        machine.moveTouchSelectionStart(2);
+        equal("345", machine.selectedExpression(),
+                "left touch handle moves without changing the right boundary");
+        equal(2, machine.state().selectionStart(),
+                "left touch handle publishes its new boundary");
+        equal(5, machine.state().selectionEnd(),
+                "left touch handle preserves right boundary");
+        machine.moveTouchSelectionEnd(4);
+        equal("34", machine.selectedExpression(),
+                "right touch handle moves without changing the left boundary");
+        equal(2, machine.state().selectionStart(),
+                "right touch handle preserves left boundary");
+        equal(4, machine.state().selectionEnd(),
+                "right touch handle publishes its new boundary");
+
+        machine = calculateMachine();
+        press(machine, CnCwKey.SIN, CnCwKey.DIGIT_2, CnCwKey.CLOSE_PAREN);
+        machine.beginTouchSelection(0);
+        machine.extendTouchSelection(3);
+        machine.moveTouchSelectionStart(1);
+        equal("sin(2)", machine.selectedExpression(),
+                "left handle cannot split an enclosing function call");
+        machine.moveTouchSelectionEnd(2);
+        equal("sin(2)", machine.selectedExpression(),
+                "right handle cannot split an enclosing function call");
     }
 
     private void shiftedDeleteTogglesOverwriteAndOnIsDistinct() {

@@ -53,6 +53,9 @@ public final class CalculatorView extends View {
     private float displayDownX;
     private float displayDownY;
     private int lastDragCursor = -1;
+    /** -1 = left handle, 0 = choose from drag direction, +1 = right handle. */
+    private int selectionDragEdge;
+    private boolean selectionTapCandidate;
     private static final int BODY_EDGE = Color.rgb(48, 55, 52);
     /* A warm neutral shell keeps the calculator from looking washed out while
        the cool LCD and ochre function layer remain immediately scannable. */
@@ -387,6 +390,9 @@ public final class CalculatorView extends View {
         float available = lcd.width() - dp(12);
         drawNaturalExpression(canvas, state.naturalExpression(), lcd, contentTop,
                 contentBottom, available);
+        if (state.hasSelection()) {
+            drawSelectionHandles(canvas, lcd, contentTop, contentBottom);
+        }
         if (state.resultShown() && !state.result().isEmpty()) {
             String[] lines = decimalDisplayResult(state.result()).split("\\n", -1);
             paint.setTypeface(FACE_MEDIUM);
@@ -596,6 +602,23 @@ public final class CalculatorView extends View {
             offset += measureNatural(child, textSize).width;
         }
         return -1f;
+    }
+
+    /** Draws phone-style handles at the two semantic selection boundaries. */
+    private void drawSelectionHandles(Canvas canvas, RectF lcd,
+                                      float contentTop, float contentBottom) {
+        float startX = displayBoundaryX(state.selectionStart());
+        float endX = displayBoundaryX(state.selectionEnd());
+        float top = contentTop + dp(1.5f);
+        float bottom = Math.min(contentBottom - dp(10), contentTop + dp(34));
+        paint.setColor(LCD_DARK);
+        paint.setStrokeWidth(dp(1.15f));
+        paint.setStyle(Paint.Style.STROKE);
+        canvas.drawLine(startX, top + dp(4), startX, bottom, paint);
+        canvas.drawLine(endX, top, endX, bottom - dp(4), paint);
+        paint.setStyle(Paint.Style.FILL);
+        canvas.drawCircle(startX, bottom + dp(2.2f), dp(2.6f), paint);
+        canvas.drawCircle(endX, top - dp(2.2f), dp(2.6f), paint);
     }
 
     /** Draws a result without losing trailing digits to an ellipsis. */
@@ -1071,9 +1094,34 @@ public final class CalculatorView extends View {
                     displayPressed = true;
                     displaySelectionMode = false;
                     displayLongPressTriggered = false;
+                    selectionTapCandidate = false;
+                    selectionDragEdge = 0;
                     displayDownX = event.getX();
                     displayDownY = event.getY();
                     lastDragCursor = state.cursor();
+
+                    if (state.hasSelection()) {
+                        float startX = displayBoundaryX(state.selectionStart());
+                        float endX = displayBoundaryX(state.selectionEnd());
+                        float startDistance = Math.abs(event.getX() - startX);
+                        float endDistance = Math.abs(event.getX() - endX);
+                        float handleSlop = dp(22);
+                        if (Math.min(startDistance, endDistance) <= handleSlop) {
+                            selectionDragEdge = startDistance <= endDistance ? -1 : 1;
+                            displaySelectionMode = true;
+                            lastDragCursor = selectionDragEdge < 0
+                                    ? state.selectionStart() : state.selectionEnd();
+                            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+                            return true;
+                        }
+                        float left = Math.min(startX, endX) - dp(6);
+                        float right = Math.max(startX, endX) + dp(6);
+                        if (event.getX() >= left && event.getX() <= right) {
+                            selectionTapCandidate = true;
+                            return true;
+                        }
+                    }
+
                     displayLongPress = () -> {
                         if (displayPressed) {
                             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
@@ -1081,6 +1129,7 @@ public final class CalculatorView extends View {
                             int anchor = displayCursorPosition(displayDownX);
                             state = machine.selectTouchWord(anchor);
                             lastDragCursor = state.cursor();
+                            selectionDragEdge = 0;
                             displaySelectionMode = true;
                             postInvalidateOnAnimation();
                         }
@@ -1099,11 +1148,17 @@ public final class CalculatorView extends View {
             case MotionEvent.ACTION_MOVE -> {
                 if (displayPressed) {
                     if (displaySelectionMode) {
-                        extendSelectionToDisplayPosition(event.getX());
+                        moveSelectionBoundaryToDisplayPosition(event.getX());
                         return true;
                     }
                     float dx = event.getX() - displayDownX;
                     float dy = event.getY() - displayDownY;
+                    if (selectionTapCandidate) {
+                        if (Math.abs(dx) > dp(10) || Math.abs(dy) > dp(10)) {
+                            selectionTapCandidate = false;
+                        }
+                        return true;
+                    }
                     if (Math.abs(dx) > dp(4) && Math.abs(dx) > Math.abs(dy)) {
                         if (displayLongPress != null) gestureHandler.removeCallbacks(displayLongPress);
                         moveCursorToDisplayPosition(event.getX(), true);
@@ -1119,11 +1174,21 @@ public final class CalculatorView extends View {
                     if (displaySelectionMode || displayLongPressTriggered) {
                         displaySelectionMode = false;
                         displayLongPressTriggered = false;
-                        showClipboardMenu();
+                        selectionDragEdge = 0;
+                        selectionTapCandidate = false;
+                        // Phone-style behavior: releasing a handle keeps the selection.
+                        postInvalidateOnAnimation();
                         return true;
                     }
                     float dx = event.getX() - displayDownX;
                     float dy = event.getY() - displayDownY;
+                    if (selectionTapCandidate) {
+                        selectionTapCandidate = false;
+                        if (Math.abs(dx) < dp(12) && Math.abs(dy) < dp(12)) {
+                            showClipboardMenu();
+                        }
+                        return true;
+                    }
                     if (Math.abs(dx) < dp(18) && Math.abs(dy) < dp(18)) {
                         moveCursorToDisplayPosition(event.getX(), false);
                     }
@@ -1139,6 +1204,8 @@ public final class CalculatorView extends View {
                 displayPressed = false;
                 displaySelectionMode = false;
                 displayLongPressTriggered = false;
+                selectionTapCandidate = false;
+                selectionDragEdge = 0;
                 if (displayLongPress != null) gestureHandler.removeCallbacks(displayLongPress);
                 stopKeyRepeat();
                 touchRouter.cancelAll();
@@ -1220,11 +1287,48 @@ public final class CalculatorView extends View {
         return Math.max(0, Math.min(machine.cursorLimit(), target));
     }
 
-    private void extendSelectionToDisplayPosition(float x) {
+    /** Returns the approximate x-coordinate of a semantic insertion boundary. */
+    private float displayBoundaryX(int boundaryIndex) {
+        List<String> labels = machine.cursorTokenDisplays();
+        RectF lcd = displayBounds(getWidth());
+        float baseSize = sp(25f);
+        NaturalMetrics natural = measureNatural(state.naturalExpression(), baseSize);
+        float available = lcd.width() - dp(12);
+        float expressionX = lcd.left + dp(6);
+        if (natural.width > available) {
+            float cursorOffset = naturalCursorOffset(state.naturalExpression(), baseSize);
+            float focus = cursorOffset < 0 ? natural.width : cursorOffset;
+            expressionX = expressionX + available * 0.58f - focus;
+            expressionX = Math.min(lcd.left + dp(6),
+                    Math.max(lcd.left + dp(6) + available - natural.width, expressionX));
+        }
+        if (labels.isEmpty()) return expressionX;
+        paint.setTypeface(FACE_NORMAL);
+        paint.setTextSize(baseSize);
+        float rawWidth = 0f;
+        for (String label : labels) rawWidth += Math.max(dp(4), paint.measureText(label));
+        float scale = rawWidth <= 0 ? 1f : natural.width / rawWidth;
+        int clamped = Math.max(0, Math.min(labels.size(), boundaryIndex));
+        float x = expressionX;
+        for (int i = 0; i < clamped; i++) {
+            x += Math.max(dp(4), paint.measureText(labels.get(i))) * scale;
+        }
+        return x;
+    }
+
+    private void moveSelectionBoundaryToDisplayPosition(float x) {
         int target = displayCursorPosition(x);
+        if (selectionDragEdge == 0) {
+            if (target <= state.selectionStart() || x < displayDownX) selectionDragEdge = -1;
+            else if (target >= state.selectionEnd() || x > displayDownX) selectionDragEdge = 1;
+            else return;
+        }
         if (target == lastDragCursor) return;
-        state = machine.extendTouchSelection(target);
-        lastDragCursor = target;
+        state = selectionDragEdge < 0
+                ? machine.moveTouchSelectionStart(target)
+                : machine.moveTouchSelectionEnd(target);
+        lastDragCursor = selectionDragEdge < 0
+                ? state.selectionStart() : state.selectionEnd();
         performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
         postInvalidateOnAnimation();
     }
