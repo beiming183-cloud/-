@@ -109,6 +109,11 @@ Stage 3 不继续在 Android View 中堆光标补丁，而是把编辑位置从�
 9. 开发过程中两次由旧回归拦住兼容性变化（裸函数 DEL、函数内部触摸选区），均按既有契约恢复后再通过；
 10. 一次性 Step 5 patch/compat workflow 与脚本已全部删除；产品代码清理 head `625e897` 的正式 PR CI run `35097482012` 已通过完整核心回归、Android APK 构建、固定签名检查和 artifact 上传。
 
+### 收口备注
+
+- Step 5 收口文档期间曾误写 `README.md` 为占位文本；随后立即从误操作前 commit 原样恢复。
+- 恢复后的 README blob SHA 为原始 `c1c95661cabc9ee3ef7badeb590b5c7632dee81d`，因此 README 内容无实际变化。
+
 下一步：
 
 - Step 6：语义选区、替换和删除统一（next）；
