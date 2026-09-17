@@ -12,7 +12,7 @@
 
 ## 当前状态
 
-Stage 6 的代码开发、结构化工作流补齐、Android 交互补齐和云端构建/长期签名门禁已经完成。后续仍只从 `stage6/integration` 继续，不再回到旧的 Stage 6 并行分支。
+Stage 6 的代码开发、结构化工作流补齐、Android 交互补齐、真机前静态审计和云端构建/长期签名门禁已经完成。后续仍只从 `stage6/integration` 继续，不再回到旧的 Stage 6 并行分支。
 
 Stage 6 曾并行推进三条工作流，现已统一收敛：
 
@@ -66,53 +66,73 @@ PR #6 / #7 / #8 仅保留为历史记录，不应再分别合并。PR #10 的有
 - 保留旧逗号输入兼容：在首字段直接输入逗号可回退到原 `A,B,D` / `A,B,C` 路径；
 - 求解仍复用原 `RatioEngine`。
 
-### F. 本轮明确不扩展
+### F. 真机前静态审计修复
+
+静态审计发现两处 CI 原先无法暴露、但真机交互会遇到的问题，均已修复并补回归：
+
+- WorkflowAction 原 35dp 操作区在 4–6 个动作时会拆成两排，按钮高度约 16.5dp；现改为 42dp 高单排布局，6 个动作仍保持独立命中，避免真机按钮过小。
+- 多项式升/降阶原来按“行位置”保留数据，导致 `a2` 升阶后可能被误当成 `a3`；现按幂次语义保持，升阶只新增空白最高阶系数，降阶只移除最高阶系数。
+- 联立方程增/减元数原来会让旧 RHS 常数列落到新变量列；现显式保持 `x1..xn` 系数与最右增强列 `b` 的语义位置。
+- 上述语义保持同时覆盖触摸 WorkflowAction 和既有 `SHIFT + 方向` 尺寸快捷方式，因为两条路径最终共用同一 core action。
+
+### G. 本轮明确不扩展
 
 - Complex / Base-N 暂不混入这一轮结构化表单工作流；
 - 未借 Stage 6 重写既有数学算法。
 
-## 最终验证
+## 云端验证
 
-最终只验证、不发布的门禁：GitHub Actions run `35188434866`，结果 `success`。
+### Stage 6 完成门禁
 
-通过内容：
+GitHub Actions run `35188434866`：`success`。
 
-- 长期 Release 签名材料成功恢复；
-- 完整 `:core:check` 通过；
-- Android `Cn991Debug` 构建通过；
-- Android `Cn991Release` 构建通过；
-- R8 压缩通过，未出现 `Invalid stack map table`；
-- Release package：`com.beibei.calculator`；
-- Release versionName：`0.3.18`；
-- Release versionCode：`332`；
-- Release certificate SHA-256：`DA6901B21ED9CCD8E33F4BFA6D2726183913F4E6C13910705E210184A17A5D33`，与长期证书一致；
-- 最终回归中包括 `197` 条 CN CW machine checks、`115` 条 workflow-spec/session checks，另有 calculation-state、semantic、validation、manual utility、general regression 等套件全部通过；
-- 已生成长期签名测试 APK artifact：`stage6-stable-signed-apk`，artifact ID `10482769251`，来源 run `35188434866`。
+- 完整 `:core:check`；
+- Android `Cn991Debug`；
+- Android `Cn991Release` + R8；
+- package `com.beibei.calculator`；
+- versionName `0.3.18`；
+- versionCode `332`；
+- certificate SHA-256 `DA6901B21ED9CCD8E33F4BFA6D2726183913F4E6C13910705E210184A17A5D33`；
+- 生成 `stage6-stable-signed-apk`，artifact ID `10482769251`。
 
-该门禁没有创建 GitHub Release；临时最终门禁 workflow 已在验证结束后删除。
+### 真机前审计修复门禁
+
+GitHub Actions run `35197523499`：`success`。
+
+- 新增尺寸语义保持回归并通过完整 `:core:check`；
+- Android Debug 构建通过；
+- Android Release + R8 通过；
+- 长期证书与 `com.beibei.calculator` 包名再次硬校验通过；
+- 生成最新长期签名测试 APK：`stage6-audit-signed-apk`，artifact ID `10486064308`；
+- 正式修复 commit：`7d44faf1eecf8d8ab65e864ca838a365c38ae732`。
+
+两轮门禁都只验证并生成 artifact，没有创建 GitHub Release；对应临时 workflow / patch 均已删除。
 
 ## 唯一继续点
 
 - branch：`stage6/integration`
 - PR：Draft PR #9
 - Stage 6 代码开发项：已完成
+- 真机前静态审计：已完成
 - 云端 core / Debug / Release / R8 / 长期签名门禁：已完成
-- 下一项：按用户之前的安排，集中进行真机验收（包含此前延后的 0.3.17 / 0.3.18 检查，以及 Stage 6 新增交互）
+- 最新推荐测试包：artifact `10486064308`
+- 集中真机验收清单：`docs/hand-offs/STAGE6_DEVICE_ACCEPTANCE.md`
+- 下一项：按验收清单集中进行真机测试（包含此前延后的 0.3.17 / 0.3.18 检查，以及 Stage 6 新增交互）
 - 真机验收完成且用户明确授权之前，不合并 PR #9 到 `main`
 - 禁止从 `main`、`stage6/remaining-apps` 或旧并行分支重新创建 Stage 6 工作线；中断后先核对本 relay 与当前 branch head。
 
-## 真机验收重点
+## 真机验收最高优先级
 
-集中验收时优先检查：
-
+- 覆盖安装/长期签名链；
+- WorkflowAction 单排按钮的可读性、命中与 disabled 状态；
+- 多项式 `a2/a1/a0` 升降阶后语义不变；
+- 联立方程增减元数时 RHS 始终留在最右 `b` 列；
 - 函数表单/双函数输入、TABLE 分页与 Page rocker；
 - 二/三/四次不等式关系选择和系数输入；
 - 两种比例表单以及旧逗号输入回退；
-- WorkflowAction 操作条触摸范围、disabled 状态和计算/返回；
 - Ans、历史、复制粘贴、错误恢复、异步 EXE revision 门禁；
 - 长数字、分数、SCI/ENG 与自然显示；
-- 长按连续输入/删除和语义光标/选区；
-- 与既有 `com.beibei.calculator` 安装包的覆盖安装/升级链。
+- 长按连续输入/删除和语义光标/选区。
 
 ## 兼容边界
 
