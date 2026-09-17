@@ -827,6 +827,7 @@ public final class CnCwMachine {
             exactVariables.put(name, ExactValue.ZERO);
         }
         spreadsheet.clearAll();
+        linearAlgebraMemory.clear();
         undoTokens = null;
         publish();
         return state;
@@ -3090,7 +3091,16 @@ public final class CnCwMachine {
                     command("reg-e-exponential", "e 指数回归", "y=a·e^(b·x)"),
                     command("reg-ab-exponential", "ab^x 回归", "y=a·b^x"),
                     command("reg-power", "幂回归", "y=a·x^b"),
-                    command("reg-inverse", "逆数回归", "y=a+b/x"));
+                    command("reg-inverse", "逆数回归", "y=a+b/x"),
+                    command("one-freq", "单变量（频数）", "x / 频数"),
+                    command("two-freq", "双变量（频数）", "x / y / 频数"),
+                    command("reg-linear-freq", "线性回归（频数）", "x / y / 频数"),
+                    command("reg-quadratic-freq", "二次回归（频数）", "x / y / 频数"),
+                    command("reg-logarithmic-freq", "对数回归（频数）", "x / y / 频数"),
+                    command("reg-e-exponential-freq", "e 指数回归（频数）", "x / y / 频数"),
+                    command("reg-ab-exponential-freq", "ab^x 回归（频数）", "x / y / 频数"),
+                    command("reg-power-freq", "幂回归（频数）", "x / y / 频数"),
+                    command("reg-inverse-freq", "逆数回归（频数）", "x / y / 频数"));
             case DISTRIBUTION -> com.codex.fx991.core.Compat.list(command("normal", "正态分布", "PDF / CDF / 逆分布"),
                     command("binomial", "二项分布", "概率 / 累计概率"),
                     command("poisson", "泊松分布", "概率 / 累计概率"));

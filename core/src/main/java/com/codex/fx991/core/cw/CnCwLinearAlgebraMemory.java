@@ -27,6 +27,11 @@ public final class CnCwLinearAlgebraMemory {
         vectors.putAll(source.vectors);
     }
 
+    public void clear() {
+        matrices.clear();
+        vectors.clear();
+    }
+
     public boolean handles(ApplicationMode mode, String commandId) {
         if (mode == ApplicationMode.MATRIX) {
             return commandId.equals("define") || commandId.startsWith("mat-")

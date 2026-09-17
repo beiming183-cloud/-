@@ -196,47 +196,78 @@ public final class CnCwModeEngine {
                                          List<String> fields,
                                          ScalarExpressionEngine.EvaluationContext context) {
         double[] values = evaluateFields(fields, 0, context);
-        if (command.equals("one")) {
-            StatisticsEngine.OneVariableResults result = StatisticsEngine.oneVariable(values);
+        if (command.equals("one") || command.equals("one-freq")) {
+            double[] x;
+            double[] frequency = null;
+            if (command.equals("one-freq")) {
+                if (values.length < 2 || values.length % 2 != 0) {
+                    throw new IllegalArgumentException("Enter x1,f1,x2,f2,...");
+                }
+                x = new double[values.length / 2];
+                frequency = new double[x.length];
+                for (int i = 0; i < x.length; i++) {
+                    x[i] = values[i * 2];
+                    frequency[i] = values[i * 2 + 1];
+                }
+            } else {
+                x = values;
+            }
+            StatisticsEngine.OneVariableResults result = frequency == null
+                    ? StatisticsEngine.oneVariable(x) : StatisticsEngine.oneVariable(x, frequency);
             String display = "n=" + format(result.n()) + "  x̄=" + format(result.mean())
                     + "\nσx=" + format(result.populationStdDev())
                     + "  sx=" + format(result.sampleStdDev());
-            return ModeResult.keyValue("一元统计", display, result.mean(),
+            return ModeResult.keyValue(command.equals("one-freq") ? "一元统计（频数）" : "一元统计",
+                    display, result.mean(),
                     item("n", result.n()),
                     item("x̄", result.mean()),
                     item("σx", result.populationStdDev()),
                     item("sx", result.sampleStdDev()));
         }
-        if (values.length < 4 || values.length % 2 != 0) {
-            throw new IllegalArgumentException("Enter x1,y1,x2,y2,...");
+
+        boolean frequencyMode = command.endsWith("-freq") || command.equals("two-freq");
+        String baseCommand = command.endsWith("-freq")
+                ? command.substring(0, command.length() - "-freq".length()) : command;
+        int stride = frequencyMode ? 3 : 2;
+        if (values.length < stride * 2 || values.length % stride != 0) {
+            throw new IllegalArgumentException(frequencyMode
+                    ? "Enter x1,y1,f1,x2,y2,f2,..." : "Enter x1,y1,x2,y2,...");
         }
-        double[] x = new double[values.length / 2];
-        double[] y = new double[x.length];
-        for (int i = 0; i < x.length; i++) {
-            x[i] = values[i * 2];
-            y[i] = values[i * 2 + 1];
+        int rows = values.length / stride;
+        double[] x = new double[rows];
+        double[] y = new double[rows];
+        double[] frequency = frequencyMode ? new double[rows] : null;
+        for (int i = 0; i < rows; i++) {
+            x[i] = values[i * stride];
+            y[i] = values[i * stride + 1];
+            if (frequencyMode) frequency[i] = values[i * stride + 2];
         }
-        StatisticsEngine.RegressionType regressionType = regressionType(command);
+
+        StatisticsEngine.RegressionType regressionType = regressionType(baseCommand);
         if (regressionType != null) {
-            StatisticsEngine.RegressionResult fit = StatisticsEngine.regression(
-                    regressionType, x, y);
+            StatisticsEngine.RegressionResult fit = frequencyMode
+                    ? StatisticsEngine.regression(regressionType, x, y, frequency)
+                    : StatisticsEngine.regression(regressionType, x, y);
+            String title = regressionTitle(regressionType) + (frequencyMode ? "（频数）" : "");
             if (regressionType == StatisticsEngine.RegressionType.QUADRATIC) {
                 String display = "a=" + format(fit.a()) + "  b=" + format(fit.b())
                         + "\nc=" + format(fit.c());
-                return ModeResult.keyValue(regressionTitle(regressionType), display, fit.a(),
+                return ModeResult.keyValue(title, display, fit.a(),
                         item("a", fit.a()), item("b", fit.b()), item("c", fit.c()));
             }
             String display = "a=" + format(fit.a()) + "  b=" + format(fit.b())
                     + "\nr=" + format(fit.r());
-            return ModeResult.keyValue(regressionTitle(regressionType), display, fit.r(),
+            return ModeResult.keyValue(title, display, fit.r(),
                     item("a", fit.a()), item("b", fit.b()), item("r", fit.r()));
         }
-        if (!command.equals("two")) throw new IllegalArgumentException("Unknown statistics command");
-        StatisticsEngine.TwoVariableResults result = StatisticsEngine.twoVariable(x, y);
+        if (!baseCommand.equals("two")) throw new IllegalArgumentException("Unknown statistics command");
+        StatisticsEngine.TwoVariableResults result = frequencyMode
+                ? StatisticsEngine.twoVariable(x, y, frequency) : StatisticsEngine.twoVariable(x, y);
         String display = "x̄=" + format(result.meanX()) + "  ȳ=" + format(result.meanY())
                 + "\nσx=" + format(result.populationStdDevX())
                 + "  σy=" + format(result.populationStdDevY());
-        return ModeResult.keyValue("双变量统计", display, result.meanX(),
+        return ModeResult.keyValue(frequencyMode ? "双变量统计（频数）" : "双变量统计",
+                display, result.meanX(),
                 item("x̄", result.meanX()),
                 item("ȳ", result.meanY()),
                 item("σx", result.populationStdDevX()),

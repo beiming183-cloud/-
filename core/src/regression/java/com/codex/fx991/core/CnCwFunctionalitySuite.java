@@ -29,6 +29,8 @@ public final class CnCwFunctionalitySuite {
         matrixSlotsPersistAndOperate();
         vectorSlotsPersistAndOperate();
         baseNOperationsReachUserWorkflows();
+        statisticsFrequencyColumnsReachWeightedEngines();
+        resetClearsStoredLinearAlgebra();
         System.out.println("PASS " + checks + " functionality checks");
     }
 
@@ -96,6 +98,50 @@ public final class CnCwFunctionalitySuite {
         near(1.0, parse(machine, 0), 1e-10, "quadratic a coefficient");
         near(1.0, parse(machine, 1), 1e-10, "quadratic b coefficient");
         near(1.0, parse(machine, 2), 1e-10, "quadratic c coefficient");
+    }
+
+    private void statisticsFrequencyColumnsReachWeightedEngines() {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        openCommand(machine, 1, 9); // one-variable with frequency
+        equal(2, machine.state().workflowInput().columns(), "one-freq exposes x/frequency columns");
+        machine.performWorkflowAction(CnCwWorkflowAction.Type.ADD_ROW);
+        fillGrid(machine, "10", "2", "20", "1");
+        equal("3", machine.state().applicationResult().items().get(0).value(),
+                "weighted one-variable sample count is sum of frequencies");
+        near(40.0 / 3.0, parse(machine, 1), 1e-10, "weighted one-variable mean");
+
+        CnCwModeEngine.ModeResult two = CnCwModeEngine.evaluate(ApplicationMode.STATISTICS,
+                "two-freq", "1,2,2,3,4,1", ScalarExpressionEngine.EvaluationContext.standard());
+        near(5.0 / 3.0, Double.parseDouble(two.items().get(0).value()), 1e-10,
+                "weighted two-variable mean x");
+
+        String[] commands = {"reg-linear-freq", "reg-quadratic-freq", "reg-logarithmic-freq",
+                "reg-e-exponential-freq", "reg-ab-exponential-freq",
+                "reg-power-freq", "reg-inverse-freq"};
+        String weighted = "1,2,2,2,4,1,3,8,1,4,16,1";
+        for (String command : commands) {
+            CnCwWorkflowSpec.WorkflowSpec spec = CnCwWorkflowSpec.forCommand(
+                    ApplicationMode.STATISTICS, command);
+            equal(3, spec.minColumns(), command + " exposes x/y/frequency columns");
+            CnCwModeEngine.ModeResult result = CnCwModeEngine.evaluate(
+                    ApplicationMode.STATISTICS, command, weighted,
+                    ScalarExpressionEngine.EvaluationContext.standard());
+            equal(CnCwModeEngine.ResultLayout.KEY_VALUE, result.layout(),
+                    command + " returns structured weighted regression");
+            check(result.title().contains("频数"), command + " is visibly frequency-aware");
+        }
+    }
+
+    private void resetClearsStoredLinearAlgebra() {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        openCommand(machine, 7, 0);
+        enter(machine, "5");
+        machine.dispatch(CnCwKey.EXE);
+        equal("MatA 已保存", machine.state().applicationResult().title(), "MatA stored before reset");
+        machine.reset();
+        openCommand(machine, 7, 5);
+        machine.dispatch(CnCwKey.EXE);
+        check(machine.state().calculationState().isError(), "reset clears MatA memory");
     }
 
     private void baseNOperationsReachUserWorkflows() {

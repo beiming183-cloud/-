@@ -94,7 +94,7 @@ public final class CnCwWorkflowSession {
             }
             case PAIRED_SERIES -> {
                 rows = spec.minRows();
-                columns = 2;
+                columns = spec.fields().size();
             }
             case FIXED_FIELDS -> {
                 rows = 1;

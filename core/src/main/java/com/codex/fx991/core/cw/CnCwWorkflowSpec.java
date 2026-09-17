@@ -162,15 +162,36 @@ public final class CnCwWorkflowSpec {
                     InputLayout.SERIES, fields(field("x", "x", FieldKind.EXPRESSION)),
                     1, 999, 1, 1);
         }
-        boolean regression = commandId.equals("regression") || commandId.startsWith("reg-");
-        if (commandId.equals("two") || regression) {
-            int minRows = commandId.equals("reg-quadratic") ? 3 : 2;
-            return spec(ApplicationMode.STATISTICS, commandId,
-                    commandId.equals("two") ? "双变量统计" : regressionTitle(commandId),
+        if (commandId.equals("one-freq")) {
+            return spec(ApplicationMode.STATISTICS, commandId, "一元统计（频数）",
                     InputLayout.PAIRED_SERIES,
                     fields(field("x", "x", FieldKind.EXPRESSION),
-                            field("y", "y", FieldKind.EXPRESSION)),
-                    minRows, 999, 2, 2);
+                            field("frequency", "频数", FieldKind.EXPRESSION)),
+                    1, 999, 2, 2);
+        }
+        if (commandId.equals("two-freq")) {
+            return spec(ApplicationMode.STATISTICS, commandId, "双变量统计（频数）",
+                    InputLayout.PAIRED_SERIES,
+                    fields(field("x", "x", FieldKind.EXPRESSION),
+                            field("y", "y", FieldKind.EXPRESSION),
+                            field("frequency", "频数", FieldKind.EXPRESSION)),
+                    2, 999, 3, 3);
+        }
+        boolean frequency = commandId.endsWith("-freq");
+        String baseCommand = frequency
+                ? commandId.substring(0, commandId.length() - "-freq".length()) : commandId;
+        boolean regression = baseCommand.equals("regression") || baseCommand.startsWith("reg-");
+        if (commandId.equals("two") || regression) {
+            int minRows = baseCommand.equals("reg-quadratic") ? 3 : 2;
+            List<FieldSpec> fields = new ArrayList<>();
+            fields.add(field("x", "x", FieldKind.EXPRESSION));
+            fields.add(field("y", "y", FieldKind.EXPRESSION));
+            if (frequency) fields.add(field("frequency", "频数", FieldKind.EXPRESSION));
+            return spec(ApplicationMode.STATISTICS, commandId,
+                    commandId.equals("two") ? "双变量统计"
+                            : regressionTitle(baseCommand) + (frequency ? "（频数）" : ""),
+                    InputLayout.PAIRED_SERIES, fields,
+                    minRows, 999, fields.size(), fields.size());
         }
         return null;
     }
