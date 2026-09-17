@@ -65,7 +65,7 @@ public final class CnCwCompletenessSuite {
             machine.dispatch(CnCwKey.BACK);
         }
         equal(expectedItems, visibleItems, "all scientific constants are user-reachable");
-        equal(48, expectedItems, "47 CODATA entries plus Celsius offset are present");
+        equal(47, expectedItems, "manual scientific-constant catalog entry count");
 
         machine.dispatch(CnCwKey.OK); // last group: 其他
         machine.dispatch(CnCwKey.OK); // Celsius offset
