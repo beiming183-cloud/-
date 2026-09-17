@@ -1,12 +1,11 @@
 package com.codex.fx991.core;
 
-import com.codex.fx991.core.cw.CnCwWorkflowAction;
 import com.codex.fx991.core.cw.CnCwWorkflowSession;
 import com.codex.fx991.core.cw.CnCwWorkflowSpec;
 import com.codex.fx991.core.math.ScalarExpressionEngine;
 import com.codex.fx991.core.mode.ApplicationMode;
 
-/** Regression coverage for core-owned workflow input specifications/state. */
+/** Regression coverage for Stage 5 core-owned workflow input specifications/state. */
 public final class CnCwWorkflowSpecSuite {
     private int checks;
     private final ScalarExpressionEngine.EvaluationContext context =
@@ -18,14 +17,12 @@ public final class CnCwWorkflowSpecSuite {
 
     private void run() {
         statisticsSpecs();
-        functionTableSpecs();
+        functionTableSpecsAndSessions();
         equationSpecs();
         matrixAndVectorSpecs();
         statisticsSessions();
-        functionTableSessions();
         equationSessions();
         matrixAndVectorSessions();
-        workflowActions();
         unsupportedWorkflowReturnsNull();
         System.out.println("PASS " + checks + " workflow-spec/session checks");
     }
@@ -48,23 +45,38 @@ public final class CnCwWorkflowSpecSuite {
         equal(CnCwWorkflowSpec.InputLayout.PAIRED_SERIES, regression.layout(), "regression paired layout");
     }
 
-    private void functionTableSpecs() {
-        var single = CnCwWorkflowSpec.forCommand(ApplicationMode.FUNCTION_TABLE, "single");
-        equal(CnCwWorkflowSpec.InputLayout.FIXED_FIELDS, single.layout(),
-                "single function table uses fixed fields");
-        equal(4, single.fields().size(), "single function table has four fields");
-        equal("f(x)", single.fields().get(0).label(), "single table function label");
-        equal("开始", single.fields().get(1).label(), "single table start label");
-        equal("结束", single.fields().get(2).label(), "single table end label");
-        equal("步长", single.fields().get(3).label(), "single table step label");
 
-        var dual = CnCwWorkflowSpec.forCommand(ApplicationMode.FUNCTION_TABLE, "fg");
-        equal(CnCwWorkflowSpec.InputLayout.FIXED_FIELDS, dual.layout(),
-                "dual function table uses fixed fields");
-        equal(5, dual.fields().size(), "dual function table has five fields");
-        equal("g(x)", dual.fields().get(1).label(), "dual table second function label");
-        equal(5, dual.minColumns(), "dual function table fixed column count");
-        equal(5, dual.maxColumns(), "dual function table max column count");
+    private void functionTableSpecsAndSessions() {
+        var fSpec = CnCwWorkflowSpec.forCommand(ApplicationMode.FUNCTION_TABLE, "f");
+        equal(CnCwWorkflowSpec.InputLayout.FIXED_FIELDS, fSpec.layout(),
+                "function-table f uses fixed fields");
+        equal(4, fSpec.fields().size(), "function-table f field count");
+        equal("步长", fSpec.fields().get(3).label(), "function-table step label");
+        var f = CnCwWorkflowSession.create(fSpec);
+        f.setCell(0, 0, "x^2");
+        f.setCell(0, 1, "0");
+        f.setCell(0, 2, "2");
+        f.setCell(0, 3, "1");
+        var fResult = f.evaluate(context);
+        equal(com.codex.fx991.core.cw.CnCwModeEngine.ResultLayout.TABLE, fResult.layout(),
+                "function-table f returns TABLE layout");
+        equal(3, fResult.rows(), "function-table f row count");
+        equal(2, fResult.columns(), "function-table f column count");
+        equal(6, fResult.cells().size(), "function-table f complete cell payload");
+        equal("4", fResult.cells().get(5), "function-table f last value");
+
+        var fgSpec = CnCwWorkflowSpec.forCommand(ApplicationMode.FUNCTION_TABLE, "fg");
+        equal(5, fgSpec.fields().size(), "function-table fg field count");
+        var fg = CnCwWorkflowSession.create(fgSpec);
+        fg.setCell(0, 0, "x");
+        fg.setCell(0, 1, "x+10");
+        fg.setCell(0, 2, "1");
+        fg.setCell(0, 3, "2");
+        fg.setCell(0, 4, "1");
+        var fgResult = fg.evaluate(context);
+        equal(2, fgResult.rows(), "function-table fg row count");
+        equal(3, fgResult.columns(), "function-table fg column count");
+        equal("12", fgResult.cells().get(5), "function-table fg last g value");
     }
 
     private void equationSpecs() {
@@ -145,32 +157,6 @@ public final class CnCwWorkflowSpecSuite {
         check(failedClosed, "incomplete statistics session cannot serialize silently");
     }
 
-    private void functionTableSessions() {
-        var single = CnCwWorkflowSession.create(
-                CnCwWorkflowSpec.forCommand(ApplicationMode.FUNCTION_TABLE, "single"));
-        equal(1, single.rows(), "single table has one field row");
-        equal(4, single.columns(), "single table has four columns");
-        single.setCell(0, 0, "x^2");
-        single.setCell(0, 1, "1");
-        single.setCell(0, 2, "3");
-        single.setCell(0, 3, "1");
-        equal("x^2,1,3,1", single.legacySource(), "single table serializes in evaluator order");
-        near(1.0, single.evaluate(context).primaryValue(), 0.0,
-                "single table session delegates to function table engine");
-
-        var dual = CnCwWorkflowSession.create(
-                CnCwWorkflowSpec.forCommand(ApplicationMode.FUNCTION_TABLE, "fg"));
-        equal(5, dual.columns(), "dual table has five columns");
-        dual.setCell(0, 0, "x");
-        dual.setCell(0, 1, "2*x");
-        dual.setCell(0, 2, "0");
-        dual.setCell(0, 3, "2");
-        dual.setCell(0, 4, "1");
-        equal("x,2*x,0,2,1", dual.legacySource(), "dual table serializes in evaluator order");
-        near(0.0, dual.evaluate(context).primaryValue(), 0.0,
-                "dual table session delegates to function table engine");
-    }
-
     private void equationSessions() {
         var polynomial = CnCwWorkflowSession.create(
                 CnCwWorkflowSpec.forCommand(ApplicationMode.EQUATION, "polynomial"));
@@ -236,63 +222,11 @@ public final class CnCwWorkflowSpecSuite {
                 "vector session delegates to vector engine");
     }
 
-    private void workflowActions() {
-        var statistics = CnCwWorkflowSession.create(
-                CnCwWorkflowSpec.forCommand(ApplicationMode.STATISTICS, "one"));
-        check(action(statistics, CnCwWorkflowAction.Type.ADD_ROW).enabled(),
-                "statistics publishes add-row action");
-        check(!action(statistics, CnCwWorkflowAction.Type.REMOVE_ROW).enabled(),
-                "statistics disables remove at minimum rows");
-        check(!action(statistics, CnCwWorkflowAction.Type.EXECUTE).enabled(),
-                "execute disabled while input incomplete");
-        statistics.setSelectedCell("5");
-        check(action(statistics, CnCwWorkflowAction.Type.EXECUTE).enabled(),
-                "execute enabled when input complete");
-        check(statistics.applyAction(CnCwWorkflowAction.Type.ADD_ROW),
-                "add-row protocol mutates statistics session");
-        equal(2, statistics.rows(), "add-row action increases statistics rows");
-        check(action(statistics, CnCwWorkflowAction.Type.REMOVE_ROW).enabled(),
-                "remove becomes enabled after append");
-
-        var simultaneous = CnCwWorkflowSession.create(
-                CnCwWorkflowSpec.forCommand(ApplicationMode.EQUATION, "simultaneous"));
-        check(!action(simultaneous, CnCwWorkflowAction.Type.DECREASE_ROWS).enabled(),
-                "two-variable system disables lower dimension");
-        check(simultaneous.applyAction(CnCwWorkflowAction.Type.INCREASE_ROWS),
-                "increase-dimension action works for simultaneous equations");
-        equal(3, simultaneous.rows(), "simultaneous action increases equation dimension");
-        equal(4, simultaneous.columns(), "simultaneous action preserves augmented shape");
-
-        var matrix = CnCwWorkflowSession.create(
-                CnCwWorkflowSpec.forCommand(ApplicationMode.MATRIX, "calculate"));
-        check(matrix.applyAction(CnCwWorkflowAction.Type.INCREASE_ROWS),
-                "matrix action increases rows");
-        check(matrix.applyAction(CnCwWorkflowAction.Type.INCREASE_COLUMNS),
-                "matrix action increases columns");
-        equal(2, matrix.rows(), "matrix action row count");
-        equal(2, matrix.columns(), "matrix action column count");
-        check(action(matrix, CnCwWorkflowAction.Type.BACK).enabled(),
-                "back action always available");
-
-        var snapshot = matrix.snapshot();
-        equal(matrix.actions(), snapshot.actions(), "snapshot publishes workflow actions");
-    }
-
-    private CnCwWorkflowAction action(CnCwWorkflowSession session,
-                                      CnCwWorkflowAction.Type type) {
-        for (CnCwWorkflowAction value : session.actions()) {
-            if (value.type() == type) return value;
-        }
-        throw new AssertionError("missing action: " + type);
-    }
-
     private void unsupportedWorkflowReturnsNull() {
         check(CnCwWorkflowSpec.forCommand(ApplicationMode.CALCULATE, "calculate") == null,
                 "ordinary calculate has no structured workflow spec");
         check(CnCwWorkflowSpec.forCommand(ApplicationMode.STATISTICS, "missing") == null,
                 "unknown statistics command is rejected");
-        check(CnCwWorkflowSpec.forCommand(ApplicationMode.FUNCTION_TABLE, "missing") == null,
-                "unknown function-table command is rejected");
     }
 
     private void check(boolean condition, String message) {

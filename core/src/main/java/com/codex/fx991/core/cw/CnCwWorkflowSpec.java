@@ -10,7 +10,7 @@ import java.util.List;
  *
  * <p>The legacy comma-separated bridge remains valid, but Android can now ask
  * the core what shape and fields a workflow expects instead of parsing prompt
- * strings.</p>
+ * strings.  Later Stage 5 steps attach editable state to these immutable specs.</p>
  */
 public final class CnCwWorkflowSpec {
     private CnCwWorkflowSpec() { }
@@ -128,8 +128,8 @@ public final class CnCwWorkflowSpec {
     }
 
     private static WorkflowSpec functionTable(String commandId) {
-        if (commandId.equals("single")) {
-            return spec(ApplicationMode.FUNCTION_TABLE, commandId, "函数表",
+        if (commandId.equals("single") || commandId.equals("f")) {
+            return spec(ApplicationMode.FUNCTION_TABLE, commandId, "函数表 f(x)",
                     InputLayout.FIXED_FIELDS,
                     fields(field("f", "f(x)", FieldKind.EXPRESSION),
                             field("start", "开始", FieldKind.EXPRESSION),
@@ -138,7 +138,7 @@ public final class CnCwWorkflowSpec {
                     1, 1, 4, 4);
         }
         if (commandId.equals("fg")) {
-            return spec(ApplicationMode.FUNCTION_TABLE, commandId, "f(x) 与 g(x)",
+            return spec(ApplicationMode.FUNCTION_TABLE, commandId, "函数表 f(x), g(x)",
                     InputLayout.FIXED_FIELDS,
                     fields(field("f", "f(x)", FieldKind.EXPRESSION),
                             field("g", "g(x)", FieldKind.EXPRESSION),
