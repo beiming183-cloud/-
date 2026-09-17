@@ -18,7 +18,7 @@ Stage 6 曾并行推进三条工作流，现已统一集成到本分支，后续
 
 三条分支均各自通过正式 CI。集成时只有 `core/build.gradle` 的回归任务登记和 `STAGE6_RELAY.md` 发生冲突；`CnCwMachine`、`CnCwWorkflowSpecSuite` 等产品/回归代码均可自动合并。集成分支同时保留 `cwCalculationStateTest` 与 `cwWorkflowValidationTest`，并已在临时 integration run `35170050256` 中通过完整 `:core:check` 与 Android Debug 构建。
 
-所有并行分支的一次性 patch / 验证文件已从集成结果删除。PR #6 / #7 / #8 仅作为历史记录，不应再分别合并到 `main`。
+所有并行分支的一次性 patch / 验证文件已从集成结果删除。PR #6 / #7 / #8 仅作为历史记录，不应再分别合并到 `main`。PR #10 的有效函数表增量已精确收敛到本分支；其独立 relay 不作为后续接力依据。
 
 ## 已纳入的能力
 
@@ -39,19 +39,27 @@ Stage 6 曾并行推进三条工作流，现已统一集成到本分支，后续
 
 ### C. 剩余结构化应用
 
-- 已开始把函数表、不等式、比例接入 Stage 5 的统一工作流协议；
+- 函数表单函数 / 双函数固定字段输入已接入统一 workflow session；
+- 函数表结果已升级为真正的 `TABLE` core payload，保留旧 display 文本与现有 FunctionTableEngine；
+- 单函数真实命令 id `f` 与既有 `single` 兼容；
 - 不等式关系选择与相应规格已开始结构化；
 - Complex / Base-N 暂不混入这一轮表单工作流。
 
 ## 下一步（继续在本分支完成）
 
-1. 完成函数表单函数 / 双函数专用表单，并继续委托现有 FunctionTableEngine；
-2. 完成二/三/四次不等式的关系选择、系数数量与输入闭环；
-3. 完成比例 `A:B=X:D`、`A:B=C:X` 的标签化输入；
-4. 把函数表结果升级为真正 `TABLE` payload，并在 Android 支持滚动/分页；
-5. 补统一 Android WorkflowAction 操作条与触摸命中；
-6. 完整 core regression、Android Debug/Release 构建与长期签名测试包；
-7. 真机验收继续按用户要求延后集中进行。
+1. 完成二/三/四次不等式的关系选择、系数数量与输入闭环；
+2. 完成比例 `A:B=X:D`、`A:B=C:X` 的标签化输入；
+3. 在 Android 为函数表 `TABLE` 结果补滚动/分页；
+4. 补统一 Android WorkflowAction 操作条与触摸命中；
+5. 完整 core regression、Android Debug/Release 构建与长期签名测试包；
+6. 真机验收继续按用户要求延后集中进行。
+
+## 唯一继续点
+
+- branch：`stage6/integration`
+- 已完成断点：函数表结构化输入 + `TABLE` core payload
+- 下一未完成项：不等式二/三/四次关系选择、系数数量与输入闭环
+- 禁止从 `main` 或 `stage6/remaining-apps` 重新创建 Stage 6 工作线；中断后先核对本 relay 与当前 branch head。
 
 ## 兼容边界
 
