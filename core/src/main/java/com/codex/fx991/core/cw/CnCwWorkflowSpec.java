@@ -127,9 +127,8 @@ public final class CnCwWorkflowSpec {
         return null;
     }
 
-
     private static WorkflowSpec functionTable(String commandId) {
-        if (commandId.equals("f")) {
+        if (commandId.equals("single") || commandId.equals("f")) {
             return spec(ApplicationMode.FUNCTION_TABLE, commandId, "函数表 f(x)",
                     InputLayout.FIXED_FIELDS,
                     fields(field("f", "f(x)", FieldKind.EXPRESSION),
