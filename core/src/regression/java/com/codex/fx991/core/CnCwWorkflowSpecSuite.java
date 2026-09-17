@@ -1,11 +1,12 @@
 package com.codex.fx991.core;
 
+import com.codex.fx991.core.cw.CnCwWorkflowAction;
 import com.codex.fx991.core.cw.CnCwWorkflowSession;
 import com.codex.fx991.core.cw.CnCwWorkflowSpec;
 import com.codex.fx991.core.math.ScalarExpressionEngine;
 import com.codex.fx991.core.mode.ApplicationMode;
 
-/** Regression coverage for Stage 5 core-owned workflow input specifications/state. */
+/** Regression coverage for core-owned workflow input specifications/state. */
 public final class CnCwWorkflowSpecSuite {
     private int checks;
     private final ScalarExpressionEngine.EvaluationContext context =
@@ -22,6 +23,7 @@ public final class CnCwWorkflowSpecSuite {
         statisticsSessions();
         equationSessions();
         matrixAndVectorSessions();
+        workflowActions();
         unsupportedWorkflowReturnsNull();
         System.out.println("PASS " + checks + " workflow-spec/session checks");
     }
@@ -185,6 +187,56 @@ public final class CnCwWorkflowSpecSuite {
         equal("1,2,3,4", vector.legacySource(), "two-vector row-major serialization");
         near(11.0, vector.evaluate(context).primaryValue(), 0.0,
                 "vector session delegates to vector engine");
+    }
+
+    private void workflowActions() {
+        var statistics = CnCwWorkflowSession.create(
+                CnCwWorkflowSpec.forCommand(ApplicationMode.STATISTICS, "one"));
+        check(action(statistics, CnCwWorkflowAction.Type.ADD_ROW).enabled(),
+                "statistics publishes add-row action");
+        check(!action(statistics, CnCwWorkflowAction.Type.REMOVE_ROW).enabled(),
+                "statistics disables remove at minimum rows");
+        check(!action(statistics, CnCwWorkflowAction.Type.EXECUTE).enabled(),
+                "execute disabled while input incomplete");
+        statistics.setSelectedCell("5");
+        check(action(statistics, CnCwWorkflowAction.Type.EXECUTE).enabled(),
+                "execute enabled when input complete");
+        check(statistics.applyAction(CnCwWorkflowAction.Type.ADD_ROW),
+                "add-row protocol mutates statistics session");
+        equal(2, statistics.rows(), "add-row action increases statistics rows");
+        check(action(statistics, CnCwWorkflowAction.Type.REMOVE_ROW).enabled(),
+                "remove becomes enabled after append");
+
+        var simultaneous = CnCwWorkflowSession.create(
+                CnCwWorkflowSpec.forCommand(ApplicationMode.EQUATION, "simultaneous"));
+        check(!action(simultaneous, CnCwWorkflowAction.Type.DECREASE_ROWS).enabled(),
+                "two-variable system disables lower dimension");
+        check(simultaneous.applyAction(CnCwWorkflowAction.Type.INCREASE_ROWS),
+                "increase-dimension action works for simultaneous equations");
+        equal(3, simultaneous.rows(), "simultaneous action increases equation dimension");
+        equal(4, simultaneous.columns(), "simultaneous action preserves augmented shape");
+
+        var matrix = CnCwWorkflowSession.create(
+                CnCwWorkflowSpec.forCommand(ApplicationMode.MATRIX, "calculate"));
+        check(matrix.applyAction(CnCwWorkflowAction.Type.INCREASE_ROWS),
+                "matrix action increases rows");
+        check(matrix.applyAction(CnCwWorkflowAction.Type.INCREASE_COLUMNS),
+                "matrix action increases columns");
+        equal(2, matrix.rows(), "matrix action row count");
+        equal(2, matrix.columns(), "matrix action column count");
+        check(action(matrix, CnCwWorkflowAction.Type.BACK).enabled(),
+                "back action always available");
+
+        var snapshot = matrix.snapshot();
+        equal(matrix.actions(), snapshot.actions(), "snapshot publishes workflow actions");
+    }
+
+    private CnCwWorkflowAction action(CnCwWorkflowSession session,
+                                      CnCwWorkflowAction.Type type) {
+        for (CnCwWorkflowAction value : session.actions()) {
+            if (value.type() == type) return value;
+        }
+        throw new AssertionError("missing action: " + type);
     }
 
     private void unsupportedWorkflowReturnsNull() {
