@@ -23,10 +23,11 @@ public final class CnCwWorkflowSession {
         private final int selectedRow;
         private final int selectedColumn;
         private final boolean complete;
+        private final List<CnCwWorkflowAction> actions;
 
         private Snapshot(CnCwWorkflowSpec.WorkflowSpec spec, int rows, int columns,
                          List<String> cells, int selectedRow, int selectedColumn,
-                         boolean complete) {
+                         boolean complete, List<CnCwWorkflowAction> actions) {
             this.spec = spec;
             this.rows = rows;
             this.columns = columns;
@@ -34,6 +35,7 @@ public final class CnCwWorkflowSession {
             this.selectedRow = selectedRow;
             this.selectedColumn = selectedColumn;
             this.complete = complete;
+            this.actions = com.codex.fx991.core.Compat.copyList(actions);
         }
 
         public CnCwWorkflowSpec.WorkflowSpec spec() { return spec; }
@@ -43,6 +45,7 @@ public final class CnCwWorkflowSession {
         public int selectedRow() { return selectedRow; }
         public int selectedColumn() { return selectedColumn; }
         public boolean complete() { return complete; }
+        public List<CnCwWorkflowAction> actions() { return actions; }
         public String cell(int row, int column) {
             if (row < 0 || row >= rows || column < 0 || column >= columns) {
                 throw new IndexOutOfBoundsException(row + "," + column);
@@ -106,7 +109,7 @@ public final class CnCwWorkflowSession {
 
     public Snapshot snapshot() {
         return new Snapshot(spec, rows, columns, cells,
-                selectedRow, selectedColumn, isComplete());
+                selectedRow, selectedColumn, isComplete(), actions());
     }
 
     public CnCwWorkflowSpec.WorkflowSpec spec() { return spec; }
@@ -196,6 +199,54 @@ public final class CnCwWorkflowSession {
         return resizeGrid(dimension, dimension + 1);
     }
 
+    /**
+     * Current workflow capabilities. Renderers may expose these directly, but
+     * should not infer them again from layout names or keyboard shortcuts.
+     */
+    public List<CnCwWorkflowAction> actions() {
+        List<CnCwWorkflowAction> values = new ArrayList<>();
+        switch (spec.layout()) {
+            case SERIES, PAIRED_SERIES -> {
+                values.add(action(CnCwWorkflowAction.Type.ADD_ROW, "新增数据",
+                        rows < spec.maxRows()));
+                values.add(action(CnCwWorkflowAction.Type.REMOVE_ROW, "删除当前行",
+                        rows > spec.minRows()));
+            }
+            case COEFFICIENTS -> {
+                String decrease = isSimultaneous() ? "减少元数" : "降低阶数";
+                String increase = isSimultaneous() ? "增加元数" : "提高阶数";
+                values.add(action(CnCwWorkflowAction.Type.DECREASE_ROWS, decrease,
+                        rows > spec.minRows()));
+                values.add(action(CnCwWorkflowAction.Type.INCREASE_ROWS, increase,
+                        rows < spec.maxRows()));
+            }
+            case GRID -> {
+                addDimensionActions(values, "行", "列");
+            }
+            case VECTOR_SET -> {
+                addDimensionActions(values, "向量", "维度");
+            }
+            case FIXED_FIELDS -> { }
+        }
+        values.add(action(CnCwWorkflowAction.Type.EXECUTE, "计算", isComplete()));
+        values.add(action(CnCwWorkflowAction.Type.BACK, "返回", true));
+        return com.codex.fx991.core.Compat.copyList(values);
+    }
+
+    /** Applies one session-owned mutation from the same protocol published to UI. */
+    public boolean applyAction(CnCwWorkflowAction.Type type) {
+        if (type == null || !actionEnabled(type)) return false;
+        return switch (type) {
+            case ADD_ROW -> appendRow();
+            case REMOVE_ROW -> removeSelectedRow();
+            case DECREASE_ROWS -> resizeRows(rows - 1);
+            case INCREASE_ROWS -> resizeRows(rows + 1);
+            case DECREASE_COLUMNS -> resizeGrid(rows, columns - 1);
+            case INCREASE_COLUMNS -> resizeGrid(rows, columns + 1);
+            case EXECUTE, BACK -> false;
+        };
+    }
+
     public boolean isComplete() {
         for (String cell : cells) {
             if (com.codex.fx991.core.Compat.isBlank(cell)) return false;
@@ -227,6 +278,35 @@ public final class CnCwWorkflowSession {
 
     public List<String> cells() {
         return com.codex.fx991.core.Compat.copyList(cells);
+    }
+
+    private void addDimensionActions(List<CnCwWorkflowAction> values,
+                                     String rowNoun, String columnNoun) {
+        values.add(action(CnCwWorkflowAction.Type.DECREASE_ROWS, "减少" + rowNoun,
+                rows > spec.minRows()));
+        values.add(action(CnCwWorkflowAction.Type.INCREASE_ROWS, "增加" + rowNoun,
+                rows < spec.maxRows()));
+        values.add(action(CnCwWorkflowAction.Type.DECREASE_COLUMNS, "减少" + columnNoun,
+                columns > spec.minColumns()));
+        values.add(action(CnCwWorkflowAction.Type.INCREASE_COLUMNS, "增加" + columnNoun,
+                columns < spec.maxColumns()));
+    }
+
+    private CnCwWorkflowAction action(CnCwWorkflowAction.Type type,
+                                      String label, boolean enabled) {
+        return new CnCwWorkflowAction(type, label, enabled);
+    }
+
+    private boolean actionEnabled(CnCwWorkflowAction.Type type) {
+        for (CnCwWorkflowAction action : actions()) {
+            if (action.type() == type) return action.enabled();
+        }
+        return false;
+    }
+
+    private boolean resizeRows(int newRows) {
+        if (isSimultaneous()) return setEquationDimension(newRows);
+        return resizeGrid(newRows, columns);
     }
 
     private boolean isSimultaneous() {
