@@ -1,54 +1,63 @@
-# Stage 6 接力状态：计算会话与结果状态协议
+# Stage 6 接力状态：集成与剩余应用工作流
 
 更新日期：2026-09-17
 
 仓库：`beiming183-cloud/beibei-calculator`
 
-工作分支：`stage6/calculation-session`
+工作分支：`stage6/integration`
 
-基线：`main@9a549c091df673742ef1cb5081fa738946bb5ade`（Stage 5 已按用户授权 squash 合并；0.3.17/0.3.18 真机验收继续延后集中进行）
+基线：`main@9a549c091df673742ef1cb5081fa738946bb5ade`（Stage 5 已按用户授权合并；0.3.17 / 0.3.18 真机检查继续延后集中进行）
 
-## 目标
+## 当前集成状态
 
-Stage 3 已完成语义编辑兼容迁移，Stage 4/5 已完成应用模式结构化结果和结构化输入工作流。Stage 6 处理剩余的核心状态债务：当前编辑、结果、错误、Ans、历史仍由 `resultShown`、`errorShown`、`result`、`applicationResult`、`lastError`、`exactAns`、`complexAns` 等字段共同决定，容易让后续模式继续堆条件分支。
+Stage 6 曾并行推进三条工作流，现已统一集成到本分支，后续只从 `stage6/integration` 继续：
 
-Stage 6 引入平台无关、typed 的计算会话/结果协议，并采用兼容式迁移：先让新协议准确镜像现有行为，再逐步把各计算路径改为只写一个 outcome/source of truth。Android 继续只读取 `CnCwUiState`，数值算法本身不在本阶段重写。
+1. `stage6/calculation-session`：typed 计算会话 / outcome 状态协议；
+2. `stage6/workflow-experience`：WorkflowAction、输入校验与工作流体验；
+3. `stage6/remaining-workflows`：函数表、不等式、比例等剩余结构化应用。
 
-## Step 1：typed outcome / phase 兼容层
+三条分支均各自通过正式 CI。集成时只有 `core/build.gradle` 的回归任务登记和 `STAGE6_RELAY.md` 发生冲突；`CnCwMachine`、`CnCwWorkflowSpecSuite` 等产品/回归代码均可自动合并。集成分支同时保留 `cwCalculationStateTest` 与 `cwWorkflowValidationTest`，并已在临时 integration run `35170050256` 中通过完整 `:core:check` 与 Android Debug 构建。
 
-- 新增 `CnCwCalculationState`（或等价类型）；
-- 明确 `EDITING / RESULT / ERROR` 三种 phase；
-- 结果 payload 至少区分 scalar/exact、complex、application/text；
-- `CnCwUiState` 发布 typed snapshot，同时保留原兼容 getter；
-- 核心回归证明新旧状态一致。
+所有并行分支的一次性 patch / 验证文件已从集成结果删除。PR #6 / #7 / #8 仅作为历史记录，不应再分别合并到 `main`。
 
-## Step 2：统一成功结果提交
+## 已纳入的能力
 
-- 普通标量、精确值、复数、应用模式通过统一 commit-result 路径；
-- Ans 更新策略由 typed result 决定，不再散落在 evaluator 分支；
-- 保留现有显示文本与自然格式。
+### A. typed 计算状态
 
-## Step 3：统一错误提交与恢复
+- 引入 typed `EDITING / RESULT / ERROR` 会话状态与结果/错误 payload；
+- `CnCwUiState` 可发布 typed snapshot，同时保留旧 getter 兼容；
+- 成功结果、错误、Ans、历史和异步 evaluation snapshot 开始向统一状态源迁移；
+- 数值算法、自然显示和旧按键行为保持兼容。
 
-- `Math ERROR / Syntax ERROR / domain/range` 等通过 typed error outcome；
-- 错误光标、BACK/AC/左右恢复行为保持兼容；
-- 逐步把 `errorShown/lastError` 降为兼容派生字段。
+### B. 应用工作流体验
 
-## Step 4：历史与异步快照
+- core-owned WorkflowAction / 输入校验能力；
+- 可定位到具体输入格的错误状态；
+- 结构化工作流继续复用 Stage 5 的 `WorkflowSpec / CnCwWorkflowSession`；
+- 显式尺寸/阶数动作与既有快捷键并存；
+- 结果返回输入时保留工作流数据和焦点。
 
-- 历史记录保存 typed outcome；
-- `copyForEvaluation()` 深拷贝会话状态；
-- 慢计算结果仍受 input revision 门禁，不覆盖新输入。
+### C. 剩余结构化应用
 
-## Step 5：Android 消费迁移与回归
+- 已开始把函数表、不等式、比例接入 Stage 5 的统一工作流协议；
+- 不等式关系选择与相应规格已开始结构化；
+- Complex / Base-N 暂不混入这一轮表单工作流。
 
-- Android 结果/错误渲染优先读取 typed state；
-- 保留现有自然科学计数、结构化应用结果、Ans 展开、剪贴板行为；
-- 与 0.3.17/0.3.18 遗留真机项目一起集中验收。
+## 下一步（继续在本分支完成）
 
-## 明确不做
+1. 完成函数表单函数 / 双函数专用表单，并继续委托现有 FunctionTableEngine；
+2. 完成二/三/四次不等式的关系选择、系数数量与输入闭环；
+3. 完成比例 `A:B=X:D`、`A:B=C:X` 的标签化输入；
+4. 把函数表结果升级为真正 `TABLE` payload，并在 Android 支持滚动/分页；
+5. 补统一 Android WorkflowAction 操作条与触摸命中；
+6. 完整 core regression、Android Debug/Release 构建与长期签名测试包；
+7. 真机验收继续按用户要求延后集中进行。
 
-- 不在 Stage 6 重写数学算法；
-- 不删除 Stage 3 token/cursor 兼容层；
-- 不更换 `com.beibei.calculator`、长期 release 签名或安装链；
-- 不因状态重构改变已经通过回归的按键、AC、历史、复制粘贴和结构化输入行为。
+## 兼容边界
+
+- 不重写既有数学算法；
+- 旧逗号字符串输入继续作为回退；
+- Stage 3 语义编辑、Stage 4 结构化结果、Stage 5 结构化输入不得回归；
+- Ans、历史、复制粘贴、错误恢复和异步 input revision 门禁不得回归；
+- 不改变 `com.beibei.calculator` 与长期 Release 签名链；
+- Stage 6 总 PR 保持 Draft，用户明确要求后再合并。
