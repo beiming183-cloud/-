@@ -12,7 +12,7 @@
 
 ## 当前状态
 
-Stage 6 的代码开发、结构化工作流补齐、Android 交互补齐、真机前静态审计和云端构建/长期签名门禁已经完成。2026-09-17 已开始 MuMu 模拟器集中验收：WorkflowAction 基础触控、多项式升降阶语义、联立方程增减元数 RHS 语义、函数表逐行/Page 导航均已有通过证据；验收同时发现函数表 TABLE 结果页泄露内部输入串的问题，现已修复并通过云端门禁，等待用新 APK 在 MuMu 中复测。
+Stage 6 的代码开发、结构化工作流补齐、Android 交互补齐、真机前静态审计和云端构建/长期签名门禁已经完成。2026-09-17 已开始 MuMu 模拟器集中验收：WorkflowAction 基础触控、多项式升降阶语义、联立方程增减元数 RHS 语义、函数表逐行/Page 导航均已有通过证据；函数表 TABLE 结果页曾泄露内部输入串，已修复并于 artifact `10495340801` 上完成覆盖安装复验，确认顶部内部串/编辑光标消失且逐行/Page 翻页无回归。
 
 后续仍只从 `stage6/integration` 继续，不再回到旧的 Stage 6 并行分支。
 
@@ -51,8 +51,9 @@ PR #6 / #7 / #8 仅保留为历史记录，不应再分别合并。PR #10 的有
 - Android 已实现真实表格显示；
 - `↑/↓` 逐行滚动，`Page↑/Page↓` 整页翻页；
 - 显示当前行范围与滚动条；分页状态仅属于 Android View，不污染数学状态；
-- MuMu 验收确认 21 行表格的逐行、PageDown、PageUp 和列对齐正确；
-- MuMu 验收发现 TABLE 结果页仍先绘制内部编辑串/光标，已修复为 TABLE 结果独占显示区，等待新包复测。
+- MuMu 初验确认 21 行表格的逐行、PageDown、PageUp 和列对齐正确；
+- TABLE 结果页内部编辑串/光标泄露已修复并完成复验：未卸载 `com.beibei.calculator`，artifact `10495340801` 通过 `adb install -r` 覆盖成功，首次安装时间保持不变；`f(x)=x`、范围 `0–20`、步长 `1` 正常；顶部不再出现 `x,0,20,1` 和编辑光标；↓：`1–4/21` → `2–5/21`，PageDown 到 `6–9/21`，PageUp 回到 `2–5/21`，无错位或分页回归。
+- 多项式和联立方程此前的尺寸语义保持验收继续有效，无需再次重复测试。
 
 ### D. 二/三/四次不等式
 
@@ -81,7 +82,7 @@ PR #6 / #7 / #8 仅保留为历史记录，不应再分别合并。PR #10 的有
 
 ### G. 模拟器验收后追加修复：TABLE 结果页状态隔离
 
-MuMu 验收用 `f(x)=x`、`0..20`、步长 `1` 生成 21 行函数表时，表格与分页均正确，但结果页顶部仍显示内部串 `x,0,20,1` 和编辑光标。
+MuMu 初验用 `f(x)=x`、`0..20`、步长 `1` 生成 21 行函数表时，表格与分页均正确，但结果页顶部仍显示内部串 `x,0,20,1` 和编辑光标。
 
 根因在 Android `CalculatorView.drawApplicationScreen(...)`：结构化 TABLE 结果已经存在时，仍先执行 natural expression / selection 绘制，再绘制表格。现已增加 `tableResultShown` 状态守卫：
 
@@ -90,7 +91,18 @@ MuMu 验收用 `f(x)=x`、`0..20`、步长 `1` 生成 21 行函数表时，表�
 - KEY_VALUE / MATRIX / VECTOR 等其它结构化结果不受此专门守卫影响，保持原有显示行为；
 - 未修改函数表数学计算、表格数据或分页状态。
 
-严格验证 run `35215973055` 已通过源码状态守卫、完整 core 回归、Debug、Release + R8、长期签名和包名硬校验，并生成 `stage6-table-result-fix-signed-apk`，artifact ID `10495340801`。该显示问题目前状态是“代码修复 + 云端门禁通过，等待 MuMu 复测”，不能提前记为验收通过。
+严格验证 run `35215973055` 已通过源码状态守卫、完整 core 回归、Debug、Release + R8、长期签名和包名硬校验，并生成 `stage6-table-result-fix-signed-apk`，artifact ID `10495340801`。
+
+2026-09-17 复验结果：
+
+- 未卸载 `com.beibei.calculator`；
+- artifact `10495340801` 使用 `adb install -r` 覆盖安装成功，首次安装时间保持不变，确认属于同包升级；
+- `f(x)=x`、范围 `0–20`、步长 `1` 正常；
+- 顶部不再出现 `x,0,20,1` 和编辑光标；
+- ↓：`1–4/21` → `2–5/21`；PageDown 到 `6–9/21`；PageUp 回到 `2–5/21`；
+- 表格无错位或分页回归。
+
+该问题状态现为：**代码修复、云端门禁、覆盖安装与 MuMu 复验全部通过。**
 
 ### H. 本轮明确不扩展
 
@@ -132,32 +144,39 @@ GitHub Actions run `35215973055`：`success`。
 - Android Debug 通过；
 - Android Release + R8 通过；
 - 长期证书和 package `com.beibei.calculator` 硬校验通过；
-- 生成当前推荐复测包 `stage6-table-result-fix-signed-apk`，artifact ID `10495340801`，artifact SHA-256 `bda1568cbd141de2efed82a34083ad9253f571e857859e8f8a310c7c987fa654`；
+- 生成 `stage6-table-result-fix-signed-apk`，artifact ID `10495340801`，artifact SHA-256 `bda1568cbd141de2efed82a34083ad9253f571e857859e8f8a310c7c987fa654`；
 - 正式产品修复已提交至 `stage6/integration`；
-- 临时验证 workflow 已删除；未创建 GitHub Release。
+- 临时验证 workflow 已删除；未创建 GitHub Release；
+- 2026-09-17 MuMu 复验与 `adb install -r` 同包覆盖验证均通过。
 
 ## 2026-09-17 MuMu 集中验收状态
 
-测试基线：MuMu，显示覆盖尺寸 `1260 x 2800`；测试包 artifact `10486064308`；`com.beibei.calculator` 安装成功。由于模拟器原包为 `com.codex.cnscientific.calculator991.debug`，本轮**没有覆盖到同包升级链**。
+测试基线：MuMu，显示覆盖尺寸 `1260 x 2800`；初验包 artifact `10486064308`，函数表复验包 artifact `10495340801`；包名 `com.beibei.calculator`。
 
 已确认：
 
 - WorkflowAction 四按钮基本触控与“提高/降低阶数”命中正常；
 - 多项式二次 → 三次 → 二次时系数按幂次保留，无串位；
 - 联立方程二元 → 三元 → 二元时新变量列为空，RHS `b` 始终在最右侧；
-- 函数表逐行 / PageDown / PageUp 和 `x / f(x)` 列对齐正常。
+- 函数表逐行 / PageDown / PageUp 和 `x / f(x)` 列对齐正常；
+- TABLE 顶部内部串/编辑光标问题已通过修复包复验；
+- artifact `10495340801` 对现有 `com.beibei.calculator` 使用 `adb install -r` 成功，首次安装时间保持不变，确认同包覆盖升级链在该模拟器实例上可用。
 
-未确认：
+无需再次测试：
 
-- 新包对 TABLE 顶部内部串/编辑光标问题的 MuMu 复测；
-- 不等式关系选择；
+- 多项式调阶数据语义；
+- 联立方程增减元数 RHS 语义；
+- 函数表 TABLE 状态隔离、逐行/Page 翻页与列对齐。
+
+仍待确认：
+
+- 二/三/四次不等式关系选择；
 - 两种比例和旧逗号兼容；
-- 结构化错误定位/返回；
+- 结构化输入的计算、返回、错误定位；
 - Ans、历史、复制粘贴、自然显示、语义光标/选区、DEL/AC、长按、SCI/ENG、长数字；
-- 同包覆盖升级链；
-- 真机触感、快速滑动、多指行为。
+- 真机触感、快速滑动、多指行为（模拟器结论不能替代真机结论）。
 
-详细记录见 `docs/hand-offs/STAGE6_DEVICE_ACCEPTANCE.md`。
+详细验收清单见 `docs/hand-offs/STAGE6_DEVICE_ACCEPTANCE.md`。
 
 ## 唯一继续点
 
@@ -166,10 +185,10 @@ GitHub Actions run `35215973055`：`success`。
 - Stage 6 代码开发项：已完成
 - 真机前静态审计：已完成
 - 云端 core / Debug / Release / R8 / 长期签名门禁：已完成
-- MuMu 集中验收：进行中，已有部分通过证据
-- 当前推荐复测包：artifact `10495340801`
+- MuMu 集中验收：进行中；多项式、联立、函数表和同包覆盖升级已通过
+- 当前可继续使用复验包：artifact `10495340801`
 - 集中验收清单：`docs/hand-offs/STAGE6_DEVICE_ACCEPTANCE.md`
-- 下一项：先用 artifact `10495340801` 复测函数表结果页，确认不再显示 `x,0,20,1` / 编辑光标且分页不回归；随后继续不等式、比例、旧功能回归和真机交互测试
+- 下一项：不再重复多项式、联立和函数表；继续不等式、比例、结构化错误/返回、旧功能回归与真机交互测试
 - 所有集中验收完成且用户明确授权之前，不合并 PR #9 到 `main`
 - 禁止从 `main`、`stage6/remaining-apps` 或旧并行分支重新创建 Stage 6 工作线；中断后先核对本 relay 与当前 branch head。
 
