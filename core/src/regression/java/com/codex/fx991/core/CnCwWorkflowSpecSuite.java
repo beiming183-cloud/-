@@ -17,6 +17,7 @@ public final class CnCwWorkflowSpecSuite {
 
     private void run() {
         statisticsSpecs();
+        functionTableSpecsAndSessions();
         equationSpecs();
         matrixAndVectorSpecs();
         statisticsSessions();
@@ -42,6 +43,40 @@ public final class CnCwWorkflowSpecSuite {
         var regression = CnCwWorkflowSpec.forCommand(ApplicationMode.STATISTICS, "regression");
         equal("线性回归", regression.title(), "regression title");
         equal(CnCwWorkflowSpec.InputLayout.PAIRED_SERIES, regression.layout(), "regression paired layout");
+    }
+
+
+    private void functionTableSpecsAndSessions() {
+        var fSpec = CnCwWorkflowSpec.forCommand(ApplicationMode.FUNCTION_TABLE, "f");
+        equal(CnCwWorkflowSpec.InputLayout.FIXED_FIELDS, fSpec.layout(),
+                "function-table f uses fixed fields");
+        equal(4, fSpec.fields().size(), "function-table f field count");
+        equal("步长", fSpec.fields().get(3).label(), "function-table step label");
+        var f = CnCwWorkflowSession.create(fSpec);
+        f.setCell(0, 0, "x^2");
+        f.setCell(0, 1, "0");
+        f.setCell(0, 2, "2");
+        f.setCell(0, 3, "1");
+        var fResult = f.evaluate(context);
+        equal(com.codex.fx991.core.cw.CnCwModeEngine.ResultLayout.TABLE, fResult.layout(),
+                "function-table f returns TABLE layout");
+        equal(3, fResult.rows(), "function-table f row count");
+        equal(2, fResult.columns(), "function-table f column count");
+        equal(6, fResult.cells().size(), "function-table f complete cell payload");
+        equal("4", fResult.cells().get(5), "function-table f last value");
+
+        var fgSpec = CnCwWorkflowSpec.forCommand(ApplicationMode.FUNCTION_TABLE, "fg");
+        equal(5, fgSpec.fields().size(), "function-table fg field count");
+        var fg = CnCwWorkflowSession.create(fgSpec);
+        fg.setCell(0, 0, "x");
+        fg.setCell(0, 1, "x+10");
+        fg.setCell(0, 2, "1");
+        fg.setCell(0, 3, "2");
+        fg.setCell(0, 4, "1");
+        var fgResult = fg.evaluate(context);
+        equal(2, fgResult.rows(), "function-table fg row count");
+        equal(3, fgResult.columns(), "function-table fg column count");
+        equal("12", fgResult.cells().get(5), "function-table fg last g value");
     }
 
     private void equationSpecs() {

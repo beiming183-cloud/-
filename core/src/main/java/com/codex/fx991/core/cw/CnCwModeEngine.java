@@ -281,13 +281,13 @@ public final class CnCwModeEngine {
         ScalarExpressionEngine.CompiledExpression g = twoFunctions
                 ? ScalarExpressionEngine.compile(fields.get(1)) : null;
         int offset = twoFunctions ? 2 : 1;
-        double start = scalar(fields.get(offset), context);
-        double end = scalar(fields.get(offset + 1), context);
+        double startValue = scalar(fields.get(offset), context);
+        double endValue = scalar(fields.get(offset + 1), context);
         double step = scalar(fields.get(offset + 2), context);
         List<FunctionTableEngine.Row> rows = FunctionTableEngine.generate(f, g,
                 twoFunctions ? FunctionTableEngine.TableType.F_AND_G
                         : FunctionTableEngine.TableType.F_ONLY,
-                start, end, step, context);
+                startValue, endValue, step, context);
         FunctionTableEngine.Row first = rows.get(0);
         FunctionTableEngine.Row last = rows.get(rows.size() - 1);
         String firstText = format(first.x()) + ":" + format(first.f());
@@ -296,8 +296,19 @@ public final class CnCwModeEngine {
             firstText += "," + format(first.g());
             lastText += "," + format(last.g());
         }
-        return new ModeResult("rows=" + rows.size() + "  " + firstText + "\n… " + lastText,
-                first.f());
+        String display = "rows=" + rows.size() + "  " + firstText + "\n… " + lastText;
+        List<String> cells = new ArrayList<>();
+        for (FunctionTableEngine.Row row : rows) {
+            cells.add(format(row.x()));
+            cells.add(format(row.f()));
+            if (twoFunctions) cells.add(format(row.g()));
+        }
+        List<ResultItem> headings = new ArrayList<>();
+        headings.add(item("x", "x"));
+        headings.add(item("f(x)", "f(x)"));
+        if (twoFunctions) headings.add(item("g(x)", "g(x)"));
+        return ModeResult.grid(ResultLayout.TABLE, twoFunctions ? "函数表 f,g" : "函数表 f",
+                display, first.f(), rows.size(), twoFunctions ? 3 : 2, cells, headings);
     }
 
     private static ModeResult equation(String command,
