@@ -32,6 +32,20 @@ jobs:
       - name: 应用不等式结构化补丁
         run: python scripts/temp_stage6_integration_inequality.py
 
+      - name: 修正区间结果回归断言
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('core/src/regression/java/com/codex/fx991/core/CnCwWorkflowSpecSuite.java')
+          text = p.read_text(encoding='utf-8')
+          old = 'check(quadratic.evaluate(context).display().contains("x"),\n                "inequality session delegates to polynomial inequality engine");'
+          new = 'check(quadratic.evaluate(context).display().contains("∞"),\n                "inequality session delegates to polynomial inequality engine");'
+          if old not in text:
+              raise SystemExit('inequality assertion target not found')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
       - name: 添加 Gradle 执行权限
         run: chmod +x ./gradlew
 
