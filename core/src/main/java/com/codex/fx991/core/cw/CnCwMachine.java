@@ -80,6 +80,8 @@ public final class CnCwMachine {
     private CnCwModeEngine.ModeResult applicationResult;
     /** Stage 5 structured input editor; null keeps the legacy expression bridge. */
     private CnCwWorkflowSession workflowSession;
+    /** Last explicitly committed Stage 6 result/error payload. */
+    private CnCwCalculationState committedCalculationState = CnCwCalculationState.editing();
     private String status = "HOME";
     private String activeCommandId = "";
     private double ans;
@@ -148,6 +150,7 @@ public final class CnCwMachine {
         result = source.result;
         applicationResult = source.applicationResult;
         workflowSession = source.workflowSession == null ? null : source.workflowSession.copy();
+        committedCalculationState = source.committedCalculationState;
         status = source.status;
         activeCommandId = source.activeCommandId;
         ans = source.ans;
@@ -1081,6 +1084,7 @@ public final class CnCwMachine {
             spreadsheet.recalculate();
             result = "重新计算完成\n剩余 " + spreadsheet.remainingBytes() + " bytes";
             resultShown = true;
+            committedCalculationState = CnCwCalculationState.textResult(result);
         }
     }
 
@@ -1654,6 +1658,7 @@ public final class CnCwMachine {
                 status = "已定义 " + pendingFunctionDefinition + "(x)";
                 pendingFunctionDefinition = "";
                 resultShown = true;
+                committedCalculationState = CnCwCalculationState.textResult(result);
                 return;
             }
             String formatted;
@@ -1831,12 +1836,14 @@ public final class CnCwMachine {
         originalResult = formatted;
         formatConverted = false;
         engineeringMode = false;
+        committedCalculationState = successfulCalculationState(
+                formatted, scalar, exactScalar, complexEvaluation);
         status = !completionStatus.isEmpty() ? completionStatus
                 : statementSequence.isEmpty() ? applicationStatus()
                 : "语句 " + Math.min(statementSequenceIndex, statementSequence.size())
                 + "/" + statementSequence.size();
         history.add(new HistoryEntry(com.codex.fx991.core.Compat.copyList(tokens), result,
-                resultProcessDisplay, applicationResult));
+                resultProcessDisplay, applicationResult, committedCalculationState));
         if (history.size() > 100) history.remove(0);
         historyIndex = history.size();
         if (spreadsheetGrid && application == ApplicationMode.SPREADSHEET
@@ -1845,6 +1852,29 @@ public final class CnCwMachine {
             tokens.clear();
             cursor = 0;
         }
+    }
+
+    private CnCwCalculationState successfulCalculationState(String display,
+                                                                  double scalar,
+                                                                  ExactValue exactScalar,
+                                                                  boolean complexEvaluation) {
+        if (applicationResult != null) {
+            return CnCwCalculationState.applicationResult(display, applicationResult);
+        }
+        if (complexEvaluation && hasComplexAns) {
+            return CnCwCalculationState.complexResult(display, complexAns);
+        }
+        if (exactScalar != null) {
+            return CnCwCalculationState.exactResult(display, scalar, exactScalar);
+        }
+        return CnCwCalculationState.scalarResult(display, scalar);
+    }
+
+    private CnCwCalculationState currentAnswerCalculationState(String display) {
+        if (hasComplexAns) return CnCwCalculationState.complexResult(display, complexAns);
+        if (exactAns != null) return CnCwCalculationState.exactResult(display, ans, exactAns);
+        if (hasAns) return CnCwCalculationState.scalarResult(display, ans);
+        return CnCwCalculationState.textResult(display);
     }
 
     private CoordinateCall coordinateCall(String source) {
@@ -1972,6 +2002,7 @@ public final class CnCwMachine {
         cursor = errorCursor;
         result = error.display();
         resultShown = true;
+        committedCalculationState = CnCwCalculationState.error(result, error, errorCursor);
         status = "按 OK、返回或 AC 回到错误位置";
     }
 
@@ -2087,12 +2118,14 @@ public final class CnCwMachine {
         result = entry.result;
         resultProcessDisplay = entry.processDisplay;
         applicationResult = entry.applicationResult;
+        committedCalculationState = entry.calculationState;
         resultShown = true;
         status = "历史 " + (historyIndex + 1) + "/" + history.size();
     }
 
     private void clearExpression() {
         rememberUndo();
+        committedCalculationState = CnCwCalculationState.editing();
         applicationResult = null;
         resetStatementSequence();
         tokens.clear();
@@ -2113,6 +2146,7 @@ public final class CnCwMachine {
     }
 
     private void dismissError() {
+        committedCalculationState = CnCwCalculationState.editing();
         errorShown = false;
         lastError = null;
         result = "";
@@ -2487,6 +2521,7 @@ public final class CnCwMachine {
         }
         formatConverted = true;
         resultShown = true;
+        committedCalculationState = currentAnswerCalculationState(result);
         status = engineeringMode ? "ENG 模式 · 用 ←/→ 移动小数点" : "格式转换";
         closeAllPopups();
     }
@@ -2496,6 +2531,7 @@ public final class CnCwMachine {
         formatConverted = false;
         if (!originalResult.isEmpty()) result = originalResult;
         resultShown = !result.isEmpty();
+        if (resultShown) committedCalculationState = currentAnswerCalculationState(result);
         status = applicationStatus();
     }
 
@@ -2504,6 +2540,7 @@ public final class CnCwMachine {
         engineeringExponent -= Math.floorMod(engineeringExponent, 3);
         result = engineeringAtExponent(ans, engineeringExponent);
         resultShown = true;
+        committedCalculationState = currentAnswerCalculationState(result);
         status = "ENG · 10^" + engineeringExponent;
     }
 
@@ -3002,10 +3039,19 @@ public final class CnCwMachine {
      * side-effect free.
      */
     private CnCwCalculationState calculationStateSnapshot() {
+        if (!resultShown) return CnCwCalculationState.editing();
+        if (committedCalculationState != null
+                && committedCalculationState.display().equals(result)) {
+            if (errorShown && committedCalculationState.isError()) {
+                return committedCalculationState;
+            }
+            if (!errorShown && committedCalculationState.isResult()) {
+                return committedCalculationState;
+            }
+        }
         if (errorShown) {
             return CnCwCalculationState.error(result, lastError, errorCursor);
         }
-        if (!resultShown) return CnCwCalculationState.editing();
         if (applicationResult != null) {
             return CnCwCalculationState.applicationResult(result, applicationResult);
         }
@@ -4979,7 +5025,8 @@ public final class CnCwMachine {
     private record Token(String display, String evaluation, boolean binary) { }
     private record Navigation(CnCwScreen screen, int selectedIndex) { }
     private record HistoryEntry(List<Token> tokens, String result, String processDisplay,
-                                CnCwModeEngine.ModeResult applicationResult) { }
+                                CnCwModeEngine.ModeResult applicationResult,
+                                CnCwCalculationState calculationState) { }
     private record CoordinateCall(boolean polar, String first, String second) { }
     private record FractionBounds(int templateIndex, int numeratorStart, int numeratorEnd,
                                   int denominatorStart, int denominatorEnd) { }

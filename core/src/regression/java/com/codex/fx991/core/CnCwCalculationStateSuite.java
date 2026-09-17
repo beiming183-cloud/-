@@ -19,6 +19,8 @@ public final class CnCwCalculationStateSuite {
         complexResultIsTyped();
         applicationResultIsTyped();
         errorMirrorsLegacyState();
+        historyRetainsTypedPayloads();
+        evaluationSnapshotRetainsTypedOutcome();
         System.out.println("PASS " + checks + " calculation-state checks");
     }
 
@@ -92,6 +94,44 @@ public final class CnCwCalculationStateSuite {
         machine.dispatch(CnCwKey.OK);
         equal(CnCwCalculationState.Phase.EDITING, machine.state().calculationState().phase(),
                 "dismissing error returns typed editing phase");
+    }
+
+    private void historyRetainsTypedPayloads() {
+        CnCwMachine machine = calculateMachine();
+        machine.pasteExpression("1/3");
+        machine.dispatch(CnCwKey.EXE);
+        equal(CnCwCalculationState.ResultKind.EXACT, machine.state().calculationState().resultKind(),
+                "first history result is exact");
+
+        machine.dispatch(CnCwKey.AC);
+        machine.pasteExpression("i");
+        machine.dispatch(CnCwKey.EXE);
+        equal(CnCwCalculationState.ResultKind.COMPLEX, machine.state().calculationState().resultKind(),
+                "second history result is complex");
+
+        machine.dispatch(CnCwKey.UP);
+        machine.dispatch(CnCwKey.UP);
+        equal(CnCwCalculationState.ResultKind.EXACT, machine.state().calculationState().resultKind(),
+                "recalling older history restores exact payload rather than current Ans type");
+        check(machine.state().calculationState().exactValue() != null,
+                "recalled exact history keeps exact value");
+
+        machine.dispatch(CnCwKey.DOWN);
+        equal(CnCwCalculationState.ResultKind.COMPLEX, machine.state().calculationState().resultKind(),
+                "moving forward in history restores complex payload");
+        check(machine.state().calculationState().complexValue() != null,
+                "recalled complex history keeps complex value");
+    }
+
+    private void evaluationSnapshotRetainsTypedOutcome() {
+        CnCwMachine machine = calculateMachine();
+        machine.pasteExpression("i");
+        machine.dispatch(CnCwKey.EXE);
+        CnCwMachine copy = machine.copyForEvaluation();
+        equal(CnCwCalculationState.ResultKind.COMPLEX, copy.state().calculationState().resultKind(),
+                "evaluation copy retains committed complex payload");
+        equal(machine.state().calculationState().display(), copy.state().calculationState().display(),
+                "evaluation copy retains typed display");
     }
 
     private CnCwMachine calculateMachine() {
