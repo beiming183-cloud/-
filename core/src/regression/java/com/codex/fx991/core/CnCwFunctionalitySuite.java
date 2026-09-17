@@ -31,6 +31,7 @@ public final class CnCwFunctionalitySuite {
         baseNOperationsReachUserWorkflows();
         statisticsFrequencyColumnsReachWeightedEngines();
         resetClearsStoredLinearAlgebra();
+        linearAnswerMemoriesClearWhenLeavingApps();
         System.out.println("PASS " + checks + " functionality checks");
     }
 
@@ -308,6 +309,44 @@ public final class CnCwFunctionalitySuite {
                 "VctAns uses the manual answer-memory title");
         equal("3", machine.state().applicationResult().cells().get(0), "VctAns x");
         equal("5", machine.state().applicationResult().cells().get(1), "VctAns y");
+    }
+
+    private void linearAnswerMemoriesClearWhenLeavingApps() {
+        CnCwMachine matrix = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        openCommand(matrix, 7, 0);
+        enter(matrix, "5");
+        matrix.dispatch(CnCwKey.EXE);
+        openCommand(matrix, 7, 11); // MatA^2 -> MatAns
+        matrix.dispatch(CnCwKey.EXE);
+        equal("25", matrix.state().applicationResult().cells().get(0),
+                "matrix result populates MatAns before app switch");
+        matrix.dispatch(CnCwKey.HOME);
+        matrix.dispatch(CnCwKey.OK); // launch Calculate: this clears MatAns only
+        openCommand(matrix, 7, 15);
+        check(matrix.state().calculationState().isError(),
+                "launching another app clears MatAns");
+        openCommand(matrix, 7, 5); // MatA itself must persist
+        matrix.dispatch(CnCwKey.EXE);
+        near(5.0, parse(matrix, 0), 1e-10,
+                "launching another app keeps MatA slot data");
+
+        CnCwMachine vector = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        openCommand(vector, 8, 0);
+        fillGrid(vector, "3", "4");
+        openCommand(vector, 8, 2);
+        fillGrid(vector, "1", "2");
+        openBinaryChoiceCommand(vector, 8, 7); // VctA+VctB -> VctAns
+        equal("4", vector.state().applicationResult().cells().get(0),
+                "vector result populates VctAns before app switch");
+        vector.dispatch(CnCwKey.HOME);
+        vector.dispatch(CnCwKey.OK); // launch Calculate
+        openCommand(vector, 8, 12);
+        check(vector.state().calculationState().isError(),
+                "launching another app clears VctAns");
+        openCommand(vector, 8, 5); // VctA remains available
+        vector.dispatch(CnCwKey.EXE);
+        near(5.0, parse(vector, 0), 1e-10,
+                "launching another app keeps VctA slot data");
     }
 
     private static void openCommand(CnCwMachine machine, int homeIndex, int commandIndex) {

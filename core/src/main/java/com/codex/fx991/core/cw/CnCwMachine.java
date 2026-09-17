@@ -61,6 +61,8 @@ public final class CnCwMachine {
 
     private CnCwScreen screen = CnCwScreen.HOME;
     private ApplicationMode application;
+    /** App that was active immediately before HOME, used for MatAns/VctAns lifetime rules. */
+    private ApplicationMode applicationBeforeHome;
     private CnCwSettings settings = CnCwSettings.defaults();
     private int selectedIndex;
     private int cursor;
@@ -136,6 +138,7 @@ public final class CnCwMachine {
 
         screen = source.screen;
         application = source.application;
+        applicationBeforeHome = source.applicationBeforeHome;
         settings = source.settings;
         selectedIndex = source.selectedIndex;
         cursor = source.cursor;
@@ -783,6 +786,7 @@ public final class CnCwMachine {
         applicationResult = null;
         screen = CnCwScreen.HOME;
         application = null;
+        applicationBeforeHome = null;
         settings = CnCwSettings.defaults();
         selectedIndex = 0;
         cursor = 0;
@@ -2264,6 +2268,7 @@ public final class CnCwMachine {
         applicationResult = null;
         navigation.clear();
         screen = CnCwScreen.HOME;
+        applicationBeforeHome = application;
         application = null;
         activeCommandId = "";
         selectedIndex = 0;
@@ -2303,6 +2308,12 @@ public final class CnCwMachine {
     private void openApplication(ApplicationMode mode) {
         workflowSession = null;
         applicationResult = null;
+        if (applicationBeforeHome != null && applicationBeforeHome != mode) {
+            // The original 991CN CW clears MatAns/VctAns when HOME is used to launch
+            // another application, while MatA..MatD/VctA..VctD remain stored.
+            linearAlgebraMemory.clearAnswers();
+        }
+        applicationBeforeHome = null;
         application = mode;
         screen = CnCwScreen.forApplication(mode);
         selectedIndex = 0;
