@@ -69,8 +69,22 @@ jobs:
           fi
           git commit -m 'merge(stage6): integrate workflow experience work'
 
-      - name: 合入剩余结构化工作流分支
-        run: git merge --no-ff --no-edit origin/stage6/remaining-workflows
+      - name: 合入剩余结构化工作流分支并解决接力文档冲突
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          git merge --no-ff --no-commit origin/stage6/remaining-workflows
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            conflicts=$(git diff --name-only --diff-filter=U | sort)
+            printf '冲突文件:\n%s\n' "$conflicts"
+            test "$conflicts" = 'docs/hand-offs/STAGE6_RELAY.md' || { echo '出现未预期代码冲突，停止自动集成'; exit 1; }
+            git checkout --ours docs/hand-offs/STAGE6_RELAY.md
+            git add docs/hand-offs/STAGE6_RELAY.md
+          fi
+          git commit -m 'merge(stage6): integrate remaining structured workflows'
 
       - name: 清理一次性验证文件
         run: |
