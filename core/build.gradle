@@ -87,6 +87,14 @@ tasks.register('cwFunctionalityTest', JavaExec) {
     dependsOn tasks.named('regressionClasses')
 }
 
+tasks.register('cwCompletenessTest', JavaExec) {
+    group = 'verification'
+    description = 'Runs user-entry completeness guards for complex, catalogs and formatter settings.'
+    classpath = sourceSets.regression.runtimeClasspath
+    mainClass = 'com.codex.fx991.core.CnCwCompletenessSuite'
+    dependsOn tasks.named('regressionClasses')
+}
+
 tasks.register('manualFunctionsTest', JavaExec) {
     group = 'verification'
     description = 'Runs ÷R, DMS, Pol/Rec, engineering and multi-statement checks.'
@@ -129,6 +137,7 @@ tasks.named('check') {
     dependsOn tasks.named('cwWorkflowValidationTest')
     dependsOn tasks.named('cwStage6AcceptanceTest')
     dependsOn tasks.named('cwFunctionalityTest')
+    dependsOn tasks.named('cwCompletenessTest')
     dependsOn tasks.named('manualFunctionsTest')
     dependsOn tasks.named('cwLayoutMetricsTest')
     dependsOn tasks.named('cwAutoCloseTest')
