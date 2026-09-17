@@ -161,15 +161,29 @@ public final class CnCwWorkflowSpec {
                     InputLayout.SERIES, fields(field("x", "x", FieldKind.EXPRESSION)),
                     1, 999, 1, 1);
         }
-        if (commandId.equals("two") || commandId.equals("regression")) {
+        boolean regression = commandId.equals("regression") || commandId.startsWith("reg-");
+        if (commandId.equals("two") || regression) {
+            int minRows = commandId.equals("reg-quadratic") ? 3 : 2;
             return spec(ApplicationMode.STATISTICS, commandId,
-                    commandId.equals("regression") ? "线性回归" : "双变量统计",
+                    commandId.equals("two") ? "双变量统计" : regressionTitle(commandId),
                     InputLayout.PAIRED_SERIES,
                     fields(field("x", "x", FieldKind.EXPRESSION),
                             field("y", "y", FieldKind.EXPRESSION)),
-                    2, 999, 2, 2);
+                    minRows, 999, 2, 2);
         }
         return null;
+    }
+
+    private static String regressionTitle(String commandId) {
+        return switch (commandId) {
+            case "reg-quadratic" -> "二次回归";
+            case "reg-logarithmic" -> "对数回归";
+            case "reg-e-exponential" -> "e 指数回归";
+            case "reg-ab-exponential" -> "ab^x 回归";
+            case "reg-power" -> "幂回归";
+            case "reg-inverse" -> "逆数回归";
+            default -> "线性回归";
+        };
     }
 
     private static WorkflowSpec functionTable(String commandId) {

@@ -3063,9 +3063,16 @@ public final class CnCwMachine {
         if (mode == null) return com.codex.fx991.core.Compat.list();
         return switch (mode) {
             case CALCULATE -> com.codex.fx991.core.Compat.list(command("calculate", "计算", "输入表达式"));
-            case STATISTICS -> com.codex.fx991.core.Compat.list(command("one", "单变量", "x / 频数"),
-                    command("two", "双变量", "x / y / 频数"),
-                    command("regression", "回归", "七类回归模型"));
+            case STATISTICS -> com.codex.fx991.core.Compat.list(
+                    command("one", "单变量", "x 数据"),
+                    command("two", "双变量", "x / y 数据"),
+                    command("reg-linear", "线性回归", "y=a·x+b"),
+                    command("reg-quadratic", "二次回归", "y=a·x²+b·x+c"),
+                    command("reg-logarithmic", "对数回归", "y=a+b·ln(x)"),
+                    command("reg-e-exponential", "e 指数回归", "y=a·e^(b·x)"),
+                    command("reg-ab-exponential", "ab^x 回归", "y=a·b^x"),
+                    command("reg-power", "幂回归", "y=a·x^b"),
+                    command("reg-inverse", "逆数回归", "y=a+b/x"));
             case DISTRIBUTION -> com.codex.fx991.core.Compat.list(command("normal", "正态分布", "PDF / CDF / 逆分布"),
                     command("binomial", "二项分布", "概率 / 累计概率"),
                     command("poisson", "泊松分布", "概率 / 累计概率"));

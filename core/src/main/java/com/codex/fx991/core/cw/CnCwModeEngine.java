@@ -216,16 +216,22 @@ public final class CnCwModeEngine {
             x[i] = values[i * 2];
             y[i] = values[i * 2 + 1];
         }
-        if (command.equals("regression")) {
+        StatisticsEngine.RegressionType regressionType = regressionType(command);
+        if (regressionType != null) {
             StatisticsEngine.RegressionResult fit = StatisticsEngine.regression(
-                    StatisticsEngine.RegressionType.LINEAR, x, y);
+                    regressionType, x, y);
+            if (regressionType == StatisticsEngine.RegressionType.QUADRATIC) {
+                String display = "a=" + format(fit.a()) + "  b=" + format(fit.b())
+                        + "\nc=" + format(fit.c());
+                return ModeResult.keyValue(regressionTitle(regressionType), display, fit.a(),
+                        item("a", fit.a()), item("b", fit.b()), item("c", fit.c()));
+            }
             String display = "a=" + format(fit.a()) + "  b=" + format(fit.b())
                     + "\nr=" + format(fit.r());
-            return ModeResult.keyValue("线性回归", display, fit.r(),
-                    item("a", fit.a()),
-                    item("b", fit.b()),
-                    item("r", fit.r()));
+            return ModeResult.keyValue(regressionTitle(regressionType), display, fit.r(),
+                    item("a", fit.a()), item("b", fit.b()), item("r", fit.r()));
         }
+        if (!command.equals("two")) throw new IllegalArgumentException("Unknown statistics command");
         StatisticsEngine.TwoVariableResults result = StatisticsEngine.twoVariable(x, y);
         String display = "x̄=" + format(result.meanX()) + "  ȳ=" + format(result.meanY())
                 + "\nσx=" + format(result.populationStdDevX())
@@ -235,6 +241,31 @@ public final class CnCwModeEngine {
                 item("ȳ", result.meanY()),
                 item("σx", result.populationStdDevX()),
                 item("σy", result.populationStdDevY()));
+    }
+
+    private static StatisticsEngine.RegressionType regressionType(String command) {
+        return switch (command) {
+            case "regression", "reg-linear" -> StatisticsEngine.RegressionType.LINEAR;
+            case "reg-quadratic" -> StatisticsEngine.RegressionType.QUADRATIC;
+            case "reg-logarithmic" -> StatisticsEngine.RegressionType.LOGARITHMIC;
+            case "reg-e-exponential" -> StatisticsEngine.RegressionType.E_EXPONENTIAL;
+            case "reg-ab-exponential" -> StatisticsEngine.RegressionType.AB_EXPONENTIAL;
+            case "reg-power" -> StatisticsEngine.RegressionType.POWER;
+            case "reg-inverse" -> StatisticsEngine.RegressionType.INVERSE;
+            default -> null;
+        };
+    }
+
+    private static String regressionTitle(StatisticsEngine.RegressionType type) {
+        return switch (type) {
+            case LINEAR -> "线性回归";
+            case QUADRATIC -> "二次回归";
+            case LOGARITHMIC -> "对数回归";
+            case E_EXPONENTIAL -> "e 指数回归";
+            case AB_EXPONENTIAL -> "ab^x 回归";
+            case POWER -> "幂回归";
+            case INVERSE -> "逆数回归";
+        };
     }
 
     private static ModeResult distribution(String command,
