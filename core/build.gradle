@@ -49,9 +49,17 @@ tasks.register('cwModeRegressionTest', JavaExec) {
 
 tasks.register('cwWorkflowSpecTest', JavaExec) {
     group = 'verification'
-    description = 'Runs Stage 5 core-owned application input specification checks.'
+    description = 'Runs core-owned application input specification and session checks.'
     classpath = sourceSets.regression.runtimeClasspath
     mainClass = 'com.codex.fx991.core.CnCwWorkflowSpecSuite'
+    dependsOn tasks.named('regressionClasses')
+}
+
+tasks.register('cwWorkflowValidationTest', JavaExec) {
+    group = 'verification'
+    description = 'Runs Stage 6 workflow cell validation and error-location checks.'
+    classpath = sourceSets.regression.runtimeClasspath
+    mainClass = 'com.codex.fx991.core.CnCwWorkflowValidationSuite'
     dependsOn tasks.named('regressionClasses')
 }
 
@@ -93,6 +101,7 @@ tasks.named('check') {
     dependsOn tasks.named('cwSemanticTest')
     dependsOn tasks.named('cwModeRegressionTest')
     dependsOn tasks.named('cwWorkflowSpecTest')
+    dependsOn tasks.named('cwWorkflowValidationTest')
     dependsOn tasks.named('manualFunctionsTest')
     dependsOn tasks.named('cwLayoutMetricsTest')
     dependsOn tasks.named('cwAutoCloseTest')
