@@ -26,8 +26,49 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git fetch origin stage6/workflow-experience stage6/remaining-workflows
 
-      - name: 合入工作流体验分支
-        run: git merge --no-ff --no-edit origin/stage6/workflow-experience
+      - name: 合入工作流体验分支并解决已知非代码冲突
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          git merge --no-ff --no-commit origin/stage6/workflow-experience
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            conflicts=$(git diff --name-only --diff-filter=U | sort)
+            printf '冲突文件:\n%s\n' "$conflicts"
+            expected=$(printf '%s\n' 'core/build.gradle' 'docs/hand-offs/STAGE6_RELAY.md' | sort)
+            test "$conflicts" = "$expected" || { echo '出现未预期代码冲突，停止自动集成'; exit 1; }
+
+            git checkout --ours core/build.gradle
+            python - <<'PY'
+from pathlib import Path
+p = Path('core/build.gradle')
+s = p.read_text(encoding='utf-8')
+if "cwWorkflowValidationTest" not in s:
+    marker = "tasks.register('manualFunctionsTest', JavaExec) {"
+    block = """tasks.register('cwWorkflowValidationTest', JavaExec) {
+    group = 'verification'
+    description = 'Runs Stage 6 workflow cell validation and error-location checks.'
+    classpath = sourceSets.regression.runtimeClasspath
+    mainClass = 'com.codex.fx991.core.CnCwWorkflowValidationSuite'
+    dependsOn tasks.named('regressionClasses')
+}
+
+"""
+    if marker not in s:
+        raise SystemExit('manualFunctionsTest marker missing')
+    s = s.replace(marker, block + marker, 1)
+    dep_marker = "    dependsOn tasks.named('cwCalculationStateTest')\n"
+    if dep_marker not in s:
+        raise SystemExit('calculation-state dependency marker missing')
+    s = s.replace(dep_marker, dep_marker + "    dependsOn tasks.named('cwWorkflowValidationTest')\n", 1)
+    p.write_text(s, encoding='utf-8')
+PY
+            git checkout --ours docs/hand-offs/STAGE6_RELAY.md
+            git add core/build.gradle docs/hand-offs/STAGE6_RELAY.md
+          fi
+          git commit -m 'merge(stage6): integrate workflow experience work'
 
       - name: 合入剩余结构化工作流分支
         run: git merge --no-ff --no-edit origin/stage6/remaining-workflows
