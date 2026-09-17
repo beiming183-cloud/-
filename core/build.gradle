@@ -71,6 +71,14 @@ tasks.register('cwWorkflowValidationTest', JavaExec) {
     dependsOn tasks.named('regressionClasses')
 }
 
+tasks.register('cwStage6AcceptanceTest', JavaExec) {
+    group = 'verification'
+    description = 'Runs Stage 6 end-to-end inequality, ratio and workflow acceptance guards.'
+    classpath = sourceSets.regression.runtimeClasspath
+    mainClass = 'com.codex.fx991.core.CnCwStage6AcceptanceSuite'
+    dependsOn tasks.named('regressionClasses')
+}
+
 tasks.register('manualFunctionsTest', JavaExec) {
     group = 'verification'
     description = 'Runs ÷R, DMS, Pol/Rec, engineering and multi-statement checks.'
@@ -111,6 +119,7 @@ tasks.named('check') {
     dependsOn tasks.named('cwWorkflowSpecTest')
     dependsOn tasks.named('cwCalculationStateTest')
     dependsOn tasks.named('cwWorkflowValidationTest')
+    dependsOn tasks.named('cwStage6AcceptanceTest')
     dependsOn tasks.named('manualFunctionsTest')
     dependsOn tasks.named('cwLayoutMetricsTest')
     dependsOn tasks.named('cwAutoCloseTest')
