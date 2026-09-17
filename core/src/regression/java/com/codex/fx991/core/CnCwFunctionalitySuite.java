@@ -32,6 +32,7 @@ public final class CnCwFunctionalitySuite {
         statisticsFrequencyColumnsReachWeightedEngines();
         resetClearsStoredLinearAlgebra();
         linearAnswerMemoriesClearWhenLeavingApps();
+        appSwitchClearsTransientErrorAndVerificationState();
         System.out.println("PASS " + checks + " functionality checks");
     }
 
@@ -347,6 +348,38 @@ public final class CnCwFunctionalitySuite {
         vector.dispatch(CnCwKey.EXE);
         near(5.0, parse(vector, 0), 1e-10,
                 "launching another app keeps VctA slot data");
+    }
+
+    private void appSwitchClearsTransientErrorAndVerificationState() {
+        CnCwMachine verify = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        verify.dispatch(CnCwKey.OK); // Calculate
+        verify.dispatch(CnCwKey.TOOLS);
+        verify.dispatch(CnCwKey.DOWN);
+        verify.dispatch(CnCwKey.DOWN);
+        verify.dispatch(CnCwKey.OK); // verification on
+        check(verify.state().verificationMode(), "verification can be enabled in Calculate");
+
+        verify.dispatch(CnCwKey.HOME);
+        verify.dispatch(CnCwKey.OK); // re-open the same Calculate app
+        check(verify.state().verificationMode(),
+                "HOME then same app preserves verification mode");
+
+        verify.dispatch(CnCwKey.HOME);
+        verify.dispatch(CnCwKey.RIGHT);
+        verify.dispatch(CnCwKey.OK); // Statistics is a different app
+        check(!verify.state().verificationMode(),
+                "HOME then another app disables verification mode");
+
+        CnCwMachine error = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        openCommand(error, 7, 15); // MatAns is undefined
+        check(error.state().calculationState().isError(),
+                "undefined MatAns publishes an error before app switch");
+        error.dispatch(CnCwKey.HOME);
+        error.dispatch(CnCwKey.OK); // Calculate
+        check(!error.state().calculationState().isError(),
+                "opening a new app clears the previous error overlay");
+        check(!error.state().resultShown(),
+                "opening a new app returns to a clean editing state");
     }
 
     private static void openCommand(CnCwMachine machine, int homeIndex, int commandIndex) {

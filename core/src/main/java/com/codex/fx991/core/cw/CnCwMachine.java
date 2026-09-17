@@ -2309,9 +2309,10 @@ public final class CnCwMachine {
         workflowSession = null;
         applicationResult = null;
         if (applicationBeforeHome != null && applicationBeforeHome != mode) {
-            // The original 991CN CW clears MatAns/VctAns when HOME is used to launch
-            // another application, while MatA..MatD/VctA..VctD remain stored.
+            // The original 991CN CW clears transient answer/verification state when
+            // HOME launches another application, while MatA..MatD/VctA..VctD remain stored.
             linearAlgebraMemory.clearAnswers();
+            verificationMode = false;
         }
         applicationBeforeHome = null;
         application = mode;
@@ -2319,8 +2320,13 @@ public final class CnCwMachine {
         selectedIndex = 0;
         navigation.clear();
         shiftArmed = false;
+        committedCalculationState = CnCwCalculationState.editing();
         result = "";
         resultShown = false;
+        errorShown = false;
+        lastError = null;
+        lastExactResult = null;
+        errorCursor = 0;
         tokens.clear();
         cursor = 0;
         activeCommandId = "";
