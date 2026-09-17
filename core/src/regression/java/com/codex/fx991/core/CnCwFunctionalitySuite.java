@@ -39,7 +39,7 @@ public final class CnCwFunctionalitySuite {
         machine.dispatch(CnCwKey.RIGHT);
         machine.dispatch(CnCwKey.OK);
         List<CnCwCommand> commands = machine.state().modeCommands();
-        equal(9, commands.size(), "statistics command count");
+        equal(18, commands.size(), "statistics command count including frequency variants");
         String[] expected = {"reg-linear", "reg-quadratic", "reg-logarithmic",
                 "reg-e-exponential", "reg-ab-exponential", "reg-power", "reg-inverse"};
         for (int index = 0; index < expected.length; index++) {
