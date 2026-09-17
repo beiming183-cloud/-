@@ -29,52 +29,10 @@ jobs:
       - name: 配置 Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: 应用比例结构化补丁
-        run: python scripts/temp_stage6_integration_ratio.py
-
-      - name: 更新比例结果协议回归并保留旧逗号输入
-        shell: bash
+      - name: 应用比例结构化与兼容补丁
         run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          p = Path('core/src/regression/java/com/codex/fx991/core/CnCwModeEngineSuite.java')
-          text = p.read_text(encoding='utf-8')
-          replacements = [
-              ('CnCwModeEngine.ResultLayout.TEXT, ratio.layout()',
-               'CnCwModeEngine.ResultLayout.KEY_VALUE, ratio.layout()'),
-              ('"unmigrated ratio keeps text compatibility layout"',
-               '"ratio publishes structured key-value layout"'),
-              ('check(!ratio.hasGrid(), "text result does not expose a grid");',
-               'equal("X", ratio.items().get(0).label(), "ratio result label");\n        equal("4.5", ratio.items().get(0).value(), "ratio result value");'),
-          ]
-          for old, new in replacements:
-              if old not in text:
-                  raise SystemExit('ratio mode regression target not found: ' + old)
-              text = text.replace(old, new, 1)
-          p.write_text(text, encoding='utf-8')
-
-          p = Path('core/src/main/java/com/codex/fx991/core/cw/CnCwMachine.java')
-          text = p.read_text(encoding='utf-8')
-          marker = '''        if (workflowSession.selectedIsChoice() && !shiftArmed) {'''
-          fallback = '''        // Preserve the historical comma bridge: entering a comma in the first
-        // ratio field means the user chose legacy A,B,D / A,B,C input instead
-        // of the structured labelled form.  OK/arrow navigation keeps the new
-        // workflow session active.
-        if (key == CnCwKey.COMMA
-                && workflowSession.spec().mode() == ApplicationMode.RATIO
-                && workflowSession.selectedRow() == 0
-                && workflowSession.selectedColumn() == 0) {
-            workflowSession = null;
-            status = "比例 · 兼容逗号输入";
-            return false;
-        }
-
-'''
-          if marker not in text:
-              raise SystemExit('ratio legacy bridge marker not found')
-          p.write_text(text.replace(marker, fallback + marker, 1), encoding='utf-8')
-          PY
+          python scripts/temp_stage6_integration_ratio.py
+          python scripts/temp_stage6_ratio_compat.py
 
       - name: 添加 Gradle 执行权限
         run: chmod +x ./gradlew
