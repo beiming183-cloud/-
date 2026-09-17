@@ -32,11 +32,12 @@ jobs:
       - name: 应用比例结构化补丁
         run: python scripts/temp_stage6_integration_ratio.py
 
-      - name: 更新比例结果协议回归
+      - name: 更新比例结果协议回归并保留旧逗号输入
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
+
           p = Path('core/src/regression/java/com/codex/fx991/core/CnCwModeEngineSuite.java')
           text = p.read_text(encoding='utf-8')
           replacements = [
@@ -52,6 +53,27 @@ jobs:
                   raise SystemExit('ratio mode regression target not found: ' + old)
               text = text.replace(old, new, 1)
           p.write_text(text, encoding='utf-8')
+
+          p = Path('core/src/main/java/com/codex/fx991/core/cw/CnCwMachine.java')
+          text = p.read_text(encoding='utf-8')
+          marker = '''        if (workflowSession.selectedIsChoice() && !shiftArmed) {'''
+          fallback = '''        // Preserve the historical comma bridge: entering a comma in the first
+        // ratio field means the user chose legacy A,B,D / A,B,C input instead
+        // of the structured labelled form.  OK/arrow navigation keeps the new
+        // workflow session active.
+        if (key == CnCwKey.COMMA
+                && workflowSession.spec().mode() == ApplicationMode.RATIO
+                && workflowSession.selectedRow() == 0
+                && workflowSession.selectedColumn() == 0) {
+            workflowSession = null;
+            status = "比例 · 兼容逗号输入";
+            return false;
+        }
+
+'''
+          if marker not in text:
+              raise SystemExit('ratio legacy bridge marker not found')
+          p.write_text(text.replace(marker, fallback + marker, 1), encoding='utf-8')
           PY
 
       - name: 添加 Gradle 执行权限
@@ -70,6 +92,7 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add core/src/main/java/com/codex/fx991/core/cw/CnCwWorkflowSpec.java \
                   core/src/main/java/com/codex/fx991/core/cw/CnCwModeEngine.java \
+                  core/src/main/java/com/codex/fx991/core/cw/CnCwMachine.java \
                   core/src/regression/java/com/codex/fx991/core/CnCwWorkflowSpecSuite.java \
                   core/src/regression/java/com/codex/fx991/core/CnCwModeEngineSuite.java
           git commit -m "feat(stage6): add labelled ratio workflows"
