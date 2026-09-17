@@ -1789,39 +1789,8 @@ public final class CnCwMachine {
                     formatted = BaseNEngine.format((int) scalar, BaseNEngine.Base.DECIMAL);
                 }
             }
-            String evaluatedProcessDisplay = expandedProcessDisplay(tokens, ansProcessDisplay);
-            resultProcessDisplay = evaluatedProcessDisplay;
-            if (storeAnswer && application != ApplicationMode.INEQUALITY) {
-                ansProcessDisplay = evaluatedProcessDisplay;
-                ans = scalar;
-                hasAns = true;
-                exactAns = exactScalar;
-                if (!complexEvaluation) {
-                    complexAns = new ComplexValue(scalar, 0.0);
-                    hasComplexAns = false;
-                }
-            }
-            lastExactResult = exactScalar;
-        result = formatted;
-        resultShown = true;
-        originalResult = formatted;
-        formatConverted = false;
-        engineeringMode = false;
-            status = !completionStatus.isEmpty() ? completionStatus
-                    : statementSequence.isEmpty() ? applicationStatus()
-                    : "语句 " + Math.min(statementSequenceIndex, statementSequence.size())
-                    + "/" + statementSequence.size();
-            history.add(new HistoryEntry(com.codex.fx991.core.Compat.copyList(tokens), result,
-                    resultProcessDisplay, applicationResult));
-            if (history.size() > 100) history.remove(0);
-            historyIndex = history.size();
-            if (spreadsheetGrid && application == ApplicationMode.SPREADSHEET
-                    && activeCommandId.equals("sheet")) {
-                // EXE commits the cell and returns the editor focus to the
-                // grid, matching a physical spreadsheet's next-key behavior.
-                tokens.clear();
-                cursor = 0;
-            }
+            commitSuccessfulResult(formatted, scalar, exactScalar, completionStatus,
+                    storeAnswer, complexEvaluation);
         } catch (CalculationException error) {
             showError(error.error(), error.position());
         } catch (ArithmeticException error) {
@@ -1830,6 +1799,52 @@ public final class CnCwMachine {
             showError(CalculationError.ARGUMENT, 0);
         } catch (RuntimeException error) {
             showError(CalculationError.SYNTAX, 0);
+        }
+    }
+
+    /**
+     * Single success-commit gate for EXE evaluation. Numerical branches only
+     * compute a payload; answer ownership, visible result state and history are
+     * committed here so later Stage 6 steps can replace the legacy fields
+     * without duplicating policy.
+     */
+    private void commitSuccessfulResult(String formatted,
+                                        double scalar,
+                                        ExactValue exactScalar,
+                                        String completionStatus,
+                                        boolean storeAnswer,
+                                        boolean complexEvaluation) {
+        String evaluatedProcessDisplay = expandedProcessDisplay(tokens, ansProcessDisplay);
+        resultProcessDisplay = evaluatedProcessDisplay;
+        if (storeAnswer && application != ApplicationMode.INEQUALITY) {
+            ansProcessDisplay = evaluatedProcessDisplay;
+            ans = scalar;
+            hasAns = true;
+            exactAns = exactScalar;
+            if (!complexEvaluation) {
+                complexAns = new ComplexValue(scalar, 0.0);
+                hasComplexAns = false;
+            }
+        }
+        lastExactResult = exactScalar;
+        result = formatted;
+        resultShown = true;
+        originalResult = formatted;
+        formatConverted = false;
+        engineeringMode = false;
+        status = !completionStatus.isEmpty() ? completionStatus
+                : statementSequence.isEmpty() ? applicationStatus()
+                : "语句 " + Math.min(statementSequenceIndex, statementSequence.size())
+                + "/" + statementSequence.size();
+        history.add(new HistoryEntry(com.codex.fx991.core.Compat.copyList(tokens), result,
+                resultProcessDisplay, applicationResult));
+        if (history.size() > 100) history.remove(0);
+        historyIndex = history.size();
+        if (spreadsheetGrid && application == ApplicationMode.SPREADSHEET
+                && activeCommandId.equals("sheet")) {
+            // EXE commits the cell and returns the editor focus to the grid.
+            tokens.clear();
+            cursor = 0;
         }
     }
 
