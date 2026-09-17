@@ -30,7 +30,19 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: 应用 Stage 6 尺寸动作补丁
-        run: python scripts/temp_stage6_shape_actions.py
+        shell: bash
+        run: |
+          python scripts/temp_stage6_shape_actions.py
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('core/src/regression/java/com/codex/fx991/core/CnCwMachineSuite.java')
+          text = p.read_text(encoding='utf-8')
+          old = '''        CnCwMachine matrix = homeApplication(CnCwModel.FX_991_CN_CW, 6);\n        matrix.dispatch(CnCwKey.OK);\n'''
+          new = '''        CnCwMachine matrix = new CnCwMachine(CnCwModel.FX_991_CN_CW);\n        while (!"MATRIX".equals(matrix.state().homeItems()\n                .get(matrix.state().selectedIndex()).id())) {\n            matrix.dispatch(CnCwKey.RIGHT);\n        }\n        matrix.dispatch(CnCwKey.OK);\n        matrix.dispatch(CnCwKey.OK);\n'''
+          if old not in text:
+              raise SystemExit('matrix regression target not found')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
 
       - name: 添加 Gradle 执行权限
         run: chmod +x ./gradlew
