@@ -5,7 +5,7 @@ import com.codex.fx991.core.cw.CnCwWorkflowSpec;
 import com.codex.fx991.core.math.ScalarExpressionEngine;
 import com.codex.fx991.core.mode.ApplicationMode;
 
-/** Regression coverage for Stage 5 core-owned workflow input specifications/state. */
+/** Regression coverage for core-owned workflow input specifications/state. */
 public final class CnCwWorkflowSpecSuite {
     private int checks;
     private final ScalarExpressionEngine.EvaluationContext context =
@@ -17,9 +17,11 @@ public final class CnCwWorkflowSpecSuite {
 
     private void run() {
         statisticsSpecs();
+        functionTableSpecs();
         equationSpecs();
         matrixAndVectorSpecs();
         statisticsSessions();
+        functionTableSessions();
         equationSessions();
         matrixAndVectorSessions();
         unsupportedWorkflowReturnsNull();
@@ -42,6 +44,25 @@ public final class CnCwWorkflowSpecSuite {
         var regression = CnCwWorkflowSpec.forCommand(ApplicationMode.STATISTICS, "regression");
         equal("线性回归", regression.title(), "regression title");
         equal(CnCwWorkflowSpec.InputLayout.PAIRED_SERIES, regression.layout(), "regression paired layout");
+    }
+
+    private void functionTableSpecs() {
+        var single = CnCwWorkflowSpec.forCommand(ApplicationMode.FUNCTION_TABLE, "single");
+        equal(CnCwWorkflowSpec.InputLayout.FIXED_FIELDS, single.layout(),
+                "single function table uses fixed fields");
+        equal(4, single.fields().size(), "single function table has four fields");
+        equal("f(x)", single.fields().get(0).label(), "single table function label");
+        equal("开始", single.fields().get(1).label(), "single table start label");
+        equal("结束", single.fields().get(2).label(), "single table end label");
+        equal("步长", single.fields().get(3).label(), "single table step label");
+
+        var dual = CnCwWorkflowSpec.forCommand(ApplicationMode.FUNCTION_TABLE, "fg");
+        equal(CnCwWorkflowSpec.InputLayout.FIXED_FIELDS, dual.layout(),
+                "dual function table uses fixed fields");
+        equal(5, dual.fields().size(), "dual function table has five fields");
+        equal("g(x)", dual.fields().get(1).label(), "dual table second function label");
+        equal(5, dual.minColumns(), "dual function table fixed column count");
+        equal(5, dual.maxColumns(), "dual function table max column count");
     }
 
     private void equationSpecs() {
@@ -122,6 +143,32 @@ public final class CnCwWorkflowSpecSuite {
         check(failedClosed, "incomplete statistics session cannot serialize silently");
     }
 
+    private void functionTableSessions() {
+        var single = CnCwWorkflowSession.create(
+                CnCwWorkflowSpec.forCommand(ApplicationMode.FUNCTION_TABLE, "single"));
+        equal(1, single.rows(), "single table has one field row");
+        equal(4, single.columns(), "single table has four columns");
+        single.setCell(0, 0, "x^2");
+        single.setCell(0, 1, "1");
+        single.setCell(0, 2, "3");
+        single.setCell(0, 3, "1");
+        equal("x^2,1,3,1", single.legacySource(), "single table serializes in evaluator order");
+        near(1.0, single.evaluate(context).primaryValue(), 0.0,
+                "single table session delegates to function table engine");
+
+        var dual = CnCwWorkflowSession.create(
+                CnCwWorkflowSpec.forCommand(ApplicationMode.FUNCTION_TABLE, "fg"));
+        equal(5, dual.columns(), "dual table has five columns");
+        dual.setCell(0, 0, "x");
+        dual.setCell(0, 1, "2*x");
+        dual.setCell(0, 2, "0");
+        dual.setCell(0, 3, "2");
+        dual.setCell(0, 4, "1");
+        equal("x,2*x,0,2,1", dual.legacySource(), "dual table serializes in evaluator order");
+        near(0.0, dual.evaluate(context).primaryValue(), 0.0,
+                "dual table session delegates to function table engine");
+    }
+
     private void equationSessions() {
         var polynomial = CnCwWorkflowSession.create(
                 CnCwWorkflowSpec.forCommand(ApplicationMode.EQUATION, "polynomial"));
@@ -192,6 +239,8 @@ public final class CnCwWorkflowSpecSuite {
                 "ordinary calculate has no structured workflow spec");
         check(CnCwWorkflowSpec.forCommand(ApplicationMode.STATISTICS, "missing") == null,
                 "unknown statistics command is rejected");
+        check(CnCwWorkflowSpec.forCommand(ApplicationMode.FUNCTION_TABLE, "missing") == null,
+                "unknown function-table command is rejected");
     }
 
     private void check(boolean condition, String message) {
