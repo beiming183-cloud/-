@@ -204,7 +204,7 @@ public final class CnCwFunctionalitySuite {
 
     private static double parse(CnCwMachine machine, int index) {
         return Double.parseDouble(machine.state().applicationResult().items().get(index).value()
-                .replace('−', '-'));
+                .replace('−', '-').replace("°", ""));
     }
 
     private static void enter(CnCwMachine machine, String digits) {
