@@ -1183,10 +1183,18 @@ public final class CnCwMachine {
         if (key == CnCwKey.EXE) {
             shiftArmed = false;
             commitWorkflowCell();
-            if (!workflowSession.isComplete()) {
-                workflowSession.selectFirstBlank();
+            CnCwWorkflowValidation.Report validation =
+                    CnCwWorkflowValidation.validate(workflowSession);
+            if (!validation.ready()) {
+                workflowSession.selectCell(validation.firstProblemRow(),
+                        validation.firstProblemColumn());
                 loadWorkflowCell();
-                status = "还有空白项 · " + workflowStatus();
+                CnCwWorkflowValidation.CellState problem = validation.cell(
+                        validation.firstProblemRow(), validation.firstProblemColumn(),
+                        workflowSession.columns());
+                status = problem.status() == CnCwWorkflowValidation.Status.EMPTY
+                        ? "还有空白项 · " + workflowStatus()
+                        : "输入格式错误 · " + workflowStatus();
                 return true;
             }
             String source = workflowSession.legacySource();
@@ -1251,27 +1259,25 @@ public final class CnCwMachine {
 
     private boolean resizeWorkflowFromShift(CnCwKey key) {
         CnCwWorkflowSpec.InputLayout layout = workflowSession.spec().layout();
-        int rows = workflowSession.rows();
-        int columns = workflowSession.columns();
+        CnCwWorkflowAction.Type action = null;
         if (layout == CnCwWorkflowSpec.InputLayout.GRID
                 || layout == CnCwWorkflowSpec.InputLayout.VECTOR_SET) {
-            if (key == CnCwKey.UP) rows--;
-            else if (key == CnCwKey.DOWN) rows++;
-            else if (key == CnCwKey.LEFT) columns--;
-            else if (key == CnCwKey.RIGHT) columns++;
-            return workflowSession.resizeGrid(rows, columns);
-        }
-        if (layout == CnCwWorkflowSpec.InputLayout.COEFFICIENTS
+            action = switch (key) {
+                case UP -> CnCwWorkflowAction.Type.DECREASE_ROWS;
+                case DOWN -> CnCwWorkflowAction.Type.INCREASE_ROWS;
+                case LEFT -> CnCwWorkflowAction.Type.DECREASE_COLUMNS;
+                case RIGHT -> CnCwWorkflowAction.Type.INCREASE_COLUMNS;
+                default -> null;
+            };
+        } else if (layout == CnCwWorkflowSpec.InputLayout.COEFFICIENTS
                 && workflowSession.spec().mode() == ApplicationMode.EQUATION) {
-            if ("simultaneous".equals(workflowSession.spec().commandId())) {
-                if (key == CnCwKey.UP) return workflowSession.setEquationDimension(rows - 1);
-                if (key == CnCwKey.DOWN) return workflowSession.setEquationDimension(rows + 1);
-                return false;
-            }
-            if (key == CnCwKey.UP) return workflowSession.resizeGrid(rows - 1, columns);
-            if (key == CnCwKey.DOWN) return workflowSession.resizeGrid(rows + 1, columns);
+            action = switch (key) {
+                case UP -> CnCwWorkflowAction.Type.DECREASE_ROWS;
+                case DOWN -> CnCwWorkflowAction.Type.INCREASE_ROWS;
+                default -> null;
+            };
         }
-        return false;
+        return action != null && workflowSession.applyAction(action);
     }
 
     private String workflowStatus() {

@@ -228,7 +228,8 @@ public final class CnCwWorkflowSession {
             }
             case FIXED_FIELDS -> { }
         }
-        values.add(action(CnCwWorkflowAction.Type.EXECUTE, "计算", isComplete()));
+        values.add(action(CnCwWorkflowAction.Type.EXECUTE, "计算",
+                CnCwWorkflowValidation.validate(this).ready()));
         values.add(action(CnCwWorkflowAction.Type.BACK, "返回", true));
         return com.codex.fx991.core.Compat.copyList(values);
     }
