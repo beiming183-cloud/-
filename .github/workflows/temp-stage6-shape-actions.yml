@@ -37,11 +37,29 @@ jobs:
           from pathlib import Path
           p = Path('core/src/regression/java/com/codex/fx991/core/CnCwMachineSuite.java')
           text = p.read_text(encoding='utf-8')
-          old = '''        CnCwMachine matrix = homeApplication(CnCwModel.FX_991_CN_CW, 6);\n        matrix.dispatch(CnCwKey.OK);\n'''
-          new = '''        CnCwMachine matrix = new CnCwMachine(CnCwModel.FX_991_CN_CW);\n        while (!"MATRIX".equals(matrix.state().homeItems()\n                .get(matrix.state().selectedIndex()).id())) {\n            matrix.dispatch(CnCwKey.RIGHT);\n        }\n        matrix.dispatch(CnCwKey.OK);\n        matrix.dispatch(CnCwKey.OK);\n'''
-          if old not in text:
-              raise SystemExit('matrix regression target not found')
-          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          start = text.index('    private void workflowMutationActionsStayCoreOwned() {')
+          end = text.index('    private void spreadsheetCompactWorkflowPersistsCells() {', start)
+          method = '''    private void workflowMutationActionsStayCoreOwned() {
+              CnCwMachine statistics = homeApplication(CnCwModel.FX_991_CN_CW, 1);
+              statistics.dispatch(CnCwKey.OK);
+              check(statistics.state().hasWorkflowInput(),
+                      "statistics command opens structured workflow");
+              equal("1 条", statistics.state().workflowInput().shapeLabel(),
+                      "statistics UI snapshot starts with core-owned shape label");
+              press(statistics, CnCwKey.DIGIT_7);
+              statistics.applyWorkflowMutation(CnCwWorkflowAction.Type.ADD_ROW);
+              check(statistics.state().hasWorkflowInput(),
+                      "statistics remains in workflow after mutation");
+              equal("2 条", statistics.state().workflowInput().shapeLabel(),
+                      "machine mutation updates core-owned shape");
+              equal("7", statistics.state().workflowInput().cell(0, 0),
+                      "machine mutation commits active cell before adding row");
+              check(statistics.state().status().contains("2 条"),
+                      "workflow status exposes human-readable shape");
+          }
+
+'''
+          p.write_text(text[:start] + method + text[end:], encoding='utf-8')
           PY
 
       - name: 添加 Gradle 执行权限
