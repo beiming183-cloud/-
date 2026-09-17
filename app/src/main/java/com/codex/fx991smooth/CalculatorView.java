@@ -400,21 +400,28 @@ public final class CalculatorView extends View {
         float contentTop = lcd.top + lcd.height() * 0.145f;
         float contentBottom = lcd.bottom - dp(3);
         float available = lcd.width() - dp(12);
-        boolean showExpandedAnsProcess = state.resultShown()
+        CnCwModeEngine.ModeResult structuredResult = state.resultShown()
+                && state.hasStructuredApplicationResult() ? state.applicationResult() : null;
+        boolean tableResultShown = structuredResult != null
+                && structuredResult.layout() == CnCwModeEngine.ResultLayout.TABLE;
+        boolean showExpandedAnsProcess = !tableResultShown
+                && state.resultShown()
                 && state.expression().contains("Ans")
                 && !machine.calculationProcessDisplay().isBlank();
-        if (showExpandedAnsProcess) {
-            drawInspectionProcess(canvas, machine.calculationProcessDisplay(), lcd,
-                    contentTop, contentBottom, available);
-        } else {
-            drawNaturalExpression(canvas, state.naturalExpression(), lcd, contentTop,
-                    contentBottom, available);
+        if (!tableResultShown) {
+            if (showExpandedAnsProcess) {
+                drawInspectionProcess(canvas, machine.calculationProcessDisplay(), lcd,
+                        contentTop, contentBottom, available);
+            } else {
+                drawNaturalExpression(canvas, state.naturalExpression(), lcd, contentTop,
+                        contentBottom, available);
+            }
+            if (state.hasSelection()) {
+                drawSelectionHandles(canvas, lcd, contentTop, contentBottom);
+            }
         }
-        if (state.hasSelection()) {
-            drawSelectionHandles(canvas, lcd, contentTop, contentBottom);
-        }
-        if (state.resultShown() && state.hasStructuredApplicationResult()) {
-            drawStructuredApplicationResult(canvas, state.applicationResult(), lcd,
+        if (structuredResult != null) {
+            drawStructuredApplicationResult(canvas, structuredResult, lcd,
                     contentTop, contentBottom, available);
         } else if (state.resultShown() && !state.result().isEmpty()) {
             String[] lines = decimalDisplayResult(state.result()).split("\\n", -1);
