@@ -3,16 +3,21 @@ package com.codex.fx991.core;
 import com.codex.fx991.core.cw.CnCwKey;
 import com.codex.fx991.core.cw.CnCwMachine;
 import com.codex.fx991.core.cw.CnCwModeEngine;
+import com.codex.fx991.core.cw.CnCwWorkflowAction;
+import com.codex.fx991.core.cw.CnCwWorkflowSession;
+import com.codex.fx991.core.cw.CnCwWorkflowSpec;
+import com.codex.fx991.core.mode.ApplicationMode;
 import com.codex.fx991.core.mode.CnCwModel;
 
 /**
  * Stage 6 end-to-end acceptance guards for the remaining structured workflows.
  *
- * <p>These checks intentionally drive the public machine/key APIs instead of
- * calling the math engines directly. They cover the behaviors that otherwise
+ * <p>These checks intentionally drive the public machine/key APIs where the
+ * workflow is user-facing, and exercise the core-owned WorkflowAction protocol
+ * directly for dimension boundaries. They cover the behaviors that otherwise
  * require repetitive manual acceptance: inequality choice cells, validation
- * focus, result-to-input round trips, ratio structured input and the legacy
- * comma bridge.</p>
+ * focus, result-to-input round trips, ratio structured input, the legacy comma
+ * bridge, and statistics/matrix/vector action limits.</p>
  */
 public final class CnCwStage6AcceptanceSuite {
     private int checks;
@@ -29,6 +34,9 @@ public final class CnCwStage6AcceptanceSuite {
         ratioStructuredWorkflowsRoundTrip();
         ratioLegacyCommaBridgeStillWorks();
         dualFunctionWorkflowKeepsInputOnBack();
+        statisticsActionsRespectRowBoundaries();
+        matrixActionsRespectDimensionBoundaries();
+        vectorActionsRespectDimensionBoundaries();
         System.out.println("PASS " + checks + " Stage 6 acceptance checks");
     }
 
@@ -195,6 +203,153 @@ public final class CnCwStage6AcceptanceSuite {
                 "BACK returns to dual function input");
         equal("x+10", machine.state().workflowInput().cell(0, 1),
                 "dual function g(x) survives result inspection");
+    }
+
+    private void statisticsActionsRespectRowBoundaries() {
+        CnCwWorkflowSession session = CnCwWorkflowSession.create(
+                CnCwWorkflowSpec.forCommand(ApplicationMode.STATISTICS, "one"));
+        CnCwWorkflowSession.Snapshot initial = session.snapshot();
+        equal(4, initial.actions().size(), "statistics exposes four workflow actions");
+        check(action(initial, CnCwWorkflowAction.Type.ADD_ROW).enabled(),
+                "statistics can add a row at minimum size");
+        check(!action(initial, CnCwWorkflowAction.Type.REMOVE_ROW).enabled(),
+                "statistics remove is disabled at minimum rows");
+        check(!action(initial, CnCwWorkflowAction.Type.EXECUTE).enabled(),
+                "statistics execute is disabled while required input is blank");
+        check(action(initial, CnCwWorkflowAction.Type.BACK).enabled(),
+                "statistics back is always enabled");
+
+        session.setCell(0, 0, "1");
+        check(session.applyAction(CnCwWorkflowAction.Type.ADD_ROW),
+                "statistics add row action mutates session");
+        session.setCell(1, 0, "2");
+        check(session.applyAction(CnCwWorkflowAction.Type.ADD_ROW),
+                "statistics can add a third row");
+        session.setCell(2, 0, "3");
+        CnCwWorkflowSession.Snapshot populated = session.snapshot();
+        equal(3, populated.rows(), "statistics keeps three entered rows");
+        check(action(populated, CnCwWorkflowAction.Type.REMOVE_ROW).enabled(),
+                "statistics remove becomes enabled above minimum rows");
+        check(action(populated, CnCwWorkflowAction.Type.EXECUTE).enabled(),
+                "statistics execute becomes enabled when all rows are valid");
+
+        check(session.applyAction(CnCwWorkflowAction.Type.REMOVE_ROW),
+                "statistics can remove selected third row");
+        check(session.applyAction(CnCwWorkflowAction.Type.REMOVE_ROW),
+                "statistics can return to minimum row count");
+        check(!session.applyAction(CnCwWorkflowAction.Type.REMOVE_ROW),
+                "statistics cannot remove below minimum row count");
+        equal(1, session.snapshot().rows(), "statistics row count stays at minimum");
+    }
+
+    private void matrixActionsRespectDimensionBoundaries() {
+        CnCwWorkflowSession session = CnCwWorkflowSession.create(
+                CnCwWorkflowSpec.forCommand(ApplicationMode.MATRIX, "calculate"));
+        CnCwWorkflowSession.Snapshot initial = session.snapshot();
+        equal(6, initial.actions().size(), "matrix exposes six workflow actions");
+        equal(CnCwWorkflowAction.Type.DECREASE_ROWS, initial.actions().get(0).type(),
+                "matrix action 1 decreases rows");
+        equal(CnCwWorkflowAction.Type.INCREASE_ROWS, initial.actions().get(1).type(),
+                "matrix action 2 increases rows");
+        equal(CnCwWorkflowAction.Type.DECREASE_COLUMNS, initial.actions().get(2).type(),
+                "matrix action 3 decreases columns");
+        equal(CnCwWorkflowAction.Type.INCREASE_COLUMNS, initial.actions().get(3).type(),
+                "matrix action 4 increases columns");
+        equal(CnCwWorkflowAction.Type.EXECUTE, initial.actions().get(4).type(),
+                "matrix action 5 executes");
+        equal(CnCwWorkflowAction.Type.BACK, initial.actions().get(5).type(),
+                "matrix action 6 returns");
+        check(!action(initial, CnCwWorkflowAction.Type.DECREASE_ROWS).enabled(),
+                "matrix decrease rows disabled at minimum");
+        check(action(initial, CnCwWorkflowAction.Type.INCREASE_ROWS).enabled(),
+                "matrix increase rows enabled at minimum");
+        check(!action(initial, CnCwWorkflowAction.Type.DECREASE_COLUMNS).enabled(),
+                "matrix decrease columns disabled at minimum");
+        check(action(initial, CnCwWorkflowAction.Type.INCREASE_COLUMNS).enabled(),
+                "matrix increase columns enabled at minimum");
+
+        for (int i = 0; i < 3; i++) {
+            check(session.applyAction(CnCwWorkflowAction.Type.INCREASE_ROWS),
+                    "matrix grows one row within range");
+            check(session.applyAction(CnCwWorkflowAction.Type.INCREASE_COLUMNS),
+                    "matrix grows one column within range");
+        }
+        CnCwWorkflowSession.Snapshot maximum = session.snapshot();
+        equal(4, maximum.rows(), "matrix reaches maximum row count");
+        equal(4, maximum.columns(), "matrix reaches maximum column count");
+        check(!action(maximum, CnCwWorkflowAction.Type.INCREASE_ROWS).enabled(),
+                "matrix increase rows disabled at maximum");
+        check(!action(maximum, CnCwWorkflowAction.Type.INCREASE_COLUMNS).enabled(),
+                "matrix increase columns disabled at maximum");
+        check(!session.applyAction(CnCwWorkflowAction.Type.INCREASE_ROWS),
+                "matrix cannot grow beyond maximum rows");
+        check(!session.applyAction(CnCwWorkflowAction.Type.INCREASE_COLUMNS),
+                "matrix cannot grow beyond maximum columns");
+
+        check(session.applyAction(CnCwWorkflowAction.Type.DECREASE_ROWS),
+                "matrix row decrease re-enables growth");
+        check(session.applyAction(CnCwWorkflowAction.Type.DECREASE_COLUMNS),
+                "matrix column decrease re-enables growth");
+        CnCwWorkflowSession.Snapshot reduced = session.snapshot();
+        equal(3, reduced.rows(), "matrix returns to three rows");
+        equal(3, reduced.columns(), "matrix returns to three columns");
+        check(action(reduced, CnCwWorkflowAction.Type.INCREASE_ROWS).enabled(),
+                "matrix row growth is enabled again below maximum");
+        check(action(reduced, CnCwWorkflowAction.Type.INCREASE_COLUMNS).enabled(),
+                "matrix column growth is enabled again below maximum");
+    }
+
+    private void vectorActionsRespectDimensionBoundaries() {
+        CnCwWorkflowSession session = CnCwWorkflowSession.create(
+                CnCwWorkflowSpec.forCommand(ApplicationMode.VECTOR, "calculate"));
+        CnCwWorkflowSession.Snapshot initial = session.snapshot();
+        equal(6, initial.actions().size(), "vector exposes six workflow actions");
+        equal(1, initial.rows(), "vector starts with one vector");
+        equal(2, initial.columns(), "vector starts with two dimensions");
+        check(!action(initial, CnCwWorkflowAction.Type.DECREASE_ROWS).enabled(),
+                "vector decrease count disabled at minimum");
+        check(action(initial, CnCwWorkflowAction.Type.INCREASE_ROWS).enabled(),
+                "vector increase count enabled at minimum");
+        check(!action(initial, CnCwWorkflowAction.Type.DECREASE_COLUMNS).enabled(),
+                "vector decrease dimension disabled at minimum");
+        check(action(initial, CnCwWorkflowAction.Type.INCREASE_COLUMNS).enabled(),
+                "vector increase dimension enabled at minimum");
+
+        check(session.applyAction(CnCwWorkflowAction.Type.INCREASE_ROWS),
+                "vector can grow to two vectors");
+        check(session.applyAction(CnCwWorkflowAction.Type.INCREASE_COLUMNS),
+                "vector can grow to three dimensions");
+        CnCwWorkflowSession.Snapshot maximum = session.snapshot();
+        equal(2, maximum.rows(), "vector reaches maximum vector count");
+        equal(3, maximum.columns(), "vector reaches maximum dimension");
+        check(!action(maximum, CnCwWorkflowAction.Type.INCREASE_ROWS).enabled(),
+                "vector increase count disabled at maximum");
+        check(!action(maximum, CnCwWorkflowAction.Type.INCREASE_COLUMNS).enabled(),
+                "vector increase dimension disabled at maximum");
+        check(!session.applyAction(CnCwWorkflowAction.Type.INCREASE_ROWS),
+                "vector cannot exceed maximum vector count");
+        check(!session.applyAction(CnCwWorkflowAction.Type.INCREASE_COLUMNS),
+                "vector cannot exceed maximum dimension");
+
+        check(session.applyAction(CnCwWorkflowAction.Type.DECREASE_ROWS),
+                "vector can return to one vector");
+        check(session.applyAction(CnCwWorkflowAction.Type.DECREASE_COLUMNS),
+                "vector can return to two dimensions");
+        CnCwWorkflowSession.Snapshot minimum = session.snapshot();
+        equal(1, minimum.rows(), "vector returns to minimum vector count");
+        equal(2, minimum.columns(), "vector returns to minimum dimension");
+        check(!action(minimum, CnCwWorkflowAction.Type.DECREASE_ROWS).enabled(),
+                "vector decrease count disabled again at minimum");
+        check(!action(minimum, CnCwWorkflowAction.Type.DECREASE_COLUMNS).enabled(),
+                "vector decrease dimension disabled again at minimum");
+    }
+
+    private CnCwWorkflowAction action(CnCwWorkflowSession.Snapshot snapshot,
+                                      CnCwWorkflowAction.Type type) {
+        for (CnCwWorkflowAction action : snapshot.actions()) {
+            if (action.type() == type) return action;
+        }
+        throw new AssertionError("missing workflow action " + type);
     }
 
     private CnCwMachine homeApplication(int index) {
