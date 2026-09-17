@@ -39,16 +39,19 @@ jobs:
           from pathlib import Path
           p = Path('core/src/regression/java/com/codex/fx991/core/CnCwModeEngineSuite.java')
           text = p.read_text(encoding='utf-8')
-          old = '''        equal(CnCwModeEngine.ResultLayout.TEXT, ratio.layout(),
-                  "unmigrated ratio keeps text compatibility layout");
-          check(!ratio.hasGrid(), "text result does not expose a grid");'''
-          new = '''        equal(CnCwModeEngine.ResultLayout.KEY_VALUE, ratio.layout(),
-                  "ratio publishes structured key-value layout");
-          equal("X", ratio.items().get(0).label(), "ratio result label");
-          equal("4.5", ratio.items().get(0).value(), "ratio result value");'''
-          if old not in text:
-              raise SystemExit('ratio mode regression target not found')
-          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          replacements = [
+              ('CnCwModeEngine.ResultLayout.TEXT, ratio.layout()',
+               'CnCwModeEngine.ResultLayout.KEY_VALUE, ratio.layout()'),
+              ('"unmigrated ratio keeps text compatibility layout"',
+               '"ratio publishes structured key-value layout"'),
+              ('check(!ratio.hasGrid(), "text result does not expose a grid");',
+               'equal("X", ratio.items().get(0).label(), "ratio result label");\n        equal("4.5", ratio.items().get(0).value(), "ratio result value");'),
+          ]
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit('ratio mode regression target not found: ' + old)
+              text = text.replace(old, new, 1)
+          p.write_text(text, encoding='utf-8')
           PY
 
       - name: 添加 Gradle 执行权限
