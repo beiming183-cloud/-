@@ -105,6 +105,9 @@ public final class CnCwFunctionalitySuite {
         openCommand(machine, 1, 9); // one-variable with frequency
         equal(2, machine.state().workflowInput().columns(), "one-freq exposes x/frequency columns");
         machine.performWorkflowAction(CnCwWorkflowAction.Type.ADD_ROW);
+        equal(1, machine.state().workflowInput().selectedRow(),
+                "adding a statistics row focuses the new row");
+        machine.selectWorkflowCell(0, 0);
         fillGrid(machine, "10", "2", "20", "1");
         equal("3", machine.state().applicationResult().items().get(0).value(),
                 "weighted one-variable sample count is sum of frequencies");
