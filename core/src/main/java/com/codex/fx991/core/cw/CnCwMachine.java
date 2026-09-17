@@ -1772,6 +1772,15 @@ public final class CnCwMachine {
                 formatted = modeResult.display();
                 scalar = modeResult.primaryValue() == null
                         ? (hasAns ? ans : 0.0) : modeResult.primaryValue();
+            } else if (application == ApplicationMode.BASE_N
+                    && workflowSession != null
+                    && CnCwBaseNWorkflow.handles(activeCommandId)) {
+                CnCwModeEngine.ModeResult modeResult = CnCwBaseNWorkflow.evaluate(
+                        activeCommandId, workflowSession.snapshot());
+                applicationResult = modeResult;
+                formatted = modeResult.display();
+                scalar = modeResult.primaryValue() == null
+                        ? (hasAns ? ans : 0.0) : modeResult.primaryValue();
             } else if (application == ApplicationMode.BASE_N && !com.codex.fx991.core.Compat.isBlank(activeCommandId)) {
                 BaseNEngine.Base base = switch (activeCommandId) {
                     case "hex" -> BaseNEngine.Base.HEXADECIMAL;
@@ -3096,9 +3105,22 @@ public final class CnCwMachine {
                     command("cubic", "三次不等式", "四种关系"),
                     command("quartic", "四次不等式", "四种关系"));
             case COMPLEX -> com.codex.fx991.core.Compat.list(command("complex", "复数计算", "a+bi / r∠θ"));
-            case BASE_N -> com.codex.fx991.core.Compat.list(command("decimal", "十进制", "DEC"),
-                    command("hex", "十六进制", "HEX"), command("binary", "二进制", "BIN"),
-                    command("octal", "八进制", "OCT"));
+            case BASE_N -> com.codex.fx991.core.Compat.list(
+                    command("decimal", "十进制", "DEC"),
+                    command("hex", "十六进制", "HEX"),
+                    command("binary", "二进制", "BIN"),
+                    command("octal", "八进制", "OCT"),
+                    command("base-convert", "进制转换", "DEC / HEX / BIN / OCT"),
+                    command("base-add", "加法", "32 位有符号整数"),
+                    command("base-subtract", "减法", "32 位有符号整数"),
+                    command("base-multiply", "乘法", "32 位有符号整数"),
+                    command("base-divide", "除法", "整数商"),
+                    command("base-negate", "取负", "NEG"),
+                    command("base-not", "NOT", "按位取反"),
+                    command("base-and", "AND", "按位与"),
+                    command("base-or", "OR", "按位或"),
+                    command("base-xor", "XOR", "按位异或"),
+                    command("base-xnor", "XNOR", "按位同或"));
             case MATRIX -> com.codex.fx991.core.Compat.list(
                     command("define", "定义 MatA", "最大 4×4"),
                     command("calculate", "直接矩阵", "一次性输入/结果"),

@@ -148,6 +148,7 @@ public final class CnCwWorkflowSpec {
             case FUNCTION_TABLE -> functionTable(commandId);
             case EQUATION -> equation(commandId);
             case INEQUALITY -> inequality(commandId);
+            case BASE_N -> baseN(commandId);
             case MATRIX -> matrix(commandId);
             case VECTOR -> vector(commandId);
             case RATIO -> ratio(commandId);
@@ -254,6 +255,58 @@ public final class CnCwWorkflowSpec {
         int columns = degree + 2;
         return spec(ApplicationMode.INEQUALITY, commandId, title,
                 InputLayout.FIXED_FIELDS, values, 1, 1, columns, columns);
+    }
+
+    private static WorkflowSpec baseN(String commandId) {
+        if (commandId.equals("base-convert")) {
+            return spec(ApplicationMode.BASE_N, commandId, "进制转换",
+                    InputLayout.FIXED_FIELDS,
+                    fields(baseChoice("sourceBase", "输入进制"),
+                            baseChoice("targetBase", "输出进制"),
+                            field("value", "数值", FieldKind.EXPRESSION)),
+                    1, 1, 3, 3);
+        }
+        if (commandId.equals("base-negate") || commandId.equals("base-not")) {
+            return spec(ApplicationMode.BASE_N, commandId, baseNTitle(commandId),
+                    InputLayout.FIXED_FIELDS,
+                    fields(baseChoice("base", "进制"),
+                            field("value", "数值", FieldKind.EXPRESSION)),
+                    1, 1, 2, 2);
+        }
+        if (commandId.equals("base-add") || commandId.equals("base-subtract")
+                || commandId.equals("base-multiply") || commandId.equals("base-divide")
+                || commandId.equals("base-and") || commandId.equals("base-or")
+                || commandId.equals("base-xor") || commandId.equals("base-xnor")) {
+            return spec(ApplicationMode.BASE_N, commandId, baseNTitle(commandId),
+                    InputLayout.FIXED_FIELDS,
+                    fields(baseChoice("base", "进制"),
+                            field("left", "左值", FieldKind.EXPRESSION),
+                            field("right", "右值", FieldKind.EXPRESSION)),
+                    1, 1, 3, 3);
+        }
+        return null;
+    }
+
+    private static FieldSpec baseChoice(String id, String label) {
+        return choiceField(id, label,
+                choice("10", "DEC"), choice("16", "HEX"),
+                choice("2", "BIN"), choice("8", "OCT"));
+    }
+
+    private static String baseNTitle(String commandId) {
+        return switch (commandId) {
+            case "base-add" -> "加法";
+            case "base-subtract" -> "减法";
+            case "base-multiply" -> "乘法";
+            case "base-divide" -> "除法";
+            case "base-negate" -> "取负";
+            case "base-not" -> "NOT";
+            case "base-and" -> "AND";
+            case "base-or" -> "OR";
+            case "base-xor" -> "XOR";
+            case "base-xnor" -> "XNOR";
+            default -> "Base-N";
+        };
     }
 
     private static WorkflowSpec matrix(String commandId) {

@@ -1,10 +1,12 @@
 package com.codex.fx991.core;
 
+import com.codex.fx991.core.cw.CnCwBaseNWorkflow;
 import com.codex.fx991.core.cw.CnCwCommand;
 import com.codex.fx991.core.cw.CnCwKey;
 import com.codex.fx991.core.cw.CnCwMachine;
 import com.codex.fx991.core.cw.CnCwModeEngine;
 import com.codex.fx991.core.cw.CnCwWorkflowAction;
+import com.codex.fx991.core.cw.CnCwWorkflowSession;
 import com.codex.fx991.core.cw.CnCwWorkflowSpec;
 import com.codex.fx991.core.math.ScalarExpressionEngine;
 import com.codex.fx991.core.mode.ApplicationMode;
@@ -26,6 +28,7 @@ public final class CnCwFunctionalitySuite {
         quadraticRegressionRunsThroughMachineWorkflow();
         matrixSlotsPersistAndOperate();
         vectorSlotsPersistAndOperate();
+        baseNOperationsReachUserWorkflows();
         System.out.println("PASS " + checks + " functionality checks");
     }
 
@@ -93,6 +96,50 @@ public final class CnCwFunctionalitySuite {
         near(1.0, parse(machine, 0), 1e-10, "quadratic a coefficient");
         near(1.0, parse(machine, 1), 1e-10, "quadratic b coefficient");
         near(1.0, parse(machine, 2), 1e-10, "quadratic c coefficient");
+    }
+
+    private void baseNOperationsReachUserWorkflows() {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        openCommand(machine, 6, 4); // conversion
+        machine.dispatch(CnCwKey.OK);    // source DEC -> target
+        machine.dispatch(CnCwKey.RIGHT); // target HEX
+        machine.dispatch(CnCwKey.OK);    // value
+        enter(machine, "255");
+        machine.dispatch(CnCwKey.EXE);
+        equal("FF", machine.state().applicationResult().items().get(0).value(),
+                "DEC 255 converts to HEX FF");
+        near(255.0, machine.state().ans(), 0.0, "Base-N conversion stores numeric Ans");
+
+        openCommand(machine, 6, 12); // OR
+        machine.dispatch(CnCwKey.RIGHT); // HEX
+        machine.dispatch(CnCwKey.OK);
+        machine.dispatch(CnCwKey.VAR_A);
+        machine.dispatch(CnCwKey.OK);
+        machine.dispatch(CnCwKey.DIGIT_5);
+        machine.dispatch(CnCwKey.EXE);
+        equal("F", machine.state().applicationResult().items().get(0).value(),
+                "HEX A OR 5 = F through Machine path");
+
+        String[] commands = {"base-add", "base-subtract", "base-multiply", "base-divide",
+                "base-negate", "base-not", "base-and", "base-or", "base-xor", "base-xnor"};
+        for (String command : commands) {
+            CnCwWorkflowSession session = CnCwWorkflowSession.create(
+                    CnCwWorkflowSpec.forCommand(ApplicationMode.BASE_N, command));
+            session.setCell(0, 0, "10");
+            session.setCell(0, 1, "6");
+            if (session.columns() == 3) session.setCell(0, 2, "3");
+            CnCwModeEngine.ModeResult result = CnCwBaseNWorkflow.evaluate(command,
+                    session.snapshot());
+            equal(CnCwModeEngine.ResultLayout.KEY_VALUE, result.layout(),
+                    command + " structured Base-N result");
+            check(!result.items().isEmpty(), command + " has visible formatted value");
+        }
+
+        openCommand(machine, 6, 2); // existing BIN mode remains compatible
+        enter(machine, "1010");
+        machine.dispatch(CnCwKey.EXE);
+        equal("1010", machine.state().result(), "legacy BIN parse/format remains reachable");
+        near(10.0, machine.state().ans(), 0.0, "legacy BIN numeric value remains 10");
     }
 
     private void matrixSlotsPersistAndOperate() {
