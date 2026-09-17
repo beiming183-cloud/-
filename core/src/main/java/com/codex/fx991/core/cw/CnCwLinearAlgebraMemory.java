@@ -19,17 +19,39 @@ import java.util.Map;
 public final class CnCwLinearAlgebraMemory {
     private final Map<String, MatrixValue> matrices = new HashMap<>();
     private final Map<String, VectorValue> vectors = new HashMap<>();
+    private MatrixValue matrixAns;
+    private VectorValue vectorAns;
 
     public void copyFrom(CnCwLinearAlgebraMemory source) {
         matrices.clear();
         matrices.putAll(source.matrices);
         vectors.clear();
         vectors.putAll(source.vectors);
+        matrixAns = source.matrixAns;
+        vectorAns = source.vectorAns;
     }
 
     public void clear() {
         matrices.clear();
         vectors.clear();
+        clearAnswers();
+    }
+
+    public void clearAnswers() {
+        matrixAns = null;
+        vectorAns = null;
+    }
+
+    public CnCwModeEngine.ModeResult answer(ApplicationMode mode) {
+        if (mode == ApplicationMode.MATRIX) {
+            if (matrixAns == null) throw new IllegalArgumentException("MatAns 未定义");
+            return matrixResult("MatAns", matrixAns);
+        }
+        if (mode == ApplicationMode.VECTOR) {
+            if (vectorAns == null) throw new IllegalArgumentException("VctAns 未定义");
+            return vectorResult("VctAns", vectorAns);
+        }
+        throw new IllegalArgumentException("No linear algebra answer for " + mode);
     }
 
     public boolean handles(ApplicationMode mode, String commandId) {
@@ -72,15 +94,34 @@ public final class CnCwLinearAlgebraMemory {
                         "det=" + format(determinant), determinant,
                         new CnCwModeEngine.ResultItem("det", format(determinant)));
             }
-            case "matrix-inverse" -> matrixResult(
+            case "matrix-inverse" -> rememberMatrixResult(
                     "Mat" + input.cell(0, 0) + "⁻¹", requireMatrix(input.cell(0, 0)).inverse());
-            case "matrix-transpose" -> matrixResult(
+            case "matrix-transpose" -> rememberMatrixResult(
                     "Trn(Mat" + input.cell(0, 0) + ")", requireMatrix(input.cell(0, 0)).transpose());
-            case "matrix-add" -> matrixResult(matrixBinaryTitle(input, "+"),
+            case "matrix-square" -> {
+                MatrixValue value = requireMatrix(input.cell(0, 0));
+                yield rememberMatrixResult("Mat" + input.cell(0, 0) + "²", value.multiply(value));
+            }
+            case "matrix-cube" -> {
+                MatrixValue value = requireMatrix(input.cell(0, 0));
+                yield rememberMatrixResult("Mat" + input.cell(0, 0) + "³",
+                        value.multiply(value).multiply(value));
+            }
+            case "matrix-identity" -> {
+                double raw = ScalarExpressionEngine.evaluate(input.cell(0, 0), context);
+                if (raw != Math.rint(raw) || raw < 1 || raw > 4) {
+                    throw new IllegalArgumentException("Identity size must be 1..4");
+                }
+                yield rememberMatrixResult("Identity(" + (int) raw + ")",
+                        MatrixValue.identity((int) raw));
+            }
+            case "matrix-abs" -> rememberMatrixResult(
+                    "Abs(Mat" + input.cell(0, 0) + ")", requireMatrix(input.cell(0, 0)).elementAbs());
+            case "matrix-add" -> rememberMatrixResult(matrixBinaryTitle(input, "+"),
                     requireMatrix(input.cell(0, 0)).add(requireMatrix(input.cell(0, 1))));
-            case "matrix-subtract" -> matrixResult(matrixBinaryTitle(input, "−"),
+            case "matrix-subtract" -> rememberMatrixResult(matrixBinaryTitle(input, "−"),
                     requireMatrix(input.cell(0, 0)).subtract(requireMatrix(input.cell(0, 1))));
-            case "matrix-multiply" -> matrixResult(matrixBinaryTitle(input, "×"),
+            case "matrix-multiply" -> rememberMatrixResult(matrixBinaryTitle(input, "×"),
                     requireMatrix(input.cell(0, 0)).multiply(requireMatrix(input.cell(0, 1))));
             default -> throw new IllegalArgumentException("Unknown stored matrix command");
         };
@@ -101,10 +142,10 @@ public final class CnCwLinearAlgebraMemory {
             case "vector-magnitude" -> CnCwModeEngine.ModeResult.keyValue(
                     "|Vct" + leftSlot + "|", "|v|=" + format(left.magnitude()), left.magnitude(),
                     new CnCwModeEngine.ResultItem("|v|", format(left.magnitude())));
-            case "vector-unit" -> vectorResult("Unit(Vct" + leftSlot + ")", left.unit());
-            case "vector-add" -> vectorResult(vectorBinaryTitle(input, "+"),
+            case "vector-unit" -> rememberVectorResult("Unit(Vct" + leftSlot + ")", left.unit());
+            case "vector-add" -> rememberVectorResult(vectorBinaryTitle(input, "+"),
                     left.add(requireVector(input.cell(0, 1))));
-            case "vector-subtract" -> vectorResult(vectorBinaryTitle(input, "−"),
+            case "vector-subtract" -> rememberVectorResult(vectorBinaryTitle(input, "−"),
                     left.subtract(requireVector(input.cell(0, 1))));
             case "vector-dot" -> {
                 double value = left.dot(requireVector(input.cell(0, 1)));
@@ -112,7 +153,7 @@ public final class CnCwLinearAlgebraMemory {
                         "dot=" + format(value), value,
                         new CnCwModeEngine.ResultItem("dot", format(value)));
             }
-            case "vector-cross" -> vectorResult(vectorBinaryTitle(input, "×"),
+            case "vector-cross" -> rememberVectorResult(vectorBinaryTitle(input, "×"),
                     left.cross(requireVector(input.cell(0, 1))));
             case "vector-angle" -> {
                 double degrees = Math.toDegrees(left.angleRadians(requireVector(input.cell(0, 1))));
@@ -149,14 +190,16 @@ public final class CnCwLinearAlgebraMemory {
     }
 
     private MatrixValue requireMatrix(String slot) {
-        MatrixValue value = matrices.get(slot);
-        if (value == null) throw new IllegalArgumentException("Mat" + slot + " 未定义");
+        MatrixValue value = "Ans".equals(slot) ? matrixAns : matrices.get(slot);
+        if (value == null) throw new IllegalArgumentException(
+                "Ans".equals(slot) ? "MatAns 未定义" : "Mat" + slot + " 未定义");
         return value;
     }
 
     private VectorValue requireVector(String slot) {
-        VectorValue value = vectors.get(slot);
-        if (value == null) throw new IllegalArgumentException("Vct" + slot + " 未定义");
+        VectorValue value = "Ans".equals(slot) ? vectorAns : vectors.get(slot);
+        if (value == null) throw new IllegalArgumentException(
+                "Ans".equals(slot) ? "VctAns 未定义" : "Vct" + slot + " 未定义");
         return value;
     }
 
@@ -178,6 +221,16 @@ public final class CnCwLinearAlgebraMemory {
             case "vct-d" -> "D";
             default -> null;
         };
+    }
+
+    private CnCwModeEngine.ModeResult rememberMatrixResult(String title, MatrixValue value) {
+        matrixAns = value;
+        return matrixResult(title, value);
+    }
+
+    private CnCwModeEngine.ModeResult rememberVectorResult(String title, VectorValue value) {
+        vectorAns = value;
+        return vectorResult(title, value);
     }
 
     private CnCwModeEngine.ModeResult matrixResult(String title, MatrixValue value) {

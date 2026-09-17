@@ -19,6 +19,7 @@ public final class CnCwCompletenessSuite {
 
     private void run() {
         complexApplicationRunsRectangularAndPolarPaths();
+        complexDedicatedCommandsAreReachable();
         constantCatalogExposesEveryRegistryEntry();
         conversionCatalogExposesEveryRegistryEntry();
         formatterSettingsChangeRealResults();
@@ -44,6 +45,41 @@ public final class CnCwCompletenessSuite {
         press(machine, CnCwKey.DIGIT_5, CnCwKey.SHIFT, CnCwKey.DIGIT_8,
                 CnCwKey.DIGIT_0, CnCwKey.EXE);
         equal("5", machine.state().result(), "polar input reaches complex evaluator");
+    }
+
+    private void complexDedicatedCommandsAreReachable() {
+        CnCwMachine machine = openApplication(5);
+        machine.dispatch(CnCwKey.CATALOG);
+        moveDown(machine, 9);
+        machine.dispatch(CnCwKey.OK);
+        equal(com.codex.fx991.core.cw.CnCwScreen.CATALOG_COMPLEX, machine.state().screen(),
+                "Complex catalog opens dedicated command group");
+        equal(4, machine.state().menuItems().size(), "Complex catalog command count");
+        machine.dispatch(CnCwKey.OK); // Conjg(
+        press(machine, CnCwKey.DIGIT_2, CnCwKey.ADD, CnCwKey.DIGIT_3,
+                CnCwKey.SHIFT, CnCwKey.DIGIT_9, CnCwKey.EXE);
+        equal("2−3i", machine.state().result(), "Conjg command runs through user catalog");
+
+        machine = openApplication(5);
+        machine.dispatch(CnCwKey.CATALOG); moveDown(machine, 9); machine.dispatch(CnCwKey.OK);
+        machine.dispatch(CnCwKey.DOWN); machine.dispatch(CnCwKey.OK); // Arg(
+        press(machine, CnCwKey.DIGIT_1, CnCwKey.ADD, CnCwKey.SHIFT, CnCwKey.DIGIT_9,
+                CnCwKey.EXE);
+        near(45.0, machine.state().ans(), 1e-10, "Arg command");
+
+        machine = openApplication(5);
+        machine.dispatch(CnCwKey.CATALOG); moveDown(machine, 9); machine.dispatch(CnCwKey.OK);
+        moveDown(machine, 2); machine.dispatch(CnCwKey.OK); // Re(
+        press(machine, CnCwKey.DIGIT_2, CnCwKey.ADD, CnCwKey.DIGIT_3,
+                CnCwKey.SHIFT, CnCwKey.DIGIT_9, CnCwKey.EXE);
+        near(2.0, machine.state().ans(), 1e-12, "Re command");
+
+        machine = openApplication(5);
+        machine.dispatch(CnCwKey.CATALOG); moveDown(machine, 9); machine.dispatch(CnCwKey.OK);
+        moveDown(machine, 3); machine.dispatch(CnCwKey.OK); // Im(
+        press(machine, CnCwKey.DIGIT_2, CnCwKey.ADD, CnCwKey.DIGIT_3,
+                CnCwKey.SHIFT, CnCwKey.DIGIT_9, CnCwKey.EXE);
+        near(3.0, machine.state().ans(), 1e-12, "Im command");
     }
 
     private void constantCatalogExposesEveryRegistryEntry() {

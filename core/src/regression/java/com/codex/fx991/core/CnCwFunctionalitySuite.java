@@ -234,6 +234,32 @@ public final class CnCwFunctionalitySuite {
         openBinaryChoiceCommand(machine, 7, 10); // MatA * MatB
         equal("1", machine.state().applicationResult().cells().get(0), "matrix multiply identity");
         equal("4", machine.state().applicationResult().cells().get(3), "matrix multiply identity last");
+
+        openCommand(machine, 7, 11); // MatA^2
+        machine.dispatch(CnCwKey.EXE);
+        equal("7", machine.state().applicationResult().cells().get(0), "matrix square [1,1]");
+        equal("22", machine.state().applicationResult().cells().get(3), "matrix square [2,2]");
+
+        openCommand(machine, 7, 12); // MatA^3
+        machine.dispatch(CnCwKey.EXE);
+        equal("37", machine.state().applicationResult().cells().get(0), "matrix cube [1,1]");
+        equal("118", machine.state().applicationResult().cells().get(3), "matrix cube [2,2]");
+
+        openCommand(machine, 7, 13); // Identity(3)
+        enter(machine, "3");
+        machine.dispatch(CnCwKey.EXE);
+        equal(3, machine.state().applicationResult().rows(), "identity matrix rows");
+        equal(3, machine.state().applicationResult().columns(), "identity matrix columns");
+        equal("1", machine.state().applicationResult().cells().get(0), "identity diagonal");
+        equal("0", machine.state().applicationResult().cells().get(1), "identity off diagonal");
+
+        openCommand(machine, 7, 14); // Abs(MatA)
+        machine.dispatch(CnCwKey.EXE);
+        equal("3", machine.state().applicationResult().cells().get(2), "matrix element abs");
+
+        openCommand(machine, 7, 15); // MatAns
+        equal("Abs(MatA)", machine.state().applicationResult().title(),
+                "MatAns preserves last matrix result payload");
     }
 
     private void vectorSlotsPersistAndOperate() {
@@ -273,6 +299,13 @@ public final class CnCwFunctionalitySuite {
         openBinaryChoiceCommand(machine, 8, 11); // angle
         check(parse(machine, 0) > 36.0 && parse(machine, 0) < 37.0,
                 "VctA/VctB angle is about 36.87 degrees");
+
+        openBinaryChoiceCommand(machine, 8, 7); // A+B -> VctAns
+        openCommand(machine, 8, 12); // VctAns
+        equal("VctA+VctB", machine.state().applicationResult().title(),
+                "VctAns preserves last vector result payload");
+        equal("3", machine.state().applicationResult().cells().get(0), "VctAns x");
+        equal("5", machine.state().applicationResult().cells().get(1), "VctAns y");
     }
 
     private static void openCommand(CnCwMachine machine, int homeIndex, int commandIndex) {

@@ -730,6 +730,13 @@ public final class CnCwMachine {
                 {"root(", "√[ ](", "root("},
                 {"diff(", "d/dx(", "diff("},
                 {"sum(", "Σ(", "sum("},
+                {"conjugate(", "Conjg(", "conj("},
+                {"conj(", "Conjg(", "conj("},
+                {"real(", "Re(", "re("},
+                {"imag(", "Im(", "im("},
+                {"arg(", "Arg(", "arg("},
+                {"re(", "Re(", "re("},
+                {"im(", "Im(", "im("},
                 {"abs(", "Abs(", "abs("},
                 {"dms(", "DMS(", "dms("},
                 {"pol(", "Pol(", "pol("},
@@ -1069,6 +1076,19 @@ public final class CnCwMachine {
         clearExpression();
         applicationLanding = false;
         activeCommandId = command.id();
+        if ((application == ApplicationMode.MATRIX && command.id().equals("matrix-ans"))
+                || (application == ApplicationMode.VECTOR && command.id().equals("vector-ans"))) {
+            try {
+                CnCwModeEngine.ModeResult modeResult = linearAlgebraMemory.answer(application);
+                applicationResult = modeResult;
+                double scalar = modeResult.primaryValue() == null
+                        ? (hasAns ? ans : 0.0) : modeResult.primaryValue();
+                commitSuccessfulResult(modeResult.display(), scalar, null, "", true, false);
+            } catch (IllegalArgumentException error) {
+                commitCalculationError(CalculationError.ARGUMENT, 0);
+            }
+            return;
+        }
         CnCwWorkflowSpec.WorkflowSpec workflowSpec =
                 CnCwWorkflowSpec.forCommand(application, command.id());
         workflowSession = workflowSpec == null ? null : CnCwWorkflowSession.create(workflowSpec);
@@ -2258,6 +2278,7 @@ public final class CnCwMachine {
 
     private void powerOff() {
         workflowSession = null;
+        linearAlgebraMemory.clear();
         applicationResult = null;
         navigation.clear();
         screen = CnCwScreen.HOME;
@@ -2355,6 +2376,10 @@ public final class CnCwMachine {
             case SETTINGS_DISPLAY -> activateSystemSetting(index);
             case RESET_CONFIRM -> activateResetConfirm(index);
             case CATALOG -> {
+                if (application == ApplicationMode.COMPLEX && index == 9) {
+                    openPopup(CnCwScreen.CATALOG_COMPLEX);
+                    break;
+                }
                 openPopup(switch (index) {
                     case 0 -> CnCwScreen.CATALOG_FUNCTIONS;
                     case 1 -> CnCwScreen.CATALOG_PROBABILITY;
@@ -2389,6 +2414,7 @@ public final class CnCwMachine {
             }
             case CATALOG_CONVERSION_ITEMS -> insertFromMenu(conversionToken(index));
             case CATALOG_PROBABILITY -> insertFromMenu(probabilityToken(index));
+            case CATALOG_COMPLEX -> insertFromMenu(complexToken(index));
             case CATALOG_RELATIONS -> insertFromMenu(relationToken(index));
             case TOOLS -> activateTool(index);
             case TOOLS_CONVERSION -> insertFromMenu(conversionToken(index));
@@ -2425,6 +2451,7 @@ public final class CnCwMachine {
         historyIndex = 0;
         resetStatementSequence();
         spreadsheet.clearAll();
+        linearAlgebraMemory.clear();
         tokens.clear();
         cursor = 0;
         result = "";
@@ -2789,6 +2816,15 @@ public final class CnCwMachine {
         return token(value.symbol(), Double.toString(value.value()));
     }
 
+    private Token complexToken(int index) {
+        return switch (index) {
+            case 0 -> token("Conjg(", "conj(");
+            case 1 -> token("Arg(", "arg(");
+            case 2 -> token("Re(", "re(");
+            default -> token("Im(", "im(");
+        };
+    }
+
     private Token probabilityToken(int index) {
         return switch (index) {
             case 0 -> token("%", "%");
@@ -2892,16 +2928,7 @@ public final class CnCwMachine {
                     command("language", "语言", "中文"),
                     command("font", "多行字体", settings.multiLineFont().name()),
                     command("about", "关于", model.displayName()));
-            case CATALOG -> com.codex.fx991.core.Compat.list(
-                    command("analysis", "函数与分析", "导数、积分、求和、对数"),
-                    command("probability", "概率", "%、阶乘、排列组合、随机数"),
-                    command("numeric", "数值计算", "绝对值与四舍五入"),
-                    command("angle", "角度/坐标/六十进制", "角度单位、Pol、Rec、DMS"),
-                    command("trig", "双曲/反双曲/三角", "12 个函数"),
-                    command("engineering", "工程符号", "m、μ、n、p、f、k…"),
-                    command("constants", "科学常数", "47 个 CODATA 2018 常数"),
-                    command("conversion", "单位换算", "40 个换算命令"),
-                    command("other", "其他", "关系、多语句与存储"));
+            case CATALOG -> catalogRootCommands();
             case CATALOG_FUNCTIONS -> com.codex.fx991.core.Compat.list(
                     command("diff", "d/dx(", "导数"), command("integral", "∫(", "积分"),
                     command("sum", "Σ(", "求和"), command("remainder", "÷R", "商和余数"),
@@ -2927,6 +2954,11 @@ public final class CnCwMachine {
             case CATALOG_CONSTANT_ITEMS -> constantCommands();
             case CATALOG_CONVERSIONS -> conversionCategoryCommands();
             case CATALOG_CONVERSION_ITEMS -> conversionCommands();
+            case CATALOG_COMPLEX -> com.codex.fx991.core.Compat.list(
+                    command("conj", "Conjg(", "共轭复数"),
+                    command("arg", "Arg(", "辐角"),
+                    command("re", "Re(", "实部"),
+                    command("im", "Im(", "虚部"));
             case CATALOG_PROBABILITY -> com.codex.fx991.core.Compat.list(
                     command("percent", "%", "百分数"), command("factorial", "!", "阶乘"),
                     command("npr", "nPr", "排列"), command("ncr", "nCr", "组合"),
@@ -2968,6 +3000,23 @@ public final class CnCwMachine {
             case FORMAT -> formatCommands();
             default -> com.codex.fx991.core.Compat.list();
         };
+    }
+
+    private List<CnCwCommand> catalogRootCommands() {
+        List<CnCwCommand> items = new ArrayList<>(com.codex.fx991.core.Compat.list(
+                command("analysis", "函数与分析", "导数、积分、求和、对数"),
+                command("probability", "概率", "%、阶乘、排列组合、随机数"),
+                command("numeric", "数值计算", "绝对值与四舍五入"),
+                command("angle", "角度/坐标/六十进制", "角度单位、Pol、Rec、DMS"),
+                command("trig", "双曲/反双曲/三角", "12 个函数"),
+                command("engineering", "工程符号", "m、μ、n、p、f、k…"),
+                command("constants", "科学常数", "47 个 CODATA 2018 常数"),
+                command("conversion", "单位换算", "40 个换算命令"),
+                command("other", "其他", "关系、多语句与存储")));
+        if (application == ApplicationMode.COMPLEX) {
+            items.add(command("complex", "复数", "Conjg、Arg、Re、Im"));
+        }
+        return com.codex.fx991.core.Compat.copyList(items);
     }
 
     private static List<CnCwCommand> engineeringCommands() {
@@ -3142,7 +3191,12 @@ public final class CnCwMachine {
                     command("matrix-transpose", "转置", "Trn(Mat)"),
                     command("matrix-add", "矩阵加法", "Mat+Mat"),
                     command("matrix-subtract", "矩阵减法", "Mat−Mat"),
-                    command("matrix-multiply", "矩阵乘法", "Mat×Mat"));
+                    command("matrix-multiply", "矩阵乘法", "Mat×Mat"),
+                    command("matrix-square", "矩阵平方", "Mat²"),
+                    command("matrix-cube", "矩阵立方", "Mat³"),
+                    command("matrix-identity", "单位矩阵", "Identity(n)"),
+                    command("matrix-abs", "元素绝对值", "Abs(Mat)"),
+                    command("matrix-ans", "MatAns", "矩阵答案存储器"));
             case VECTOR -> com.codex.fx991.core.Compat.list(
                     command("define", "定义 VctA", "2D/3D"),
                     command("calculate", "直接向量", "一次性输入/结果"),
@@ -3155,7 +3209,8 @@ public final class CnCwMachine {
                     command("vector-subtract", "向量减法", "Vct−Vct"),
                     command("vector-dot", "点积", "Vct·Vct"),
                     command("vector-cross", "叉积", "Vct×Vct"),
-                    command("vector-angle", "夹角", "Angle(Vct,Vct)"));
+                    command("vector-angle", "夹角", "Angle(Vct,Vct)"),
+                    command("vector-ans", "VctAns", "向量答案存储器"));
             case RATIO -> com.codex.fx991.core.Compat.list(command("a:b=x:d", "A:B=X:D", "求 X"),
                     command("a:b=c:x", "A:B=C:X", "求 X"));
         };
@@ -5088,6 +5143,7 @@ public final class CnCwMachine {
             case CATALOG_CONVERSIONS -> "单位换算";
             case CATALOG_CONVERSION_ITEMS -> "单位换算";
             case CATALOG_PROBABILITY -> "概率";
+            case CATALOG_COMPLEX -> "复数";
             case CATALOG_RELATIONS -> "关系符号";
             case TOOLS -> "工具"; case TOOLS_CONVERSION -> "单位换算";
             case VARIABLES -> "变量"; case FUNCTIONS -> "f(x) / g(x)";

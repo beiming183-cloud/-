@@ -351,10 +351,17 @@ public final class CnCwWorkflowSpec {
                     1, 4, 1, 4);
         }
         if (commandId.equals("matrix-det") || commandId.equals("matrix-inverse")
-                || commandId.equals("matrix-transpose")) {
+                || commandId.equals("matrix-transpose") || commandId.equals("matrix-square")
+                || commandId.equals("matrix-cube") || commandId.equals("matrix-abs")) {
             return spec(ApplicationMode.MATRIX, commandId, matrixOperationTitle(commandId),
                     InputLayout.FIXED_FIELDS,
                     fields(linearAlgebraSlot("matrix", "矩阵")),
+                    1, 1, 1, 1);
+        }
+        if (commandId.equals("matrix-identity")) {
+            return spec(ApplicationMode.MATRIX, commandId, "单位矩阵",
+                    InputLayout.FIXED_FIELDS,
+                    fields(field("dimension", "维数", FieldKind.EXPRESSION)),
                     1, 1, 1, 1);
         }
         if (commandId.equals("matrix-add") || commandId.equals("matrix-subtract")
@@ -373,6 +380,10 @@ public final class CnCwWorkflowSpec {
             case "matrix-det" -> "行列式";
             case "matrix-inverse" -> "逆矩阵";
             case "matrix-transpose" -> "矩阵转置";
+            case "matrix-square" -> "矩阵平方";
+            case "matrix-cube" -> "矩阵立方";
+            case "matrix-identity" -> "单位矩阵";
+            case "matrix-abs" -> "元素绝对值";
             case "matrix-add" -> "矩阵加法";
             case "matrix-subtract" -> "矩阵减法";
             case "matrix-multiply" -> "矩阵乘法";
@@ -433,8 +444,8 @@ public final class CnCwWorkflowSpec {
 
     private static FieldSpec linearAlgebraSlot(String id, String label) {
         return choiceField(id, label,
-                choice("A", label.startsWith("左") || label.startsWith("右") ? "A" : "A"),
-                choice("B", "B"), choice("C", "C"), choice("D", "D"));
+                choice("A", "A"), choice("B", "B"), choice("C", "C"), choice("D", "D"),
+                choice("Ans", "Ans"));
     }
 
     private static WorkflowSpec ratio(String commandId) {
