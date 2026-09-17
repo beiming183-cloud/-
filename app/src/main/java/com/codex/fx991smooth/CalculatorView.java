@@ -534,35 +534,30 @@ public final class CalculatorView extends View {
             paint.setTypeface(action.type() == CnCwWorkflowAction.Type.EXECUTE
                     ? FACE_BOLD : FACE_NORMAL);
             paint.setTextAlign(Paint.Align.CENTER);
-            paint.setTextSize(sp(8.2f));
-            canvas.drawText(ellipsize(action.label(), bounds.width() - dp(5f)),
+            paint.setTextSize(sp(actions.size() >= 5 ? 7.6f : 8.2f));
+            canvas.drawText(ellipsize(action.label(), bounds.width() - dp(4f)),
                     bounds.centerX(), centeredBaseline(bounds.top, bounds.bottom), paint);
         }
     }
 
     private RectF workflowGridBounds(RectF lcd) {
         float top = lcd.top + lcd.height() * 0.22f;
-        float bottom = lcd.bottom - dp(43f);
+        float bottom = lcd.bottom - dp(50f);
         return new RectF(lcd.left + dp(6f), top, lcd.right - dp(6f), bottom);
     }
 
     private RectF workflowActionBarBounds(RectF lcd) {
-        return new RectF(lcd.left + dp(6f), lcd.bottom - dp(38f),
+        return new RectF(lcd.left + dp(6f), lcd.bottom - dp(45f),
                 lcd.right - dp(6f), lcd.bottom - dp(3f));
     }
 
     private RectF workflowActionBounds(RectF lcd, int count, int index) {
         RectF bar = workflowActionBarBounds(lcd);
-        int columns = count <= 2 ? Math.max(1, count) : 3;
-        int rows = Math.max(1, (count + columns - 1) / columns);
-        int row = index / columns;
-        int column = index % columns;
-        float gap = dp(2f);
+        int columns = Math.max(1, count);
+        float gap = dp(1.5f);
         float width = (bar.width() - gap * (columns - 1)) / columns;
-        float height = (bar.height() - gap * (rows - 1)) / rows;
-        float left = bar.left + column * (width + gap);
-        float top = bar.top + row * (height + gap);
-        return new RectF(left, top, left + width, top + height);
+        float left = bar.left + index * (width + gap);
+        return new RectF(left, bar.top, left + width, bar.bottom);
     }
 
     private String workflowColumnLabel(CnCwWorkflowSession.Snapshot input, int column) {

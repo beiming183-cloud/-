@@ -239,7 +239,14 @@ public final class CnCwWorkflowSession {
                 || newColumns < spec.minColumns() || newColumns > spec.maxColumns()) {
             return false;
         }
-        if (isSimultaneous() && newColumns != newRows + 1) return false;
+        if (isSimultaneous()) {
+            if (newColumns != newRows + 1) return false;
+            return resizeSimultaneous(newRows);
+        }
+        if (isPolynomial()) {
+            if (newColumns != 1) return false;
+            return resizePolynomial(newRows);
+        }
         resize(newRows, newColumns);
         selectedRow = Math.min(selectedRow, rows - 1);
         selectedColumn = Math.min(selectedColumn, columns - 1);
@@ -358,6 +365,54 @@ public final class CnCwWorkflowSession {
         return false;
     }
 
+    /** Keeps a_k attached to the same power when the polynomial degree changes. */
+    private boolean resizePolynomial(int newRows) {
+        List<String> previous = new ArrayList<>(cells);
+        int oldRows = rows;
+        int oldSelectedRow = selectedRow;
+        int oldToNewShift = newRows - oldRows;
+        cells.clear();
+        for (int row = 0; row < newRows; row++) {
+            int oldRow = row - oldToNewShift;
+            cells.add(oldRow >= 0 && oldRow < oldRows ? previous.get(oldRow) : "");
+        }
+        rows = newRows;
+        columns = 1;
+        selectedRow = clamp(oldSelectedRow + oldToNewShift, 0, rows - 1);
+        selectedColumn = 0;
+        return true;
+    }
+
+    /** Keeps each variable coefficient and the augmented RHS column in its semantic slot. */
+    private boolean resizeSimultaneous(int newRows) {
+        List<String> previous = new ArrayList<>(cells);
+        int oldRows = rows;
+        int oldColumns = columns;
+        int oldSelectedRow = selectedRow;
+        int oldSelectedColumn = selectedColumn;
+        int newColumns = newRows + 1;
+        cells.clear();
+        for (int row = 0; row < newRows; row++) {
+            for (int column = 0; column < newColumns; column++) {
+                String value = "";
+                if (row < oldRows) {
+                    if (column < Math.min(oldRows, newRows)) {
+                        value = previous.get(row * oldColumns + column);
+                    } else if (column == newRows) {
+                        value = previous.get(row * oldColumns + oldColumns - 1);
+                    }
+                }
+                cells.add(value);
+            }
+        }
+        rows = newRows;
+        columns = newColumns;
+        selectedRow = clamp(oldSelectedRow, 0, rows - 1);
+        selectedColumn = oldSelectedColumn == oldColumns - 1
+                ? columns - 1 : clamp(oldSelectedColumn, 0, rows - 1);
+        return true;
+    }
+
     private boolean resizeRows(int newRows) {
         if (isSimultaneous()) return setEquationDimension(newRows);
         return resizeGrid(newRows, columns);
@@ -378,6 +433,11 @@ public final class CnCwWorkflowSession {
                 setCell(0, column, field.defaultValue());
             }
         }
+    }
+
+    private boolean isPolynomial() {
+        return spec.mode() == ApplicationMode.EQUATION
+                && "polynomial".equals(spec.commandId());
     }
 
     private boolean isSimultaneous() {

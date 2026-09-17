@@ -1,5 +1,6 @@
 package com.codex.fx991.core;
 
+import com.codex.fx991.core.cw.CnCwWorkflowAction;
 import com.codex.fx991.core.cw.CnCwWorkflowSession;
 import com.codex.fx991.core.cw.CnCwWorkflowSpec;
 import com.codex.fx991.core.math.ScalarExpressionEngine;
@@ -240,6 +241,15 @@ public final class CnCwWorkflowSpecSuite {
         equal(2, polynomial.evaluate(context).items().size(), "quadratic session returns two roots");
         check(polynomial.resizeGrid(4, 1), "polynomial can resize to cubic coefficient count");
         equal(4, polynomial.rows(), "polynomial resized coefficient rows");
+        equal("", polynomial.cell(0, 0), "raising degree inserts a new leading coefficient");
+        equal("1", polynomial.cell(1, 0), "a2 stays attached to x^2 after raising degree");
+        equal("2", polynomial.cell(2, 0), "a1 stays attached to x after raising degree");
+        equal("-3", polynomial.cell(3, 0), "a0 stays constant after raising degree");
+        polynomial.setCell(0, 0, "9");
+        check(polynomial.applyAction(CnCwWorkflowAction.Type.DECREASE_ROWS),
+                "polynomial action can lower degree");
+        equal("1", polynomial.cell(0, 0), "lowering degree drops only the old leading coefficient");
+        equal("-3", polynomial.cell(2, 0), "lowering degree preserves the constant term");
 
         var simultaneous = CnCwWorkflowSession.create(
                 CnCwWorkflowSpec.forCommand(ApplicationMode.EQUATION, "simultaneous"));
@@ -258,6 +268,17 @@ public final class CnCwWorkflowSpecSuite {
         check(simultaneous.setEquationDimension(3), "simultaneous can switch to three variables");
         equal(3, simultaneous.rows(), "three-variable equation rows");
         equal(4, simultaneous.columns(), "three-variable augmented columns");
+        equal("1", simultaneous.cell(0, 0), "x1 coefficient survives dimension increase");
+        equal("1", simultaneous.cell(0, 1), "x2 coefficient survives dimension increase");
+        equal("", simultaneous.cell(0, 2), "new x3 coefficient starts blank");
+        equal("5", simultaneous.cell(0, 3), "RHS stays in augmented column after dimension increase");
+        equal("1", simultaneous.cell(1, 3), "second RHS stays augmented after dimension increase");
+        check(simultaneous.applyAction(CnCwWorkflowAction.Type.DECREASE_ROWS),
+                "simultaneous action can reduce dimension");
+        equal(2, simultaneous.rows(), "dimension reduction returns to two variables");
+        equal(3, simultaneous.columns(), "two-variable augmented width restored");
+        equal("5", simultaneous.cell(0, 2), "RHS survives dimension reduction");
+        equal("1", simultaneous.cell(1, 2), "second RHS survives dimension reduction");
         check(!simultaneous.resizeGrid(3, 3), "simultaneous rejects invalid non-augmented shape");
 
         var solve = CnCwWorkflowSession.create(
