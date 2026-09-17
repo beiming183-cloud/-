@@ -14,7 +14,7 @@
 
 Stage 6 的代码开发、结构化工作流补齐、Android 交互补齐、真机前静态审计和云端构建/长期签名门禁已经完成。2026-09-17 MuMu 集中验收已确认：WorkflowAction 基础触控、多项式升降阶语义、联立方程增减元数 RHS 语义、函数表逐行/Page 导航、TABLE 结果页状态隔离，以及 artifact `10495340801` 对 `com.beibei.calculator` 的 `adb install -r` 同包覆盖升级。
 
-函数表复验通过后新增 `CnCwStage6AcceptanceSuite`，直接从 HOME/按键路径验证不等式与比例的 Stage 6 交互契约，并已挂入 `:core:check`。正式 PR CI run `35220348788` 已通过完整核心回归、Android Debug 构建和 artifact 上传。
+函数表复验通过后新增 `CnCwStage6AcceptanceSuite`，直接从 HOME/按键路径验证不等式与比例的 Stage 6 交互契约，并已挂入 `:core:check`。正式 PR CI run `35220348788` 已通过完整核心回归、Android Debug 构建和 artifact 上传。随后 commit `5bb38c502dd51988155065c4e97746052f1e42c6` 继续把统计/矩阵/向量 WorkflowAction 边界纳入永久回归；run `35226498841` 已通过完整核心回归、Android Debug 构建和 artifact 保存。
 
 后续仍只从 `stage6/integration` 继续，不再回到旧的 Stage 6 并行分支。
 
@@ -43,7 +43,8 @@ PR #6 / #7 / #8 仅保留为历史记录，不应再分别合并。PR #10 的有
 - 显式尺寸/阶数动作与既有快捷键并存；
 - 结果返回输入时保留工作流数据和焦点；
 - `CnCwMachine.performWorkflowAction(...)` 提供统一执行入口，Android 不再自行推断工作流规则；
-- Android 已加入由 core actions 驱动的统一操作条与触摸命中，disabled 状态同样由 core 控制。
+- Android 已加入由 core actions 驱动的统一操作条与触摸命中，disabled 状态同样由 core 控制；
+- `CnCwStage6AcceptanceSuite` 现永久验证一元统计 4 动作、矩阵/向量 6 动作固定顺序，以及最小/最大尺寸 disabled 和越界拒绝；Android 人工只需继续看视觉与触控命中。
 
 ### C. 函数表
 
@@ -75,14 +76,21 @@ PR #6 / #7 / #8 仅保留为历史记录，不应再分别合并。PR #10 的有
 - 求解仍复用原 `RatioEngine`；
 - `CnCwStage6AcceptanceSuite` 自动验证两种结构化比例结果、KEY_VALUE 协议、BACK 后字段保留，以及首字段逗号回退旧输入并继续正确求解。
 
-### F. 真机前静态审计修复
+### F. WorkflowAction 边界永久回归
+
+- 一元统计：固定 4 动作；最小行数时“删除当前行” disabled；空白时“计算” disabled；输入完整后“计算”启用；增行后可删除但不能删破最小边界。
+- 矩阵：固定 6 动作顺序“减少行 / 增加行 / 减少列 / 增加列 / 计算 / 返回”；从 `1×1` 可增到 `4×4`，达到最大后增行动作/增列动作 disabled，直接调用也不能越界；缩小后可重新增大。
+- 向量：固定 6 动作；从 `1×2` 可增到 `2×3`，向量数与维度均有最小/最大 disabled 边界并拒绝越界。
+- commit `5bb38c502dd51988155065c4e97746052f1e42c6`；PR run `35226498841` 完整通过。
+
+### G. 真机前静态审计修复
 
 - WorkflowAction 原 35dp 操作区在 4–6 个动作时会拆成两排，按钮高度约 16.5dp；现改为 42dp 高单排布局，6 个动作仍保持独立命中，避免按钮过小。
 - 多项式升/降阶按幂次语义保持，升阶只新增空白最高阶系数，降阶只移除最高阶系数。
 - 联立方程增/减元数显式保持 `x1..xn` 系数与最右增强列 `b` 的语义位置。
 - 触摸 WorkflowAction 和既有 `SHIFT + 方向` 尺寸快捷方式共用同一 core action。
 
-### G. TABLE 结果页状态隔离
+### H. TABLE 结果页状态隔离
 
 - TABLE 结果存在时不再绘制编辑表达式、编辑光标或选择手柄；
 - TABLE 继续正常走 core-owned `drawStructuredApplicationResult(...)`；
@@ -90,7 +98,7 @@ PR #6 / #7 / #8 仅保留为历史记录，不应再分别合并。PR #10 的有
 - run `35215973055` 通过源码状态守卫、完整 core 回归、Debug、Release + R8、长期签名和包名硬校验；
 - artifact `10495340801` MuMu 复验与 `adb install -r` 同包覆盖验证均通过。
 
-### H. 本轮明确不扩展
+### I. 本轮明确不扩展
 
 - Complex / Base-N 暂不混入这一轮结构化表单工作流；
 - 未借 Stage 6 重写既有数学算法。
@@ -100,7 +108,8 @@ PR #6 / #7 / #8 仅保留为历史记录，不应再分别合并。PR #10 的有
 - Stage 6 完成门禁：run `35188434866`，success；
 - 真机前审计修复门禁：run `35197523499`，success；
 - 函数表结果页显示修复门禁：run `35215973055`，success；
-- Stage 6 acceptance regression：run `35220348788`，success；
+- Stage 6 acceptance regression（不等式/比例/双函数）：run `35220348788`，success；
+- WorkflowAction boundary regression（统计/矩阵/向量）：commit `5bb38c502dd51988155065c4e97746052f1e42c6`，run `35226498841`，success；
 - package：`com.beibei.calculator`；
 - versionName：`0.3.18`；
 - versionCode：`332`；
@@ -127,12 +136,14 @@ PR #6 / #7 / #8 仅保留为历史记录，不应再分别合并。PR #10 的有
 
 - 不等式 CHOICE 逻辑、DEL 默认值、空白/非法输入定位、计算后 BACK 数据保留；
 - 两种比例求值、结构化 KEY_VALUE、BACK 数据保留和旧逗号桥；
-- 双函数 workflow 数据协议和 BACK 保留。
+- 双函数 workflow 数据协议和 BACK 保留；
+- 一元统计 4 动作协议、删除最小行数边界和计算启用条件；
+- 矩阵/向量 6 动作顺序、最小/最大尺寸 disabled 和越界拒绝。
 
 仍待人工确认：
 
 - 不等式/比例/双函数的 Android 标签、布局、触控命中和视觉结果；
-- 统计/矩阵/向量 WorkflowAction 的边界 disabled 与 6 按钮触控；
+- 统计/矩阵/向量 WorkflowAction 的 Android disabled 视觉和 6 按钮触控准确性；core 边界无需再人工证明；
 - Ans、历史、复制粘贴、自然显示、语义光标/选区、DEL/AC、长按、SCI/ENG、长数字；
 - 真机触感、快速滑动、多指行为（模拟器结论不能替代真机结论）。
 
@@ -146,10 +157,10 @@ PR #6 / #7 / #8 仅保留为历史记录，不应再分别合并。PR #10 的有
 - 真机前静态审计：已完成
 - 云端 core / Debug / Release / R8 / 长期签名门禁：已完成
 - MuMu 集中验收：进行中；多项式、联立、函数表和同包覆盖升级已通过
-- Stage 6 acceptance regression：已完成并进入永久 `:core:check`
+- Stage 6 acceptance regression：已完成并进入永久 `:core:check`，现同时覆盖不等式/比例/双函数与统计/矩阵/向量 WorkflowAction 边界
 - 当前可继续使用复验包：artifact `10495340801`
 - 集中验收清单：`docs/hand-offs/STAGE6_DEVICE_ACCEPTANCE.md`
-- 下一项：不再重复多项式、联立和函数表；人工继续不等式/比例/双函数 UI、WorkflowAction 边界、旧功能回归与真机交互测试
+- 下一项：不再重复多项式、联立、函数表或 WorkflowAction core 边界；人工继续不等式/比例/双函数 UI、统计/矩阵/向量操作条触控、旧功能回归与真机交互测试
 - 所有集中验收完成且用户明确授权之前，不合并 PR #9 到 `main`
 - 禁止从 `main`、`stage6/remaining-apps` 或旧并行分支重新创建 Stage 6 工作线。
 
