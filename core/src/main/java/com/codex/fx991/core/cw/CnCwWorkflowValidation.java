@@ -75,12 +75,12 @@ public final class CnCwWorkflowValidation {
 
     public static Report validate(CnCwWorkflowSession session) {
         if (session == null) throw new IllegalArgumentException("session");
-        return validate(session.rows(), session.columns(), session.cells());
+        return validate(session.spec(), session.rows(), session.columns(), session.cells());
     }
 
     public static Report validate(CnCwWorkflowSession.Snapshot snapshot) {
         if (snapshot == null) throw new IllegalArgumentException("snapshot");
-        return validate(snapshot.rows(), snapshot.columns(), snapshot.cells());
+        return validate(snapshot.spec(), snapshot.rows(), snapshot.columns(), snapshot.cells());
     }
 
     public static Status validateExpression(String source) {
@@ -93,7 +93,8 @@ public final class CnCwWorkflowValidation {
         }
     }
 
-    private static Report validate(int rows, int columns, List<String> cells) {
+    private static Report validate(CnCwWorkflowSpec.WorkflowSpec spec,
+                                   int rows, int columns, List<String> cells) {
         List<CellState> states = new ArrayList<>();
         boolean ready = true;
         int firstRow = -1;
@@ -101,7 +102,7 @@ public final class CnCwWorkflowValidation {
         for (int row = 0; row < rows; row++) {
             for (int column = 0; column < columns; column++) {
                 String source = cells.get(row * columns + column);
-                Status status = validateExpression(source);
+                Status status = validateCell(spec, rows, columns, row, column, source);
                 String message = switch (status) {
                     case EMPTY -> "必填";
                     case VALID -> "";
@@ -118,5 +119,48 @@ public final class CnCwWorkflowValidation {
             }
         }
         return new Report(states, ready, firstRow, firstColumn);
+    }
+
+    private static Status validateCell(CnCwWorkflowSpec.WorkflowSpec spec,
+                                       int rows, int columns, int row, int column,
+                                       String source) {
+        if (isLegacyOneVariableAggregate(spec, rows, columns, row, column, source)) {
+            List<String> parts = splitTopLevel(source);
+            if (parts.size() <= 1) return validateExpression(source);
+            for (String part : parts) {
+                if (validateExpression(part) != Status.VALID) return Status.INVALID_EXPRESSION;
+            }
+            return Status.VALID;
+        }
+        return validateExpression(source);
+    }
+
+    private static boolean isLegacyOneVariableAggregate(CnCwWorkflowSpec.WorkflowSpec spec,
+                                                        int rows, int columns,
+                                                        int row, int column,
+                                                        String source) {
+        return spec != null
+                && spec.mode() == com.codex.fx991.core.mode.ApplicationMode.STATISTICS
+                && "one".equals(spec.commandId())
+                && rows == 1 && columns == 1 && row == 0 && column == 0
+                && source != null && source.indexOf(',') >= 0;
+    }
+
+    /** Splits only commas outside parentheses, preserving function arguments. */
+    private static List<String> splitTopLevel(String source) {
+        List<String> parts = new ArrayList<>();
+        int depth = 0;
+        int start = 0;
+        for (int index = 0; index < source.length(); index++) {
+            char value = source.charAt(index);
+            if (value == '(') depth++;
+            else if (value == ')' && depth > 0) depth--;
+            else if (value == ',' && depth == 0) {
+                parts.add(source.substring(start, index).trim());
+                start = index + 1;
+            }
+        }
+        parts.add(source.substring(start).trim());
+        return parts;
     }
 }
