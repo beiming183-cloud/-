@@ -51,6 +51,7 @@ public final class CnCwMachine {
     private final Deque<Navigation> navigation = new ArrayDeque<>();
     private final List<HistoryEntry> history = new ArrayList<>();
     private final List<Token> tokens = new ArrayList<>();
+    private final CnCwLinearAlgebraMemory linearAlgebraMemory = new CnCwLinearAlgebraMemory();
     private final SpreadsheetModel spreadsheet;
     private boolean spreadsheetGrid;
     private int spreadsheetRow;
@@ -131,6 +132,7 @@ public final class CnCwMachine {
         navigation.addAll(source.navigation);
         history.addAll(source.history);
         tokens.addAll(source.tokens);
+        linearAlgebraMemory.copyFrom(source.linearAlgebraMemory);
 
         screen = source.screen;
         application = source.application;
@@ -1757,8 +1759,15 @@ public final class CnCwMachine {
                 scalar = modeResult.primaryValue() == null
                         ? (hasAns ? ans : 0.0) : modeResult.primaryValue();
             } else if (!com.codex.fx991.core.Compat.isBlank(activeCommandId) && isStructuredWorkflow(application)) {
-                CnCwModeEngine.ModeResult modeResult = CnCwModeEngine.evaluate(
-                        application, activeCommandId, plainSource, evaluationContext());
+                CnCwModeEngine.ModeResult modeResult;
+                if (linearAlgebraMemory.handles(application, activeCommandId)) {
+                    modeResult = linearAlgebraMemory.evaluate(application, activeCommandId,
+                            workflowSession == null ? null : workflowSession.snapshot(),
+                            evaluationContext());
+                } else {
+                    modeResult = CnCwModeEngine.evaluate(
+                            application, activeCommandId, plainSource, evaluationContext());
+                }
                 applicationResult = modeResult;
                 formatted = modeResult.display();
                 scalar = modeResult.primaryValue() == null
@@ -3090,10 +3099,31 @@ public final class CnCwMachine {
             case BASE_N -> com.codex.fx991.core.Compat.list(command("decimal", "十进制", "DEC"),
                     command("hex", "十六进制", "HEX"), command("binary", "二进制", "BIN"),
                     command("octal", "八进制", "OCT"));
-            case MATRIX -> com.codex.fx991.core.Compat.list(command("define", "定义矩阵", "MatA 至 MatD，最大 4×4"),
-                    command("calculate", "矩阵计算", "逆、行列式、转置"));
-            case VECTOR -> com.codex.fx991.core.Compat.list(command("define", "定义向量", "VctA 至 VctD，2D/3D"),
-                    command("calculate", "向量计算", "点积、叉积、夹角"));
+            case MATRIX -> com.codex.fx991.core.Compat.list(
+                    command("define", "定义 MatA", "最大 4×4"),
+                    command("calculate", "直接矩阵", "一次性输入/结果"),
+                    command("mat-b", "定义 MatB", "最大 4×4"),
+                    command("mat-c", "定义 MatC", "最大 4×4"),
+                    command("mat-d", "定义 MatD", "最大 4×4"),
+                    command("matrix-det", "行列式", "det(Mat)"),
+                    command("matrix-inverse", "逆矩阵", "Mat⁻¹"),
+                    command("matrix-transpose", "转置", "Trn(Mat)"),
+                    command("matrix-add", "矩阵加法", "Mat+Mat"),
+                    command("matrix-subtract", "矩阵减法", "Mat−Mat"),
+                    command("matrix-multiply", "矩阵乘法", "Mat×Mat"));
+            case VECTOR -> com.codex.fx991.core.Compat.list(
+                    command("define", "定义 VctA", "2D/3D"),
+                    command("calculate", "直接向量", "一次性输入/结果"),
+                    command("vct-b", "定义 VctB", "2D/3D"),
+                    command("vct-c", "定义 VctC", "2D/3D"),
+                    command("vct-d", "定义 VctD", "2D/3D"),
+                    command("vector-magnitude", "向量模", "|Vct|"),
+                    command("vector-unit", "单位向量", "Unit(Vct)"),
+                    command("vector-add", "向量加法", "Vct+Vct"),
+                    command("vector-subtract", "向量减法", "Vct−Vct"),
+                    command("vector-dot", "点积", "Vct·Vct"),
+                    command("vector-cross", "叉积", "Vct×Vct"),
+                    command("vector-angle", "夹角", "Angle(Vct,Vct)"));
             case RATIO -> com.codex.fx991.core.Compat.list(command("a:b=x:d", "A:B=X:D", "求 X"),
                     command("a:b=c:x", "A:B=C:X", "求 X"));
         };

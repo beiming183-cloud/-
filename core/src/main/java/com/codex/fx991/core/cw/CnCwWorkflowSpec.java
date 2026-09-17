@@ -257,21 +257,110 @@ public final class CnCwWorkflowSpec {
     }
 
     private static WorkflowSpec matrix(String commandId) {
-        if (!commandId.equals("calculate")) return null;
-        return spec(ApplicationMode.MATRIX, commandId, "矩阵",
-                InputLayout.GRID,
-                fields(field("rows", "行", FieldKind.DIMENSION),
-                        field("columns", "列", FieldKind.DIMENSION),
-                        field("cell", "元素", FieldKind.EXPRESSION)),
-                1, 4, 1, 4);
+        if (commandId.equals("calculate")) {
+            return spec(ApplicationMode.MATRIX, commandId, "直接矩阵",
+                    InputLayout.GRID,
+                    fields(field("cell", "元素", FieldKind.EXPRESSION)),
+                    1, 4, 1, 4);
+        }
+        String definition = switch (commandId) {
+            case "define" -> "MatA";
+            case "mat-b" -> "MatB";
+            case "mat-c" -> "MatC";
+            case "mat-d" -> "MatD";
+            default -> null;
+        };
+        if (definition != null) {
+            return spec(ApplicationMode.MATRIX, commandId, definition,
+                    InputLayout.GRID,
+                    fields(field("cell", "元素", FieldKind.EXPRESSION)),
+                    1, 4, 1, 4);
+        }
+        if (commandId.equals("matrix-det") || commandId.equals("matrix-inverse")
+                || commandId.equals("matrix-transpose")) {
+            return spec(ApplicationMode.MATRIX, commandId, matrixOperationTitle(commandId),
+                    InputLayout.FIXED_FIELDS,
+                    fields(linearAlgebraSlot("matrix", "矩阵")),
+                    1, 1, 1, 1);
+        }
+        if (commandId.equals("matrix-add") || commandId.equals("matrix-subtract")
+                || commandId.equals("matrix-multiply")) {
+            return spec(ApplicationMode.MATRIX, commandId, matrixOperationTitle(commandId),
+                    InputLayout.FIXED_FIELDS,
+                    fields(linearAlgebraSlot("left", "左矩阵"),
+                            linearAlgebraSlot("right", "右矩阵")),
+                    1, 1, 2, 2);
+        }
+        return null;
+    }
+
+    private static String matrixOperationTitle(String commandId) {
+        return switch (commandId) {
+            case "matrix-det" -> "行列式";
+            case "matrix-inverse" -> "逆矩阵";
+            case "matrix-transpose" -> "矩阵转置";
+            case "matrix-add" -> "矩阵加法";
+            case "matrix-subtract" -> "矩阵减法";
+            case "matrix-multiply" -> "矩阵乘法";
+            default -> "矩阵";
+        };
     }
 
     private static WorkflowSpec vector(String commandId) {
-        if (!commandId.equals("calculate")) return null;
-        return spec(ApplicationMode.VECTOR, commandId, "向量",
-                InputLayout.VECTOR_SET,
-                fields(field("component", "分量", FieldKind.EXPRESSION)),
-                1, 2, 2, 3);
+        if (commandId.equals("calculate")) {
+            return spec(ApplicationMode.VECTOR, commandId, "直接向量",
+                    InputLayout.VECTOR_SET,
+                    fields(field("component", "分量", FieldKind.EXPRESSION)),
+                    1, 2, 2, 3);
+        }
+        String definition = switch (commandId) {
+            case "define" -> "VctA";
+            case "vct-b" -> "VctB";
+            case "vct-c" -> "VctC";
+            case "vct-d" -> "VctD";
+            default -> null;
+        };
+        if (definition != null) {
+            return spec(ApplicationMode.VECTOR, commandId, definition,
+                    InputLayout.VECTOR_SET,
+                    fields(field("component", "分量", FieldKind.EXPRESSION)),
+                    1, 1, 2, 3);
+        }
+        if (commandId.equals("vector-magnitude") || commandId.equals("vector-unit")) {
+            return spec(ApplicationMode.VECTOR, commandId, vectorOperationTitle(commandId),
+                    InputLayout.FIXED_FIELDS,
+                    fields(linearAlgebraSlot("vector", "向量")),
+                    1, 1, 1, 1);
+        }
+        if (commandId.equals("vector-add") || commandId.equals("vector-subtract")
+                || commandId.equals("vector-dot") || commandId.equals("vector-cross")
+                || commandId.equals("vector-angle")) {
+            return spec(ApplicationMode.VECTOR, commandId, vectorOperationTitle(commandId),
+                    InputLayout.FIXED_FIELDS,
+                    fields(linearAlgebraSlot("left", "左向量"),
+                            linearAlgebraSlot("right", "右向量")),
+                    1, 1, 2, 2);
+        }
+        return null;
+    }
+
+    private static String vectorOperationTitle(String commandId) {
+        return switch (commandId) {
+            case "vector-magnitude" -> "向量模";
+            case "vector-unit" -> "单位向量";
+            case "vector-add" -> "向量加法";
+            case "vector-subtract" -> "向量减法";
+            case "vector-dot" -> "向量点积";
+            case "vector-cross" -> "向量叉积";
+            case "vector-angle" -> "向量夹角";
+            default -> "向量";
+        };
+    }
+
+    private static FieldSpec linearAlgebraSlot(String id, String label) {
+        return choiceField(id, label,
+                choice("A", label.startsWith("左") || label.startsWith("右") ? "A" : "A"),
+                choice("B", "B"), choice("C", "C"), choice("D", "D"));
     }
 
     private static WorkflowSpec ratio(String commandId) {

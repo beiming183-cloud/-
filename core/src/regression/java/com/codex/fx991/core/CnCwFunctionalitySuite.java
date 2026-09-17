@@ -4,6 +4,7 @@ import com.codex.fx991.core.cw.CnCwCommand;
 import com.codex.fx991.core.cw.CnCwKey;
 import com.codex.fx991.core.cw.CnCwMachine;
 import com.codex.fx991.core.cw.CnCwModeEngine;
+import com.codex.fx991.core.cw.CnCwWorkflowAction;
 import com.codex.fx991.core.cw.CnCwWorkflowSpec;
 import com.codex.fx991.core.math.ScalarExpressionEngine;
 import com.codex.fx991.core.mode.ApplicationMode;
@@ -23,6 +24,8 @@ public final class CnCwFunctionalitySuite {
         statisticsMenuExposesAllRegressionFamilies();
         allRegressionFamiliesReachTheirEngines();
         quadraticRegressionRunsThroughMachineWorkflow();
+        matrixSlotsPersistAndOperate();
+        vectorSlotsPersistAndOperate();
         System.out.println("PASS " + checks + " functionality checks");
     }
 
@@ -90,6 +93,113 @@ public final class CnCwFunctionalitySuite {
         near(1.0, parse(machine, 0), 1e-10, "quadratic a coefficient");
         near(1.0, parse(machine, 1), 1e-10, "quadratic b coefficient");
         near(1.0, parse(machine, 2), 1e-10, "quadratic c coefficient");
+    }
+
+    private void matrixSlotsPersistAndOperate() {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        openCommand(machine, 7, 0); // define MatA
+        machine.performWorkflowAction(CnCwWorkflowAction.Type.INCREASE_ROWS);
+        machine.performWorkflowAction(CnCwWorkflowAction.Type.INCREASE_COLUMNS);
+        fillGrid(machine, "1", "2", "3", "4");
+        check(machine.state().resultShown(), "MatA definition reaches result");
+        equal("MatA 已保存", machine.state().applicationResult().title(), "MatA stored title");
+
+        openCommand(machine, 7, 2); // define MatB
+        machine.performWorkflowAction(CnCwWorkflowAction.Type.INCREASE_ROWS);
+        machine.performWorkflowAction(CnCwWorkflowAction.Type.INCREASE_COLUMNS);
+        fillGrid(machine, "1", "0", "0", "1");
+        equal("MatB 已保存", machine.state().applicationResult().title(), "MatB stored title");
+
+        openCommand(machine, 7, 5); // det(MatA)
+        machine.dispatch(CnCwKey.EXE);
+        equal(CnCwModeEngine.ResultLayout.KEY_VALUE, machine.state().applicationResult().layout(),
+                "stored determinant result layout");
+        near(-2.0, parse(machine, 0), 1e-10, "det(MatA)");
+
+        openCommand(machine, 7, 6); // inverse(MatA)
+        machine.dispatch(CnCwKey.EXE);
+        equal(CnCwModeEngine.ResultLayout.MATRIX, machine.state().applicationResult().layout(),
+                "stored inverse returns matrix");
+        equal(4, machine.state().applicationResult().cells().size(), "inverse keeps 2x2 shape");
+
+        openCommand(machine, 7, 7); // transpose(MatA)
+        machine.dispatch(CnCwKey.EXE);
+        equal("3", machine.state().applicationResult().cells().get(1),
+                "transpose swaps off-diagonal cell");
+
+        openBinaryChoiceCommand(machine, 7, 8); // MatA + MatB
+        equal("2", machine.state().applicationResult().cells().get(0), "matrix add [1,1]");
+        equal("5", machine.state().applicationResult().cells().get(3), "matrix add [2,2]");
+
+        openBinaryChoiceCommand(machine, 7, 9); // MatA - MatB
+        equal("0", machine.state().applicationResult().cells().get(0), "matrix subtract [1,1]");
+        equal("3", machine.state().applicationResult().cells().get(3), "matrix subtract [2,2]");
+
+        openBinaryChoiceCommand(machine, 7, 10); // MatA * MatB
+        equal("1", machine.state().applicationResult().cells().get(0), "matrix multiply identity");
+        equal("4", machine.state().applicationResult().cells().get(3), "matrix multiply identity last");
+    }
+
+    private void vectorSlotsPersistAndOperate() {
+        CnCwMachine machine = new CnCwMachine(CnCwModel.FX_991_CN_CW);
+        openCommand(machine, 8, 0); // define VctA
+        fillGrid(machine, "3", "4");
+        equal("VctA 已保存", machine.state().applicationResult().title(), "VctA stored title");
+
+        openCommand(machine, 8, 2); // define VctB
+        fillGrid(machine, "0", "1");
+        equal("VctB 已保存", machine.state().applicationResult().title(), "VctB stored title");
+
+        openCommand(machine, 8, 5); // magnitude A
+        machine.dispatch(CnCwKey.EXE);
+        near(5.0, parse(machine, 0), 1e-10, "|VctA|");
+
+        openCommand(machine, 8, 6); // unit A
+        machine.dispatch(CnCwKey.EXE);
+        equal(CnCwModeEngine.ResultLayout.VECTOR, machine.state().applicationResult().layout(),
+                "unit vector layout");
+
+        openBinaryChoiceCommand(machine, 8, 7); // A+B
+        equal("3", machine.state().applicationResult().cells().get(0), "vector add x");
+        equal("5", machine.state().applicationResult().cells().get(1), "vector add y");
+
+        openBinaryChoiceCommand(machine, 8, 8); // A-B
+        equal("3", machine.state().applicationResult().cells().get(0), "vector subtract x");
+        equal("3", machine.state().applicationResult().cells().get(1), "vector subtract y");
+
+        openBinaryChoiceCommand(machine, 8, 9); // dot
+        near(4.0, parse(machine, 0), 1e-10, "VctA dot VctB");
+
+        openBinaryChoiceCommand(machine, 8, 10); // cross
+        equal(3, machine.state().applicationResult().columns(), "2D cross publishes 3D vector");
+        equal("3", machine.state().applicationResult().cells().get(2), "2D cross z component");
+
+        openBinaryChoiceCommand(machine, 8, 11); // angle
+        check(parse(machine, 0) > 36.0 && parse(machine, 0) < 37.0,
+                "VctA/VctB angle is about 36.87 degrees");
+    }
+
+    private static void openCommand(CnCwMachine machine, int homeIndex, int commandIndex) {
+        machine.dispatch(CnCwKey.HOME);
+        for (int i = 0; i < homeIndex; i++) machine.dispatch(CnCwKey.RIGHT);
+        machine.dispatch(CnCwKey.OK);
+        for (int i = 0; i < commandIndex; i++) machine.dispatch(CnCwKey.DOWN);
+        machine.dispatch(CnCwKey.OK);
+    }
+
+    private static void openBinaryChoiceCommand(CnCwMachine machine,
+                                                 int homeIndex, int commandIndex) {
+        openCommand(machine, homeIndex, commandIndex);
+        machine.dispatch(CnCwKey.OK); // first slot -> second slot
+        machine.dispatch(CnCwKey.RIGHT); // A -> B
+        machine.dispatch(CnCwKey.EXE);
+    }
+
+    private static void fillGrid(CnCwMachine machine, String... values) {
+        for (int index = 0; index < values.length; index++) {
+            enter(machine, values[index]);
+            machine.dispatch(index + 1 == values.length ? CnCwKey.EXE : CnCwKey.OK);
+        }
     }
 
     private static double parse(CnCwMachine machine, int index) {
