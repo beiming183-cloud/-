@@ -2974,6 +2974,31 @@ public final class CnCwMachine {
         };
     }
 
+    /**
+     * Stage 6 compatibility projection. The legacy fields remain the write-side
+     * source of truth in Step 1; this snapshot must therefore be lossless and
+     * side-effect free.
+     */
+    private CnCwCalculationState calculationStateSnapshot() {
+        if (errorShown) {
+            return CnCwCalculationState.error(result, lastError, errorCursor);
+        }
+        if (!resultShown) return CnCwCalculationState.editing();
+        if (applicationResult != null) {
+            return CnCwCalculationState.applicationResult(result, applicationResult);
+        }
+        if (lastExactResult != null) {
+            return CnCwCalculationState.exactResult(result, ans, lastExactResult);
+        }
+        if (hasComplexAns && !originalResult.isEmpty()) {
+            return CnCwCalculationState.complexResult(result, complexAns);
+        }
+        if (hasAns && !originalResult.isEmpty()) {
+            return CnCwCalculationState.scalarResult(result, ans);
+        }
+        return CnCwCalculationState.textResult(result);
+    }
+
     private void publish() {
         List<CnCwCommand> menus = currentMenuItems();
         int itemCount = screen == CnCwScreen.HOME ? model.applications().size()
@@ -2987,6 +3012,7 @@ public final class CnCwMachine {
                 semanticSelectionPath(selectionAnchor), semanticSelectionPath(selectionFocus),
                 result, resultShown ? applicationResult : null,
                 workflowSession == null ? null : workflowSession.snapshot(),
+                calculationStateSnapshot(),
                 ans, hasAns, status, settings, shiftArmed, poweredOn, overwriteMode,
                 verificationMode, engineeringMode,
                 !statementSequence.isEmpty() && statementSequenceIndex < statementSequence.size(),
