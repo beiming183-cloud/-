@@ -258,8 +258,10 @@ public final class CnCwFunctionalitySuite {
         equal("3", machine.state().applicationResult().cells().get(2), "matrix element abs");
 
         openCommand(machine, 7, 15); // MatAns
-        equal("Abs(MatA)", machine.state().applicationResult().title(),
-                "MatAns preserves last matrix result payload");
+        equal("MatAns", machine.state().applicationResult().title(),
+                "MatAns uses the manual answer-memory title");
+        equal("3", machine.state().applicationResult().cells().get(2),
+                "MatAns preserves the last matrix payload");
     }
 
     private void vectorSlotsPersistAndOperate() {
@@ -302,8 +304,8 @@ public final class CnCwFunctionalitySuite {
 
         openBinaryChoiceCommand(machine, 8, 7); // A+B -> VctAns
         openCommand(machine, 8, 12); // VctAns
-        equal("VctA+VctB", machine.state().applicationResult().title(),
-                "VctAns preserves last vector result payload");
+        equal("VctAns", machine.state().applicationResult().title(),
+                "VctAns uses the manual answer-memory title");
         equal("3", machine.state().applicationResult().cells().get(0), "VctAns x");
         equal("5", machine.state().applicationResult().cells().get(1), "VctAns y");
     }
