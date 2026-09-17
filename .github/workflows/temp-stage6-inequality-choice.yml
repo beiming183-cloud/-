@@ -1,0 +1,55 @@
+name: 临时 Stage6 不等式关系选择验证
+
+on:
+  push:
+    branches: [ stage6/remaining-workflows ]
+    paths:
+      - '.github/workflows/temp-stage6-inequality-choice.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-verify-commit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出分支
+        uses: actions/checkout@v4
+        with:
+          ref: stage6/remaining-workflows
+          fetch-depth: 0
+
+      - name: 配置 Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 配置 Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: 应用 Step 2 补丁
+        run: python scripts/temp_stage6_inequality_choice.py
+
+      - name: 添加 Gradle 执行权限
+        run: chmod +x ./gradlew
+
+      - name: 完整核心回归
+        run: ./gradlew :core:check
+
+      - name: Android Debug 构建
+        run: ./gradlew :app:assembleCn991Debug
+
+      - name: 提交正式产品改动
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add core/src/main/java/com/codex/fx991/core/cw/CnCwWorkflowSpec.java \
+                  core/src/main/java/com/codex/fx991/core/cw/CnCwWorkflowSession.java \
+                  core/src/main/java/com/codex/fx991/core/cw/CnCwMachine.java \
+                  core/src/regression/java/com/codex/fx991/core/CnCwWorkflowSpecSuite.java \
+                  app/src/main/java/com/codex/fx991smooth/CalculatorView.java
+          git commit -m "feat(stage6): add structured inequality relation choices"
+          git push origin HEAD:stage6/remaining-workflows
