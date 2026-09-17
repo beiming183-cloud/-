@@ -10,7 +10,7 @@ import java.util.List;
  *
  * <p>The legacy comma-separated bridge remains valid, but Android can now ask
  * the core what shape and fields a workflow expects instead of parsing prompt
- * strings.  Later Stage 5 steps attach editable state to these immutable specs.</p>
+ * strings.</p>
  */
 public final class CnCwWorkflowSpec {
     private CnCwWorkflowSpec() { }
@@ -102,6 +102,7 @@ public final class CnCwWorkflowSpec {
         if (com.codex.fx991.core.Compat.isBlank(commandId)) throw new IllegalArgumentException("commandId");
         return switch (mode) {
             case STATISTICS -> statistics(commandId);
+            case FUNCTION_TABLE -> functionTable(commandId);
             case EQUATION -> equation(commandId);
             case MATRIX -> matrix(commandId);
             case VECTOR -> vector(commandId);
@@ -122,6 +123,29 @@ public final class CnCwWorkflowSpec {
                     fields(field("x", "x", FieldKind.EXPRESSION),
                             field("y", "y", FieldKind.EXPRESSION)),
                     2, 999, 2, 2);
+        }
+        return null;
+    }
+
+    private static WorkflowSpec functionTable(String commandId) {
+        if (commandId.equals("single")) {
+            return spec(ApplicationMode.FUNCTION_TABLE, commandId, "函数表",
+                    InputLayout.FIXED_FIELDS,
+                    fields(field("f", "f(x)", FieldKind.EXPRESSION),
+                            field("start", "开始", FieldKind.EXPRESSION),
+                            field("end", "结束", FieldKind.EXPRESSION),
+                            field("step", "步长", FieldKind.EXPRESSION)),
+                    1, 1, 4, 4);
+        }
+        if (commandId.equals("fg")) {
+            return spec(ApplicationMode.FUNCTION_TABLE, commandId, "f(x) 与 g(x)",
+                    InputLayout.FIXED_FIELDS,
+                    fields(field("f", "f(x)", FieldKind.EXPRESSION),
+                            field("g", "g(x)", FieldKind.EXPRESSION),
+                            field("start", "开始", FieldKind.EXPRESSION),
+                            field("end", "结束", FieldKind.EXPRESSION),
+                            field("step", "步长", FieldKind.EXPRESSION)),
+                    1, 1, 5, 5);
         }
         return null;
     }
