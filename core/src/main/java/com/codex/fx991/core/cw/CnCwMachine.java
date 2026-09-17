@@ -1296,8 +1296,7 @@ public final class CnCwMachine {
             resultShown = false;
             status = spreadsheetAddress() + " 已清除";
         } catch (RuntimeException error) {
-            result = "Math ERROR";
-            resultShown = true;
+            commitCalculationError(CalculationError.MATH, 0);
         }
     }
 
@@ -1792,13 +1791,13 @@ public final class CnCwMachine {
             commitSuccessfulResult(formatted, scalar, exactScalar, completionStatus,
                     storeAnswer, complexEvaluation);
         } catch (CalculationException error) {
-            showError(error.error(), error.position());
+            commitCalculationError(error.error(), error.position());
         } catch (ArithmeticException error) {
-            showError(CalculationError.MATH, 0);
+            commitCalculationError(CalculationError.MATH, 0);
         } catch (IllegalArgumentException error) {
-            showError(CalculationError.ARGUMENT, 0);
+            commitCalculationError(CalculationError.ARGUMENT, 0);
         } catch (RuntimeException error) {
-            showError(CalculationError.SYNTAX, 0);
+            commitCalculationError(CalculationError.SYNTAX, 0);
         }
     }
 
@@ -1963,7 +1962,10 @@ public final class CnCwMachine {
         return Math.abs(rational.toDouble() - value) <= 1e-12 ? ExactValue.rational(rational) : null;
     }
 
-    private void showError(CalculationError error, int sourcePosition) {
+    /** Single error-commit gate for evaluator and mode/tool failures. */
+    private void commitCalculationError(CalculationError error, int sourcePosition) {
+        applicationResult = null;
+        lastExactResult = null;
         lastError = error;
         errorShown = true;
         errorCursor = tokenCursorForSourcePosition(sourcePosition);
@@ -2478,6 +2480,11 @@ public final class CnCwMachine {
             }
             default -> formatNumber(ans);
         };
+        if ("Math ERROR".equals(result)) {
+            closeAllPopups();
+            commitCalculationError(CalculationError.MATH, 0);
+            return;
+        }
         formatConverted = true;
         resultShown = true;
         status = engineeringMode ? "ENG 模式 · 用 ←/→ 移动小数点" : "格式转换";
