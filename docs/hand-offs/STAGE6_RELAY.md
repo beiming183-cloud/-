@@ -14,6 +14,8 @@
 
 Stage 6 的代码开发、结构化工作流补齐、Android 交互补齐、真机前静态审计和云端构建/长期签名门禁已经完成。2026-09-17 已开始 MuMu 模拟器集中验收：WorkflowAction 基础触控、多项式升降阶语义、联立方程增减元数 RHS 语义、函数表逐行/Page 导航均已有通过证据；函数表 TABLE 结果页曾泄露内部输入串，已修复并于 artifact `10495340801` 上完成覆盖安装复验，确认顶部内部串/编辑光标消失且逐行/Page 翻页无回归。
 
+函数表复验通过后又新增 `CnCwStage6AcceptanceSuite`，直接从 HOME/按键路径验证不等式与比例的 Stage 6 交互契约，并已挂入 `:core:check`。正式 PR CI run `35220348788` 已通过完整核心回归、Android Debug 构建和 artifact 上传。
+
 后续仍只从 `stage6/integration` 继续，不再回到旧的 Stage 6 并行分支。
 
 Stage 6 曾并行推进三条工作流，现已统一收敛：
@@ -61,7 +63,8 @@ PR #6 / #7 / #8 仅保留为历史记录，不应再分别合并。PR #10 的有
 - UI 显示 `>`、`<`、`≥`、`≤`，内部继续兼容旧关系码 `1..4`；
 - 二/三/四次分别提供 3 / 4 / 5 个系数输入；
 - 方向键循环关系选项，Android 不再要求用户输入关系数字码；
-- 求解仍复用原 `PolynomialEngine`，未重写数学算法。
+- 求解仍复用原 `PolynomialEngine`，未重写数学算法；
+- 新 acceptance regression 自动验证：三个次数命令的字段数量与 choice 关系；普通数字不能覆盖关系格；左右循环与 DEL 恢复默认关系；空白输入定位第一系数；非法表达式停留并定位错误格；完整二次不等式计算后 BACK 返回输入且系数保留。
 
 ### E. 比例
 
@@ -69,7 +72,8 @@ PR #6 / #7 / #8 仅保留为历史记录，不应再分别合并。PR #10 的有
 - `A:B=C:X` 使用 A / B / C 标签化固定字段；
 - 比例结果升级为 core-owned `KEY_VALUE`，Android 无需解析 `X=...` 文本；
 - 保留旧逗号输入兼容：在首字段直接输入逗号可回退到原 `A,B,D` / `A,B,C` 路径；
-- 求解仍复用原 `RatioEngine`。
+- 求解仍复用原 `RatioEngine`；
+- 新 acceptance regression 自动验证两种结构化比例结果、KEY_VALUE 协议、BACK 后字段保留，以及首字段逗号回退旧输入并继续正确求解。
 
 ### F. 真机前静态审计修复
 
@@ -149,6 +153,17 @@ GitHub Actions run `35215973055`：`success`。
 - 临时验证 workflow 已删除；未创建 GitHub Release；
 - 2026-09-17 MuMu 复验与 `adb install -r` 同包覆盖验证均通过。
 
+### Stage 6 acceptance regression 门禁
+
+GitHub Actions run `35220348788`：`success`。
+
+- 新增 `CnCwStage6AcceptanceSuite` 并挂入 `:core:check`；
+- 从 HOME/真实按键入口覆盖不等式命令、choice 循环/DEL、空白/非法输入定位、结果返回输入；
+- 覆盖两种结构化比例、KEY_VALUE 结果、BACK 保留字段和首字段逗号旧桥接；
+- 覆盖双函数 workflow 的 TABLE 结果协议与 BACK 输入保留；
+- 完整核心回归通过；
+- Android Debug APK 构建和 artifact 上传通过。
+
 ## 2026-09-17 MuMu 集中验收状态
 
 测试基线：MuMu，显示覆盖尺寸 `1260 x 2800`；初验包 artifact `10486064308`，函数表复验包 artifact `10495340801`；包名 `com.beibei.calculator`。
@@ -168,11 +183,16 @@ GitHub Actions run `35215973055`：`success`。
 - 联立方程增减元数 RHS 语义；
 - 函数表 TABLE 状态隔离、逐行/Page 翻页与列对齐。
 
-仍待确认：
+已有自动化门禁、人工仅需看 UI/触控表现：
 
-- 二/三/四次不等式关系选择；
-- 两种比例和旧逗号兼容；
-- 结构化输入的计算、返回、错误定位；
+- 不等式 CHOICE 逻辑、DEL 默认值、空白/非法输入定位、计算后 BACK 数据保留；
+- 两种比例求值、结构化 KEY_VALUE、BACK 数据保留和旧逗号桥；
+- 双函数 workflow 数据协议和 BACK 保留。
+
+仍待人工确认：
+
+- 不等式/比例/双函数的 Android 标签、布局、触控命中和视觉结果；
+- 统计/矩阵/向量 WorkflowAction 的边界 disabled 与 6 按钮触控；
 - Ans、历史、复制粘贴、自然显示、语义光标/选区、DEL/AC、长按、SCI/ENG、长数字；
 - 真机触感、快速滑动、多指行为（模拟器结论不能替代真机结论）。
 
@@ -182,13 +202,15 @@ GitHub Actions run `35215973055`：`success`。
 
 - branch：`stage6/integration`
 - PR：Draft PR #9
+- 当前 branch head：以 PR #9 最新 head 为准；中断后先核对，不从旧提交重开
 - Stage 6 代码开发项：已完成
 - 真机前静态审计：已完成
 - 云端 core / Debug / Release / R8 / 长期签名门禁：已完成
 - MuMu 集中验收：进行中；多项式、联立、函数表和同包覆盖升级已通过
+- Stage 6 acceptance regression：已完成并进入永久 `:core:check`
 - 当前可继续使用复验包：artifact `10495340801`
 - 集中验收清单：`docs/hand-offs/STAGE6_DEVICE_ACCEPTANCE.md`
-- 下一项：不再重复多项式、联立和函数表；继续不等式、比例、结构化错误/返回、旧功能回归与真机交互测试
+- 下一项：不再重复多项式、联立和函数表；人工继续不等式/比例/双函数 UI、WorkflowAction 边界、旧功能回归与真机交互测试
 - 所有集中验收完成且用户明确授权之前，不合并 PR #9 到 `main`
 - 禁止从 `main`、`stage6/remaining-apps` 或旧并行分支重新创建 Stage 6 工作线；中断后先核对本 relay 与当前 branch head。
 
