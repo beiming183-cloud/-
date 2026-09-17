@@ -1088,6 +1088,19 @@ public final class CnCwMachine {
         }
     }
 
+    /** Executes one core-owned workflow action without duplicating layout rules in Android. */
+    public CnCwUiState performWorkflowAction(CnCwWorkflowAction.Type type) {
+        if (type == null || workflowSession == null || resultShown) return state;
+        if (type == CnCwWorkflowAction.Type.EXECUTE) return dispatch(CnCwKey.EXE);
+        if (type == CnCwWorkflowAction.Type.BACK) return dispatch(CnCwKey.BACK);
+        commitWorkflowCell();
+        boolean changed = workflowSession.applyAction(type);
+        if (changed) loadWorkflowCell();
+        status = changed ? workflowStatus() : "操作不可用 · " + workflowStatus();
+        publish();
+        return state;
+    }
+
     /** Direct-touch entry point for a Stage 5 input-table cell. */
     public CnCwUiState selectWorkflowCell(int row, int column) {
         if (workflowSession == null || resultShown) return state;

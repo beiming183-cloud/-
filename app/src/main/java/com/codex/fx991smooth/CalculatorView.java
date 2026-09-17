@@ -26,6 +26,7 @@ import com.codex.fx991.core.cw.CnCwMachine;
 import com.codex.fx991.core.cw.CnCwModeEngine;
 import com.codex.fx991.core.cw.CnCwScreen;
 import com.codex.fx991.core.cw.CnCwUiState;
+import com.codex.fx991.core.cw.CnCwWorkflowAction;
 import com.codex.fx991.core.cw.CnCwWorkflowSession;
 import com.codex.fx991.core.cw.CnCwWorkflowSpec;
 import com.codex.fx991.core.mode.CnCwModel;
@@ -510,21 +511,58 @@ public final class CalculatorView extends View {
             }
         }
         paint.setStyle(Paint.Style.FILL);
-        paint.setColor(LCD_INK);
-        paint.setTypeface(FACE_NORMAL);
-        paint.setTextAlign(Paint.Align.RIGHT);
-        paint.setTextSize(sp(8f));
-        String hint = workflowShapeAdjustable(input)
-                ? "SHIFT+方向 调整尺寸 · OK 下一格 · EXE 计算"
-                : "OK 下一格 · EXE 计算";
-        canvas.drawText(ellipsize(hint, lcd.width() - dp(12)), lcd.right - dp(6),
-                lcd.bottom - dp(3), paint);
+        drawWorkflowActionBar(canvas, lcd, input);
+    }
+
+    private void drawWorkflowActionBar(Canvas canvas, RectF lcd,
+                                       CnCwWorkflowSession.Snapshot input) {
+        List<CnCwWorkflowAction> actions = input.actions();
+        for (int index = 0; index < actions.size(); index++) {
+            CnCwWorkflowAction action = actions.get(index);
+            RectF bounds = workflowActionBounds(lcd, actions.size(), index);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(action.enabled() ? Color.argb(42, 24, 58, 45)
+                    : Color.argb(14, 24, 58, 45));
+            canvas.drawRoundRect(bounds, dp(2f), dp(2f), paint);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(0.65f));
+            paint.setColor(action.enabled() ? Color.argb(145, 24, 58, 45)
+                    : Color.argb(50, 24, 58, 45));
+            canvas.drawRoundRect(bounds, dp(2f), dp(2f), paint);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(action.enabled() ? LCD_INK : Color.argb(105, 24, 58, 45));
+            paint.setTypeface(action.type() == CnCwWorkflowAction.Type.EXECUTE
+                    ? FACE_BOLD : FACE_NORMAL);
+            paint.setTextAlign(Paint.Align.CENTER);
+            paint.setTextSize(sp(8.2f));
+            canvas.drawText(ellipsize(action.label(), bounds.width() - dp(5f)),
+                    bounds.centerX(), centeredBaseline(bounds.top, bounds.bottom), paint);
+        }
     }
 
     private RectF workflowGridBounds(RectF lcd) {
         float top = lcd.top + lcd.height() * 0.22f;
-        float bottom = lcd.bottom - dp(18f);
+        float bottom = lcd.bottom - dp(43f);
         return new RectF(lcd.left + dp(6f), top, lcd.right - dp(6f), bottom);
+    }
+
+    private RectF workflowActionBarBounds(RectF lcd) {
+        return new RectF(lcd.left + dp(6f), lcd.bottom - dp(38f),
+                lcd.right - dp(6f), lcd.bottom - dp(3f));
+    }
+
+    private RectF workflowActionBounds(RectF lcd, int count, int index) {
+        RectF bar = workflowActionBarBounds(lcd);
+        int columns = count <= 2 ? Math.max(1, count) : 3;
+        int rows = Math.max(1, (count + columns - 1) / columns);
+        int row = index / columns;
+        int column = index % columns;
+        float gap = dp(2f);
+        float width = (bar.width() - gap * (columns - 1)) / columns;
+        float height = (bar.height() - gap * (rows - 1)) / rows;
+        float left = bar.left + column * (width + gap);
+        float top = bar.top + row * (height + gap);
+        return new RectF(left, top, left + width, top + height);
     }
 
     private String workflowColumnLabel(CnCwWorkflowSession.Snapshot input, int column) {
@@ -586,6 +624,35 @@ public final class CalculatorView extends View {
         performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
         postInvalidateOnAnimation();
         return true;
+    }
+
+    private boolean selectWorkflowActionAt(float x, float y) {
+        if (!state.hasWorkflowInput() || state.resultShown()) return false;
+        CnCwWorkflowSession.Snapshot input = state.workflowInput();
+        List<CnCwWorkflowAction> actions = input.actions();
+        RectF lcd = displayBounds(getWidth());
+        for (int index = 0; index < actions.size(); index++) {
+            RectF bounds = workflowActionBounds(lcd, actions.size(), index);
+            if (!bounds.contains(x, y)) continue;
+            CnCwWorkflowAction action = actions.get(index);
+            if (!action.enabled()) {
+                performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+                return true;
+            }
+            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            if (action.type() == CnCwWorkflowAction.Type.EXECUTE) {
+                dispatchKey(CnCwKey.EXE);
+            } else if (action.type() == CnCwWorkflowAction.Type.BACK) {
+                dispatchKey(CnCwKey.BACK);
+            } else {
+                inputRevision++;
+                cancelPendingEvaluation();
+                state = machine.performWorkflowAction(action.type());
+                postInvalidateOnAnimation();
+            }
+            return true;
+        }
+        return false;
     }
 
     /** Renders core-owned application results without parsing display strings. */
@@ -1535,7 +1602,9 @@ public final class CalculatorView extends View {
                 if (event.getActionMasked() == MotionEvent.ACTION_DOWN
                         && displayBounds(getWidth()).contains(event.getX(), event.getY())) {
                     if (state.hasWorkflowInput() && !state.resultShown()) {
-                        selectWorkflowCellAt(event.getX(), event.getY());
+                        if (!selectWorkflowActionAt(event.getX(), event.getY())) {
+                            selectWorkflowCellAt(event.getX(), event.getY());
+                        }
                         return true;
                     }
                     displayPressed = true;
