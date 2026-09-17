@@ -1140,6 +1140,31 @@ public final class CnCwMachine {
             return true;
         }
 
+        if (workflowSession.selectedIsChoice() && !shiftArmed) {
+            if (key == CnCwKey.LEFT || key == CnCwKey.UP
+                    || key == CnCwKey.RIGHT || key == CnCwKey.DOWN) {
+                int delta = (key == CnCwKey.LEFT || key == CnCwKey.UP) ? -1 : 1;
+                workflowSession.cycleSelectedChoice(delta);
+                tokens.clear();
+                cursor = 0;
+                semanticCursorOverride = null;
+                status = workflowStatus();
+                return true;
+            }
+            if (key == CnCwKey.DEL) {
+                workflowSession.resetSelectedChoice();
+                tokens.clear();
+                cursor = 0;
+                semanticCursorOverride = null;
+                status = workflowStatus();
+                return true;
+            }
+            if (isEntryKey(key)) {
+                status = "用方向键选择 · " + workflowStatus();
+                return true;
+            }
+        }
+
         if (shiftArmed && (key == CnCwKey.UP || key == CnCwKey.DOWN
                 || key == CnCwKey.LEFT || key == CnCwKey.RIGHT)) {
             commitWorkflowCell();
@@ -1219,7 +1244,7 @@ public final class CnCwMachine {
     }
 
     private void commitWorkflowCell() {
-        if (workflowSession == null || resultShown) return;
+        if (workflowSession == null || resultShown || workflowSession.selectedIsChoice()) return;
         String source = evaluationSource().replace("\u2063", "");
         workflowSession.setSelectedCell(source);
     }
@@ -1230,7 +1255,7 @@ public final class CnCwMachine {
         semanticCursorOverride = null;
         clearSelection();
         String source = workflowSession.selectedCell();
-        if (!com.codex.fx991.core.Compat.isBlank(source)) {
+        if (!workflowSession.selectedIsChoice() && !com.codex.fx991.core.Compat.isBlank(source)) {
             List<Token> imported = parsePastedTokens(source);
             if (imported != null) tokens.addAll(imported);
         }
@@ -1286,7 +1311,12 @@ public final class CnCwMachine {
 
     private String workflowStatus() {
         if (workflowSession == null) return applicationStatus();
-        return workflowSession.spec().title() + " · "
+        CnCwWorkflowSpec.FieldSpec field = workflowSession.selectedField();
+        String fieldLabel = field == null ? ""
+                : " · " + field.label()
+                + (workflowSession.selectedIsChoice()
+                ? "=" + workflowSession.selectedDisplayCell() : "");
+        return workflowSession.spec().title() + fieldLabel + " · "
                 + (workflowSession.selectedRow() + 1) + ","
                 + (workflowSession.selectedColumn() + 1);
     }

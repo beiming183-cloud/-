@@ -52,6 +52,20 @@ public final class CnCwWorkflowSession {
             }
             return cells.get(row * columns + column);
         }
+        public CnCwWorkflowSpec.FieldSpec field(int row, int column) {
+            if (spec.layout() != CnCwWorkflowSpec.InputLayout.FIXED_FIELDS
+                    || row != 0 || column < 0 || column >= spec.fields().size()) return null;
+            return spec.fields().get(column);
+        }
+        public boolean isChoiceCell(int row, int column) {
+            CnCwWorkflowSpec.FieldSpec field = field(row, column);
+            return field != null && field.kind() == CnCwWorkflowSpec.FieldKind.CHOICE;
+        }
+        public String displayCell(int row, int column) {
+            CnCwWorkflowSpec.FieldSpec field = field(row, column);
+            String raw = cell(row, column);
+            return field == null ? raw : field.displayValue(raw);
+        }
     }
 
     private final CnCwWorkflowSpec.WorkflowSpec spec;
@@ -66,6 +80,7 @@ public final class CnCwWorkflowSession {
         if (spec == null) throw new IllegalArgumentException("spec");
         this.spec = spec;
         resize(rows, columns);
+        initializeChoiceDefaults();
     }
 
     public static CnCwWorkflowSession create(CnCwWorkflowSpec.WorkflowSpec spec) {
@@ -132,6 +147,44 @@ public final class CnCwWorkflowSession {
 
     public void setSelectedCell(String value) {
         setCell(selectedRow, selectedColumn, value);
+    }
+
+    public CnCwWorkflowSpec.FieldSpec selectedField() {
+        return fieldAt(selectedRow, selectedColumn);
+    }
+
+    public boolean selectedIsChoice() {
+        CnCwWorkflowSpec.FieldSpec field = selectedField();
+        return field != null && field.kind() == CnCwWorkflowSpec.FieldKind.CHOICE;
+    }
+
+    public String selectedDisplayCell() {
+        CnCwWorkflowSpec.FieldSpec field = selectedField();
+        return field == null ? selectedCell() : field.displayValue(selectedCell());
+    }
+
+    public boolean cycleSelectedChoice(int delta) {
+        CnCwWorkflowSpec.FieldSpec field = selectedField();
+        if (field == null || field.kind() != CnCwWorkflowSpec.FieldKind.CHOICE) return false;
+        List<CnCwWorkflowSpec.ChoiceOption> choices = field.choices();
+        String current = selectedCell();
+        int index = 0;
+        for (int i = 0; i < choices.size(); i++) {
+            if (choices.get(i).value().equals(current)) {
+                index = i;
+                break;
+            }
+        }
+        int next = Math.floorMod(index + delta, choices.size());
+        setSelectedCell(choices.get(next).value());
+        return next != index;
+    }
+
+    public boolean resetSelectedChoice() {
+        CnCwWorkflowSpec.FieldSpec field = selectedField();
+        if (field == null || field.kind() != CnCwWorkflowSpec.FieldKind.CHOICE) return false;
+        setSelectedCell(field.defaultValue());
+        return true;
     }
 
     public boolean selectCell(int row, int column) {
@@ -308,6 +361,23 @@ public final class CnCwWorkflowSession {
     private boolean resizeRows(int newRows) {
         if (isSimultaneous()) return setEquationDimension(newRows);
         return resizeGrid(newRows, columns);
+    }
+
+    private CnCwWorkflowSpec.FieldSpec fieldAt(int row, int column) {
+        if (spec.layout() != CnCwWorkflowSpec.InputLayout.FIXED_FIELDS
+                || row != 0 || column < 0 || column >= spec.fields().size()) return null;
+        return spec.fields().get(column);
+    }
+
+    private void initializeChoiceDefaults() {
+        if (spec.layout() != CnCwWorkflowSpec.InputLayout.FIXED_FIELDS) return;
+        for (int column = 0; column < Math.min(columns, spec.fields().size()); column++) {
+            CnCwWorkflowSpec.FieldSpec field = spec.fields().get(column);
+            if (field.kind() == CnCwWorkflowSpec.FieldKind.CHOICE
+                    && com.codex.fx991.core.Compat.isBlank(cell(0, column))) {
+                setCell(0, column, field.defaultValue());
+            }
+        }
     }
 
     private boolean isSimultaneous() {

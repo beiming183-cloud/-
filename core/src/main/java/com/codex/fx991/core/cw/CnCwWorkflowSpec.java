@@ -27,7 +27,24 @@ public final class CnCwWorkflowSpec {
     public enum FieldKind {
         EXPRESSION,
         INTEGER,
-        DIMENSION
+        DIMENSION,
+        CHOICE
+    }
+
+    /** Serialized evaluator value paired with a human-readable field label. */
+    public static final class ChoiceOption {
+        private final String value;
+        private final String label;
+
+        public ChoiceOption(String value, String label) {
+            if (com.codex.fx991.core.Compat.isBlank(value)) throw new IllegalArgumentException("value");
+            if (com.codex.fx991.core.Compat.isBlank(label)) throw new IllegalArgumentException("label");
+            this.value = value;
+            this.label = label;
+        }
+
+        public String value() { return value; }
+        public String label() { return label; }
     }
 
     public static final class FieldSpec {
@@ -35,21 +52,47 @@ public final class CnCwWorkflowSpec {
         private final String label;
         private final FieldKind kind;
         private final boolean required;
+        private final List<ChoiceOption> choices;
 
         public FieldSpec(String id, String label, FieldKind kind, boolean required) {
+            this(id, label, kind, required, com.codex.fx991.core.Compat.list());
+        }
+
+        public FieldSpec(String id, String label, FieldKind kind, boolean required,
+                         List<ChoiceOption> choices) {
             if (com.codex.fx991.core.Compat.isBlank(id)) throw new IllegalArgumentException("id");
             if (com.codex.fx991.core.Compat.isBlank(label)) throw new IllegalArgumentException("label");
             if (kind == null) throw new IllegalArgumentException("kind");
+            if (choices == null) throw new IllegalArgumentException("choices");
+            if (kind == FieldKind.CHOICE && choices.isEmpty()) {
+                throw new IllegalArgumentException("choice options");
+            }
+            if (kind != FieldKind.CHOICE && !choices.isEmpty()) {
+                throw new IllegalArgumentException("choices only valid for CHOICE");
+            }
             this.id = id;
             this.label = label;
             this.kind = kind;
             this.required = required;
+            this.choices = com.codex.fx991.core.Compat.copyList(choices);
         }
 
         public String id() { return id; }
         public String label() { return label; }
         public FieldKind kind() { return kind; }
         public boolean required() { return required; }
+        public List<ChoiceOption> choices() { return choices; }
+        public String defaultValue() {
+            return kind == FieldKind.CHOICE ? choices.get(0).value() : "";
+        }
+        public String displayValue(String raw) {
+            if (kind != FieldKind.CHOICE) return raw == null ? "" : raw;
+            String value = com.codex.fx991.core.Compat.isBlank(raw) ? defaultValue() : raw;
+            for (ChoiceOption choice : choices) {
+                if (choice.value().equals(value)) return choice.label();
+            }
+            return value;
+        }
     }
 
     public static final class WorkflowSpec {
@@ -104,6 +147,7 @@ public final class CnCwWorkflowSpec {
             case STATISTICS -> statistics(commandId);
             case FUNCTION_TABLE -> functionTable(commandId);
             case EQUATION -> equation(commandId);
+            case INEQUALITY -> inequality(commandId);
             case MATRIX -> matrix(commandId);
             case VECTOR -> vector(commandId);
             default -> null;
@@ -175,6 +219,28 @@ public final class CnCwWorkflowSpec {
         return null;
     }
 
+    private static WorkflowSpec inequality(String commandId) {
+        int degree = switch (commandId) {
+            case "quadratic" -> 2;
+            case "cubic" -> 3;
+            case "quartic" -> 4;
+            default -> 0;
+        };
+        if (degree == 0) return null;
+        List<FieldSpec> values = new ArrayList<>();
+        values.add(choiceField("relation", "关系",
+                choice("1", ">"), choice("2", "<"),
+                choice("3", "≥"), choice("4", "≤")));
+        for (int power = degree; power >= 0; power--) {
+            String label = power == 0 ? "常数" : power == 1 ? "x" : "x^" + power;
+            values.add(field("c" + power, label, FieldKind.EXPRESSION));
+        }
+        String title = degree == 2 ? "二次不等式" : degree == 3 ? "三次不等式" : "四次不等式";
+        int columns = degree + 2;
+        return spec(ApplicationMode.INEQUALITY, commandId, title,
+                InputLayout.FIXED_FIELDS, values, 1, 1, columns, columns);
+    }
+
     private static WorkflowSpec matrix(String commandId) {
         if (!commandId.equals("calculate")) return null;
         return spec(ApplicationMode.MATRIX, commandId, "矩阵",
@@ -202,6 +268,16 @@ public final class CnCwWorkflowSpec {
 
     private static FieldSpec field(String id, String label, FieldKind kind) {
         return new FieldSpec(id, label, kind, true);
+    }
+
+    private static FieldSpec choiceField(String id, String label, ChoiceOption... options) {
+        List<ChoiceOption> values = new ArrayList<>();
+        for (ChoiceOption option : options) values.add(option);
+        return new FieldSpec(id, label, FieldKind.CHOICE, true, values);
+    }
+
+    private static ChoiceOption choice(String value, String label) {
+        return new ChoiceOption(value, label);
     }
 
     private static List<FieldSpec> fields(FieldSpec... values) {

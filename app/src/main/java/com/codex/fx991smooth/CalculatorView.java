@@ -498,7 +498,9 @@ public final class CalculatorView extends View {
                 paint.setTypeface(selected ? FACE_MEDIUM : FACE_NORMAL);
                 paint.setTextAlign(Paint.Align.CENTER);
                 paint.setTextSize(sp(10.5f));
-                String value = selected ? cleanClipboardText(state.displayText())
+                String value = input.isChoiceCell(row, column)
+                        ? input.displayCell(row, column)
+                        : selected ? cleanClipboardText(state.displayText())
                         : input.cell(row, column);
                 canvas.drawText(ellipsize(value, cellWidth - dp(5f)),
                         scratch.centerX(), centeredBaseline(top, top + cellHeight), paint);

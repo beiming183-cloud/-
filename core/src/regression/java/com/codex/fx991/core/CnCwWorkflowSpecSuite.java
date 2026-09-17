@@ -18,9 +18,11 @@ public final class CnCwWorkflowSpecSuite {
     private void run() {
         statisticsSpecs();
         functionTableSpecsAndSessions();
+        inequalitySpecs();
         equationSpecs();
         matrixAndVectorSpecs();
         statisticsSessions();
+        inequalitySessions();
         equationSessions();
         matrixAndVectorSessions();
         unsupportedWorkflowReturnsNull();
@@ -77,6 +79,24 @@ public final class CnCwWorkflowSpecSuite {
         equal(2, fgResult.rows(), "function-table fg row count");
         equal(3, fgResult.columns(), "function-table fg column count");
         equal("12", fgResult.cells().get(5), "function-table fg last g value");
+    }
+
+    private void inequalitySpecs() {
+        var quadratic = CnCwWorkflowSpec.forCommand(ApplicationMode.INEQUALITY, "quadratic");
+        equal(CnCwWorkflowSpec.InputLayout.FIXED_FIELDS, quadratic.layout(),
+                "quadratic inequality fixed fields");
+        equal(4, quadratic.fields().size(), "quadratic relation plus three coefficients");
+        equal(CnCwWorkflowSpec.FieldKind.CHOICE, quadratic.fields().get(0).kind(),
+                "inequality relation is a choice");
+        equal(4, quadratic.fields().get(0).choices().size(), "four inequality relations");
+        equal(">", quadratic.fields().get(0).displayValue("1"), "relation 1 display");
+        equal("≤", quadratic.fields().get(0).displayValue("4"), "relation 4 display");
+
+        var cubic = CnCwWorkflowSpec.forCommand(ApplicationMode.INEQUALITY, "cubic");
+        equal(5, cubic.fields().size(), "cubic relation plus four coefficients");
+        var quartic = CnCwWorkflowSpec.forCommand(ApplicationMode.INEQUALITY, "quartic");
+        equal(6, quartic.fields().size(), "quartic relation plus five coefficients");
+        equal("x^4", quartic.fields().get(1).label(), "quartic leading coefficient label");
     }
 
     private void equationSpecs() {
@@ -157,6 +177,29 @@ public final class CnCwWorkflowSpecSuite {
         check(failedClosed, "incomplete statistics session cannot serialize silently");
     }
 
+    private void inequalitySessions() {
+        var quadratic = CnCwWorkflowSession.create(
+                CnCwWorkflowSpec.forCommand(ApplicationMode.INEQUALITY, "quadratic"));
+        equal("1", quadratic.cell(0, 0), "inequality defaults to greater relation code");
+        equal(">", quadratic.snapshot().displayCell(0, 0), "inequality displays relation symbol");
+        check(quadratic.selectedIsChoice(), "relation cell is a choice");
+        check(quadratic.cycleSelectedChoice(1), "relation cycles right");
+        equal("2", quadratic.cell(0, 0), "second relation serializes as code 2");
+        equal("<", quadratic.selectedDisplayCell(), "second relation displays less-than");
+        quadratic.cycleSelectedChoice(1);
+        quadratic.cycleSelectedChoice(1);
+        equal("4", quadratic.cell(0, 0), "fourth relation code");
+        quadratic.cycleSelectedChoice(1);
+        equal("1", quadratic.cell(0, 0), "choice cycles around");
+        quadratic.setCell(0, 1, "1");
+        quadratic.setCell(0, 2, "0");
+        quadratic.setCell(0, 3, "-1");
+        equal("1,1,0,-1", quadratic.legacySource(),
+                "inequality serializes relation code then coefficients");
+        check(quadratic.evaluate(context).display().contains("∞"),
+                "inequality session delegates to polynomial inequality engine");
+    }
+
     private void equationSessions() {
         var polynomial = CnCwWorkflowSession.create(
                 CnCwWorkflowSpec.forCommand(ApplicationMode.EQUATION, "polynomial"));
@@ -227,6 +270,8 @@ public final class CnCwWorkflowSpecSuite {
                 "ordinary calculate has no structured workflow spec");
         check(CnCwWorkflowSpec.forCommand(ApplicationMode.STATISTICS, "missing") == null,
                 "unknown statistics command is rejected");
+        check(CnCwWorkflowSpec.forCommand(ApplicationMode.INEQUALITY, "missing") == null,
+                "unknown inequality command is rejected");
     }
 
     private void check(boolean condition, String message) {
