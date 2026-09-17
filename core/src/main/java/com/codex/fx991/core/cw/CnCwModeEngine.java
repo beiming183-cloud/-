@@ -470,7 +470,8 @@ public final class CnCwModeEngine {
         double answer = command.equals("a:b=x:d")
                 ? RatioEngine.solveAtoBEqualsXtoD(values[0], values[1], values[2])
                 : RatioEngine.solveAtoBEqualsCtoX(values[0], values[1], values[2]);
-        return new ModeResult("X=" + format(answer), answer);
+        return ModeResult.keyValue("比例", "X=" + format(answer), answer,
+                item("X", answer));
     }
 
     private static double[] evaluateFields(List<String> fields, int start,

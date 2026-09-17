@@ -150,6 +150,7 @@ public final class CnCwWorkflowSpec {
             case INEQUALITY -> inequality(commandId);
             case MATRIX -> matrix(commandId);
             case VECTOR -> vector(commandId);
+            case RATIO -> ratio(commandId);
             default -> null;
         };
     }
@@ -257,6 +258,26 @@ public final class CnCwWorkflowSpec {
                 InputLayout.VECTOR_SET,
                 fields(field("component", "分量", FieldKind.EXPRESSION)),
                 1, 2, 2, 3);
+    }
+
+    private static WorkflowSpec ratio(String commandId) {
+        if (commandId.equals("a:b=x:d")) {
+            return spec(ApplicationMode.RATIO, commandId, "A:B=X:D",
+                    InputLayout.FIXED_FIELDS,
+                    fields(field("a", "A", FieldKind.EXPRESSION),
+                            field("b", "B", FieldKind.EXPRESSION),
+                            field("d", "D", FieldKind.EXPRESSION)),
+                    1, 1, 3, 3);
+        }
+        if (commandId.equals("a:b=c:x")) {
+            return spec(ApplicationMode.RATIO, commandId, "A:B=C:X",
+                    InputLayout.FIXED_FIELDS,
+                    fields(field("a", "A", FieldKind.EXPRESSION),
+                            field("b", "B", FieldKind.EXPRESSION),
+                            field("c", "C", FieldKind.EXPRESSION)),
+                    1, 1, 3, 3);
+        }
+        return null;
     }
 
     private static WorkflowSpec spec(ApplicationMode mode, String commandId, String title,

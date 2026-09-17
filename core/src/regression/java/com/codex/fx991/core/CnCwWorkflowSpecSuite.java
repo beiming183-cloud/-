@@ -19,6 +19,7 @@ public final class CnCwWorkflowSpecSuite {
         statisticsSpecs();
         functionTableSpecsAndSessions();
         inequalitySpecs();
+        ratioSpecsAndSessions();
         equationSpecs();
         matrixAndVectorSpecs();
         statisticsSessions();
@@ -97,6 +98,35 @@ public final class CnCwWorkflowSpecSuite {
         var quartic = CnCwWorkflowSpec.forCommand(ApplicationMode.INEQUALITY, "quartic");
         equal(6, quartic.fields().size(), "quartic relation plus five coefficients");
         equal("x^4", quartic.fields().get(1).label(), "quartic leading coefficient label");
+    }
+
+    private void ratioSpecsAndSessions() {
+        var xdSpec = CnCwWorkflowSpec.forCommand(ApplicationMode.RATIO, "a:b=x:d");
+        equal(CnCwWorkflowSpec.InputLayout.FIXED_FIELDS, xdSpec.layout(),
+                "A:B=X:D uses fixed fields");
+        equal(3, xdSpec.fields().size(), "A:B=X:D has three known values");
+        equal("A", xdSpec.fields().get(0).label(), "ratio A label");
+        equal("B", xdSpec.fields().get(1).label(), "ratio B label");
+        equal("D", xdSpec.fields().get(2).label(), "ratio D label");
+        var xd = CnCwWorkflowSession.create(xdSpec);
+        xd.setCell(0, 0, "2");
+        xd.setCell(0, 1, "4");
+        xd.setCell(0, 2, "10");
+        equal("2,4,10", xd.legacySource(), "A:B=X:D serialization");
+        var xdResult = xd.evaluate(context);
+        near(5.0, xdResult.primaryValue(), 0.0, "A:B=X:D delegates to ratio engine");
+        equal(com.codex.fx991.core.cw.CnCwModeEngine.ResultLayout.KEY_VALUE,
+                xdResult.layout(), "ratio result is structured key-value");
+        equal("X", xdResult.items().get(0).label(), "ratio result X label");
+
+        var cxSpec = CnCwWorkflowSpec.forCommand(ApplicationMode.RATIO, "a:b=c:x");
+        equal("C", cxSpec.fields().get(2).label(), "A:B=C:X uses C as third known value");
+        var cx = CnCwWorkflowSession.create(cxSpec);
+        cx.setCell(0, 0, "2");
+        cx.setCell(0, 1, "4");
+        cx.setCell(0, 2, "3");
+        near(6.0, cx.evaluate(context).primaryValue(), 0.0,
+                "A:B=C:X delegates to ratio engine");
     }
 
     private void equationSpecs() {
@@ -272,6 +302,8 @@ public final class CnCwWorkflowSpecSuite {
                 "unknown statistics command is rejected");
         check(CnCwWorkflowSpec.forCommand(ApplicationMode.INEQUALITY, "missing") == null,
                 "unknown inequality command is rejected");
+        check(CnCwWorkflowSpec.forCommand(ApplicationMode.RATIO, "missing") == null,
+                "unknown ratio command is rejected");
     }
 
     private void check(boolean condition, String message) {

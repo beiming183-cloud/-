@@ -1140,6 +1140,16 @@ public final class CnCwMachine {
             return true;
         }
 
+        // Preserve the historical comma bridge for ratio mode.
+        if (key == CnCwKey.COMMA
+                && workflowSession.spec().mode() == ApplicationMode.RATIO
+                && workflowSession.selectedRow() == 0
+                && workflowSession.selectedColumn() == 0) {
+            workflowSession = null;
+            status = "比例 · 兼容逗号输入";
+            return false;
+        }
+
         if (workflowSession.selectedIsChoice() && !shiftArmed) {
             if (key == CnCwKey.LEFT || key == CnCwKey.UP
                     || key == CnCwKey.RIGHT || key == CnCwKey.DOWN) {
