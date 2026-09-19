@@ -6,6 +6,7 @@ import com.codex.fx991.core.math.ComplexExpressionEngine;
 import com.codex.fx991.core.math.ComplexValue;
 import com.codex.fx991.core.math.CalculationError;
 import com.codex.fx991.core.math.CalculationException;
+import com.codex.fx991.core.math.CalculationBudget;
 import com.codex.fx991.core.math.ExactValue;
 import com.codex.fx991.core.math.ManualFunctions;
 import com.codex.fx991.core.math.Rational;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.CancellationException;
 
 /**
  * Android-free CN CW shell and fast expression controller.
@@ -1729,7 +1731,7 @@ public final class CnCwMachine {
                     || (hasComplexAns && plainSource.contains("Ans"));
         errorShown = false;
         lastError = null;
-        try {
+        try (CalculationBudget.Scope budget = CalculationBudget.open()) {
             if (!pendingFunctionDefinition.isEmpty()) {
                 ScalarExpressionEngine.CompiledExpression definition =
                         ScalarExpressionEngine.compile(source);
@@ -1757,6 +1759,20 @@ public final class CnCwMachine {
                 formatted = valid ? "True" : "False";
                 scalar = valid ? 1.0 : 0.0;
                 exactScalar = ExactValue.integer(valid ? 1 : 0);
+            } else if (verificationMode && application == ApplicationMode.COMPLEX) {
+                Map<String, ComplexValue> complexVariables = new HashMap<>();
+                for (Map.Entry<String, Double> entry : variables.entrySet()) {
+                    complexVariables.put(entry.getKey(), new ComplexValue(entry.getValue(), 0.0));
+                }
+                boolean valid = ComplexExpressionEngine.verify(plainSource, complexVariables,
+                        hasComplexAns ? complexAns
+                                : hasAns ? new ComplexValue(ans, 0.0) : ComplexValue.ZERO,
+                        settings.angleUnit());
+                formatted = valid ? "True" : "False";
+                scalar = valid ? 1.0 : 0.0;
+                exactScalar = ExactValue.integer(valid ? 1 : 0);
+                storeAnswer = false;
+                complexEvaluation = false;
             } else if (application == ApplicationMode.CALCULATE
                     && hasStatementOperator(source)) {
                 String statement = source;
@@ -1895,8 +1911,12 @@ public final class CnCwMachine {
                     formatted = BaseNEngine.format((int) scalar, BaseNEngine.Base.DECIMAL);
                 }
             }
+            budget.checkpoint();
             commitSuccessfulResult(formatted, scalar, exactScalar, completionStatus,
                     storeAnswer, complexEvaluation);
+        } catch (CancellationException canceled) {
+            // The adapter owns cancellation; never turn an abandoned job into an error result.
+            throw canceled;
         } catch (CalculationException error) {
             commitCalculationError(error.error(), error.position());
         } catch (ArithmeticException error) {
@@ -1920,6 +1940,9 @@ public final class CnCwMachine {
                                         String completionStatus,
                                         boolean storeAnswer,
                                         boolean complexEvaluation) {
+        if (!Double.isFinite(scalar)) {
+            throw new CalculationException(CalculationError.MATH, "Non-finite result", 0);
+        }
         String evaluatedProcessDisplay = expandedProcessDisplay(tokens, ansProcessDisplay);
         resultProcessDisplay = evaluatedProcessDisplay;
         if (storeAnswer && application != ApplicationMode.INEQUALITY) {
@@ -2221,6 +2244,12 @@ public final class CnCwMachine {
         resultProcessDisplay = entry.processDisplay;
         applicationResult = entry.applicationResult;
         committedCalculationState = entry.calculationState;
+        lastExactResult = committedCalculationState.exactValue();
+        originalResult = result;
+        formatConverted = false;
+        engineeringMode = false;
+        errorShown = false;
+        lastError = null;
         resultShown = true;
         status = "历史 " + (historyIndex + 1) + "/" + history.size();
     }
@@ -2249,6 +2278,12 @@ public final class CnCwMachine {
 
     private void dismissError() {
         committedCalculationState = CnCwCalculationState.editing();
+        if (workflowSession != null) {
+            // Evaluation tokens contain the whole serialized worksheet, never a single cell.
+            loadWorkflowCell();
+            status = workflowStatus();
+            return;
+        }
         errorShown = false;
         lastError = null;
         result = "";
@@ -2268,7 +2303,7 @@ public final class CnCwMachine {
         applicationResult = null;
         navigation.clear();
         screen = CnCwScreen.HOME;
-        applicationBeforeHome = application;
+        if (application != null) applicationBeforeHome = application;
         application = null;
         activeCommandId = "";
         selectedIndex = 0;
@@ -2583,6 +2618,7 @@ public final class CnCwMachine {
                 status = "化简 · " + (manualSimplification ? "手动" : "自动");
             }
             case 2 -> {
+                if (!supportsVerification()) return;
                 verificationMode = !verificationMode;
                 history.clear();
                 historyIndex = 0;
@@ -2609,7 +2645,8 @@ public final class CnCwMachine {
     }
 
     private void activateFormat(int index) {
-        if (!hasAns) {
+        CnCwCalculationState valueState = formatSourceState();
+        if (valueState.scalarValue() == null) {
             status = "尚无可转换的结果";
             return;
         }
@@ -2617,24 +2654,27 @@ public final class CnCwMachine {
         if (commands.isEmpty()) return;
         String id = commands.get(Math.max(0, Math.min(index, commands.size() - 1))).id();
         if (!formatConverted) originalResult = result;
-        Rational fraction = exactAns == null ? null : exactAns.rational();
-        if (fraction == null) fraction = Rational.approximate(ans, 1_000_000L, 1e-12);
+        double value = valueState.scalarValue();
+        ExactValue exact = valueState.exactValue();
+        ComplexValue complex = valueState.complexValue();
+        engineeringMode = false;
         result = switch (id) {
-            case "standard" -> formatResult(ans, exactAns, expression(), true);
-            case "decimal" -> formatNumber(ans);
-            case "factor" -> primeFactors(ans);
-            case "improper" -> fraction.improperString();
-            case "mixed" -> fraction.mixedString();
-            case "dms" -> ManualFunctions.fromDecimalDegrees(ans).display();
-            case "rectangular" -> formatComplex(complexAns, false);
-            case "polar" -> formatComplex(complexAns, true);
+            case "standard" -> complex == null ? formatResult(value, exact, expression(), true)
+                    : formatComplex(complex);
+            case "decimal" -> complex == null ? formatNumber(value) : formatComplex(complex);
+            case "factor" -> primeFactors(value);
+            case "improper" -> formatFraction(value, exact).improperString();
+            case "mixed" -> formatFraction(value, exact).mixedString();
+            case "dms" -> ManualFunctions.fromDecimalDegrees(value).display();
+            case "rectangular" -> formatComplex(complex, false);
+            case "polar" -> formatComplex(complex, true);
             case "engineering" -> {
-                engineeringExponent = ans == 0.0 ? 0
-                        : (int) Math.floor(Math.log10(Math.abs(ans)) / 3.0) * 3;
+                engineeringExponent = value == 0.0 ? 0
+                        : (int) Math.floor(Math.log10(Math.abs(value)) / 3.0) * 3;
                 engineeringMode = true;
-                yield engineeringAtExponent(ans, engineeringExponent);
+                yield engineeringAtExponent(value, engineeringExponent);
             }
-            default -> formatNumber(ans);
+            default -> formatNumber(value);
         };
         if ("Math ERROR".equals(result)) {
             closeAllPopups();
@@ -2643,26 +2683,29 @@ public final class CnCwMachine {
         }
         formatConverted = true;
         resultShown = true;
-        committedCalculationState = currentAnswerCalculationState(result);
+        committedCalculationState = valueState.withDisplay(result);
         status = engineeringMode ? "ENG 模式 · 用 ←/→ 移动小数点" : "格式转换";
         closeAllPopups();
     }
 
     private void restoreOriginalFormat() {
+        CnCwCalculationState valueState = formatSourceState();
         engineeringMode = false;
         formatConverted = false;
         if (!originalResult.isEmpty()) result = originalResult;
         resultShown = !result.isEmpty();
-        if (resultShown) committedCalculationState = currentAnswerCalculationState(result);
+        if (resultShown) committedCalculationState = valueState.withDisplay(result);
         status = applicationStatus();
     }
 
     private void refreshEngineeringResult() {
+        CnCwCalculationState valueState = formatSourceState();
+        if (valueState.scalarValue() == null) return;
         engineeringExponent = Math.max(-99, Math.min(99, engineeringExponent));
         engineeringExponent -= Math.floorMod(engineeringExponent, 3);
-        result = engineeringAtExponent(ans, engineeringExponent);
+        result = engineeringAtExponent(valueState.scalarValue(), engineeringExponent);
         resultShown = true;
-        committedCalculationState = currentAnswerCalculationState(result);
+        committedCalculationState = valueState.withDisplay(result);
         status = "ENG · 10^" + engineeringExponent;
     }
 
@@ -2674,6 +2717,19 @@ public final class CnCwMachine {
             text = text.replace('.', ',');
         }
         return text + "×10^" + exponent;
+    }
+
+    private CnCwCalculationState formatSourceState() {
+        return resultShown ? calculationStateSnapshot() : currentAnswerCalculationState(result);
+    }
+
+    private static Rational formatFraction(double value, ExactValue exact) {
+        Rational fraction = exact == null ? null : exact.rational();
+        return fraction == null ? Rational.approximate(value, 1_000_000L, 1e-12) : fraction;
+    }
+
+    private boolean supportsVerification() {
+        return application == ApplicationMode.CALCULATE || application == ApplicationMode.COMPLEX;
     }
 
     private void insertFromMenu(Token token) {
@@ -2997,9 +3053,12 @@ public final class CnCwMachine {
                     command("store-e", "→E", "赋值"), command("store-f", "→F", "赋值"),
                     command("store-x", "→x", "赋值"), command("store-y", "→y", "赋值"),
                     command("store-z", "→z", "赋值"));
-            case TOOLS -> com.codex.fx991.core.Compat.list(command("undo", "撤消", "恢复上次编辑"),
+            case TOOLS -> supportsVerification()
+                    ? com.codex.fx991.core.Compat.list(command("undo", "撤消", "恢复上次编辑"),
                     command("simplify", "化简", manualSimplification ? "手动" : "自动"),
-                    command("verify", "运算验证", verificationMode ? "开" : "关"));
+                    command("verify", "运算验证", verificationMode ? "开" : "关"))
+                    : com.codex.fx991.core.Compat.list(command("undo", "撤消", "恢复上次编辑"),
+                    command("simplify", "化简", manualSimplification ? "手动" : "自动"));
             case TOOLS_CONVERSION -> com.codex.fx991.core.Compat.list(
                     command("in-cm", "in → cm", "×2.54"), command("cm-in", "cm → in", "÷2.54"),
                     command("lb-kg", "lb → kg", "×0.45359237"), command("kg-lb", "kg → lb", "÷0.45359237"),
@@ -3066,27 +3125,33 @@ public final class CnCwMachine {
     }
 
     private List<CnCwCommand> formatCommands() {
-        if (!hasAns) return com.codex.fx991.core.Compat.list();
+        CnCwCalculationState valueState = formatSourceState();
+        if (valueState.scalarValue() == null || !valueState.isResult()
+                || valueState.hasApplicationResult()) return com.codex.fx991.core.Compat.list();
+        double value = valueState.scalarValue();
+        ExactValue exact = valueState.exactValue();
+        ComplexValue complex = valueState.complexValue();
         List<CnCwCommand> items = new ArrayList<>();
         items.add(command("standard", "标准", "分数、π、√ 格式"));
         items.add(command("decimal", "小数", "小数结果"));
-        if (ans > 0.0 && ans == Math.rint(ans) && ans <= 9_999_999_999L) {
+        if (complex != null) {
+            items.add(command("rectangular", "代数形式", "a+bi"));
+            items.add(command("polar", "极坐标形式", "r∠θ"));
+            if (complex.imaginary() != 0.0) return com.codex.fx991.core.Compat.copyList(items);
+        }
+        if (value > 0.0 && value == Math.rint(value) && value <= 9_999_999_999L) {
             items.add(command("factor", "质因数分解", "最多 10 位正整数"));
         }
-        Rational fraction = exactAns == null ? null : exactAns.rational();
+        Rational fraction = exact == null ? null : exact.rational();
         if (fraction != null) {
             items.add(command("improper", "假分数", "a/b"));
             items.add(command("mixed", "带分数", "a b/c"));
         }
-        if (Double.isFinite(ans)) {
+        if (Double.isFinite(value)) {
             items.add(command("engineering", "工程记数法", "用 ←/→ 移动小数点"));
         }
-        if (Math.abs(ans) <= 9_999_999.999999) {
+        if (Math.abs(value) <= 9_999_999.999999) {
             items.add(command("dms", "六十进制", "度、分、秒"));
-        }
-        if (application == ApplicationMode.COMPLEX && hasComplexAns) {
-            items.add(command("rectangular", "代数形式", "a+bi"));
-            items.add(command("polar", "极坐标形式", "r∠θ"));
         }
         return com.codex.fx991.core.Compat.copyList(items);
     }
@@ -4968,8 +5033,8 @@ public final class CnCwMachine {
             };
             return formatNumber(value.abs()) + "∠" + formatNumber(angle);
         }
-        if (Math.abs(value.imaginary()) < 1e-14) return formatNumber(value.real());
-        if (Math.abs(value.real()) < 1e-14) {
+        if (value.imaginary() == 0.0) return formatNumber(value.real());
+        if (value.real() == 0.0) {
             if (Math.abs(value.imaginary() - 1.0) < 1e-14) return "i";
             if (Math.abs(value.imaginary() + 1.0) < 1e-14) return "−i";
             return formatNumber(value.imaginary()) + "i";

@@ -5,8 +5,6 @@ import com.codex.fx991.core.math.ScalarExpressionEngine;
 import com.codex.fx991.core.math.VectorValue;
 import com.codex.fx991.core.mode.ApplicationMode;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -272,10 +270,7 @@ public final class CnCwLinearAlgebraMemory {
     }
 
     private static String format(double value) {
-        if (!Double.isFinite(value)) return Double.toString(value);
-        if (value == 0.0) return "0";
-        String text = BigDecimal.valueOf(value).setScale(11, RoundingMode.HALF_UP)
-                .stripTrailingZeros().toPlainString();
-        return text.startsWith("-") ? "−" + text.substring(1) : text;
+        if (!Double.isFinite(value)) throw new ArithmeticException("Non-finite matrix/vector result");
+        return CnCwModeEngine.format(value);
     }
 }

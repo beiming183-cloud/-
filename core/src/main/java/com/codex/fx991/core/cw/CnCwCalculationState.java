@@ -96,6 +96,12 @@ public final class CnCwCalculationState {
     }
 
     public Phase phase() { return phase; }
+
+    /** Changes presentation without replacing this result's value with the live Ans register. */
+    public CnCwCalculationState withDisplay(String nextDisplay) {
+        return new CnCwCalculationState(phase, resultKind, nextDisplay, scalarValue,
+                exactValue, complexValue, applicationResult, error, errorCursor);
+    }
     public ResultKind resultKind() { return resultKind; }
     public String display() { return display; }
     public Double scalarValue() { return scalarValue; }

@@ -14,6 +14,7 @@ import com.codex.fx991.core.mode.ApplicationMode;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.math.MathContext;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -565,17 +566,20 @@ public final class CnCwModeEngine {
         return trimmed;
     }
 
-    private static String format(double value) {
+    static String format(double value) {
         if (!Double.isFinite(value)) return Double.toString(value);
         if (value == 0.0) return "0";
-        String text = BigDecimal.valueOf(value).setScale(11, RoundingMode.HALF_UP)
-                .stripTrailingZeros().toPlainString();
+        BigDecimal rounded = BigDecimal.valueOf(value)
+                .round(new MathContext(12, RoundingMode.HALF_UP)).stripTrailingZeros();
+        double magnitude = Math.abs(value);
+        String text = magnitude < 1e-9 || magnitude >= 1e10
+                ? rounded.toString() : rounded.toPlainString();
         return text.startsWith("-") ? "−" + text.substring(1) : text;
     }
 
     private static String formatComplex(ComplexValue value) {
-        if (Math.abs(value.imaginary()) < 1e-12) return format(value.real());
-        if (Math.abs(value.real()) < 1e-12) return format(value.imaginary()) + "i";
+        if (value.imaginary() == 0.0) return format(value.real());
+        if (value.real() == 0.0) return format(value.imaginary()) + "i";
         return format(value.real()) + (value.imaginary() < 0 ? "−" : "+")
                 + format(Math.abs(value.imaginary())) + "i";
     }

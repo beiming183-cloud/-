@@ -1,6 +1,8 @@
 package com.codex.fx991.core.cw;
 
 import com.codex.fx991.core.math.ScalarExpressionEngine;
+import com.codex.fx991.core.math.BaseNEngine;
+import com.codex.fx991.core.mode.ApplicationMode;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -102,7 +104,7 @@ public final class CnCwWorkflowValidation {
         for (int row = 0; row < rows; row++) {
             for (int column = 0; column < columns; column++) {
                 String source = cells.get(row * columns + column);
-                Status status = validateCell(spec, rows, columns, row, column, source);
+                Status status = validateCell(spec, rows, columns, row, column, source, cells);
                 String message = switch (status) {
                     case EMPTY -> "必填";
                     case VALID -> "";
@@ -123,7 +125,24 @@ public final class CnCwWorkflowValidation {
 
     private static Status validateCell(CnCwWorkflowSpec.WorkflowSpec spec,
                                        int rows, int columns, int row, int column,
-                                       String source) {
+                                       String source, List<String> cells) {
+        if (spec != null && spec.mode() == ApplicationMode.BASE_N
+                && CnCwBaseNWorkflow.handles(spec.commandId())) {
+            if (com.codex.fx991.core.Compat.isBlank(source)) return Status.EMPTY;
+            try {
+                boolean baseChoice = column == 0
+                        || (spec.commandId().equals("base-convert") && column == 1);
+                if (baseChoice) {
+                    inputBase(source);
+                } else {
+                    // HEX E is a digit, not a decimal exponent or a scalar variable.
+                    BaseNEngine.parse(source, inputBase(cells.get(0)));
+                }
+                return Status.VALID;
+            } catch (RuntimeException error) {
+                return Status.INVALID_EXPRESSION;
+            }
+        }
         if (isLegacyOneVariableAggregate(spec, rows, columns, row, column, source)) {
             List<String> parts = splitTopLevel(source);
             if (parts.size() <= 1) return validateExpression(source);
@@ -133,6 +152,16 @@ public final class CnCwWorkflowValidation {
             return Status.VALID;
         }
         return validateExpression(source);
+    }
+
+    private static BaseNEngine.Base inputBase(String source) {
+        return switch (source) {
+            case "2" -> BaseNEngine.Base.BINARY;
+            case "8" -> BaseNEngine.Base.OCTAL;
+            case "10" -> BaseNEngine.Base.DECIMAL;
+            case "16" -> BaseNEngine.Base.HEXADECIMAL;
+            default -> throw new IllegalArgumentException("Unsupported base");
+        };
     }
 
     private static boolean isLegacyOneVariableAggregate(CnCwWorkflowSpec.WorkflowSpec spec,

@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.CancellationException;
 import java.math.BigDecimal;
 
 /**
@@ -54,6 +55,7 @@ public final class CalculatorView extends View {
     private CnCwKey repeatingKey;
     private int repeatingPointerId = -1;
     private boolean displayPressed;
+    private int displayPointerId = -1;
     private boolean displaySelectionMode;
     private boolean displayLongPressTriggered;
     private float displayDownX;
@@ -101,11 +103,7 @@ public final class CalculatorView extends View {
     /** Geometry/legends are owned by the physical 991 layout, not the painter. */
     private final PhysicalKeyLayout physicalLayout;
     private final CnCwTouchRouter touchRouter = new CnCwTouchRouter();
-    private final ExecutorService evaluationExecutor = Executors.newSingleThreadExecutor(task -> {
-        Thread thread = new Thread(task, "cn-cw-evaluator");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private ExecutorService evaluationExecutor = createEvaluationExecutor();
     private CnCwMachine machine;
     private CnCwUiState state;
     private Future<?> pendingEvaluation;
@@ -114,6 +112,14 @@ public final class CalculatorView extends View {
     /** View-local viewport for core-owned TABLE results; never changes math state. */
     private CnCwModeEngine.ModeResult tableResult;
     private int tableFirstRow;
+
+    private static ExecutorService createEvaluationExecutor() {
+        return Executors.newSingleThreadExecutor(task -> {
+            Thread thread = new Thread(task, "cn-cw-evaluator");
+            thread.setDaemon(true);
+            return thread;
+        });
+    }
 
     public CalculatorView(Context context) {
         super(context);
@@ -622,6 +628,7 @@ public final class CalculatorView extends View {
         int visibleRow = Math.min(visibleRows - 1,
                 Math.max(0, (int) ((y - grid.top - headerHeight) / cellHeight)));
         int row = startRow + visibleRow;
+        invalidateEvaluation();
         state = machine.selectWorkflowCell(row, column);
         performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
         postInvalidateOnAnimation();
@@ -647,8 +654,7 @@ public final class CalculatorView extends View {
             } else if (action.type() == CnCwWorkflowAction.Type.BACK) {
                 dispatchKey(CnCwKey.BACK);
             } else {
-                inputRevision++;
-                cancelPendingEvaluation();
+                invalidateEvaluation();
                 state = machine.performWorkflowAction(action.type());
                 postInvalidateOnAnimation();
             }
@@ -1601,6 +1607,7 @@ public final class CalculatorView extends View {
         int pointerId = event.getPointerId(actionIndex);
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN) cancelGestures();
                 if (event.getActionMasked() == MotionEvent.ACTION_DOWN
                         && displayBounds(getWidth()).contains(event.getX(), event.getY())) {
                     if (state.hasWorkflowInput() && !state.resultShown()) {
@@ -1610,6 +1617,7 @@ public final class CalculatorView extends View {
                         return true;
                     }
                     displayPressed = true;
+                    displayPointerId = pointerId;
                     displaySelectionMode = false;
                     displayLongPressTriggered = false;
                     selectionTapCandidate = false;
@@ -1691,6 +1699,7 @@ public final class CalculatorView extends View {
                             }
                             CnCwCursorPath anchor = displaySemanticPosition(
                                     displayDownX, displayDownY);
+                            invalidateEvaluation();
                             state = machine.selectTouchWord(anchor);
                             lastDragCursor = state.cursor();
                             lastDragSemantic = state.semanticCursor();
@@ -1712,12 +1721,16 @@ public final class CalculatorView extends View {
             }
             case MotionEvent.ACTION_MOVE -> {
                 if (displayPressed) {
+                    int displayIndex = event.findPointerIndex(displayPointerId);
+                    if (displayIndex < 0) return true;
+                    float displayX = event.getX(displayIndex);
+                    float displayY = event.getY(displayIndex);
                     if (displaySelectionMode) {
-                        moveSelectionBoundaryToDisplayPosition(event.getX(), event.getY());
+                        moveSelectionBoundaryToDisplayPosition(displayX, displayY);
                         return true;
                     }
-                    float dx = event.getX() - displayDownX;
-                    float dy = event.getY() - displayDownY;
+                    float dx = displayX - displayDownX;
+                    float dy = displayY - displayDownY;
                     if (selectionTapCandidate) {
                         if (Math.abs(dx) > dp(10) || Math.abs(dy) > dp(10)) {
                             selectionTapCandidate = false;
@@ -1726,15 +1739,20 @@ public final class CalculatorView extends View {
                     }
                     if (Math.abs(dx) > dp(4) && Math.abs(dx) > Math.abs(dy)) {
                         if (displayLongPress != null) gestureHandler.removeCallbacks(displayLongPress);
-                        moveCursorToDisplayPosition(event.getX(), event.getY(), true);
+                        moveCursorToDisplayPosition(displayX, displayY, true);
                     }
                     return true;
                 }
                 return true;
             }
             case MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
-                if (displayPressed && event.getActionMasked() == MotionEvent.ACTION_UP) {
+                // Every pointer owns its release, including the last key finger
+                // after a display finger has already left the screen.
+                touchRouter.pointerUp(pointerId);
+                if (pointerId == repeatingPointerId) stopKeyRepeat();
+                if (displayPressed && pointerId == displayPointerId) {
                     displayPressed = false;
+                    displayPointerId = -1;
                     if (displayLongPress != null) gestureHandler.removeCallbacks(displayLongPress);
                     if (displaySelectionMode || displayLongPressTriggered) {
                         displaySelectionMode = false;
@@ -1745,8 +1763,8 @@ public final class CalculatorView extends View {
                         postInvalidateOnAnimation();
                         return true;
                     }
-                    float dx = event.getX() - displayDownX;
-                    float dy = event.getY() - displayDownY;
+                    float dx = event.getX(actionIndex) - displayDownX;
+                    float dy = event.getY(actionIndex) - displayDownY;
                     if (selectionTapCandidate) {
                         selectionTapCandidate = false;
                         if (Math.abs(dx) < dp(12) && Math.abs(dy) < dp(12)) {
@@ -1755,25 +1773,16 @@ public final class CalculatorView extends View {
                         return true;
                     }
                     if (Math.abs(dx) < dp(18) && Math.abs(dy) < dp(18)) {
-                        moveCursorToDisplayPosition(event.getX(), event.getY(), false);
+                        moveCursorToDisplayPosition(event.getX(actionIndex), event.getY(actionIndex), false);
                     }
                     return true;
                 }
-                touchRouter.pointerUp(pointerId);
-                if (pointerId == repeatingPointerId) stopKeyRepeat();
                 if (event.getActionMasked() == MotionEvent.ACTION_UP) performClick();
                 postInvalidateOnAnimation();
                 return true;
             }
             case MotionEvent.ACTION_CANCEL -> {
-                displayPressed = false;
-                displaySelectionMode = false;
-                displayLongPressTriggered = false;
-                selectionTapCandidate = false;
-                selectionDragEdge = 0;
-                if (displayLongPress != null) gestureHandler.removeCallbacks(displayLongPress);
-                stopKeyRepeat();
-                touchRouter.cancelAll();
+                cancelGestures();
                 postInvalidateOnAnimation();
                 return true;
             }
@@ -1807,6 +1816,20 @@ public final class CalculatorView extends View {
         keyRepeat = null;
         repeatingKey = null;
         repeatingPointerId = -1;
+    }
+
+    /** No delayed input is allowed to survive a lost gesture or inactive window. */
+    private void cancelGestures() {
+        displayPressed = false;
+        displayPointerId = -1;
+        displaySelectionMode = false;
+        displayLongPressTriggered = false;
+        selectionTapCandidate = false;
+        selectionDragEdge = 0;
+        if (displayLongPress != null) gestureHandler.removeCallbacks(displayLongPress);
+        displayLongPress = null;
+        stopKeyRepeat();
+        touchRouter.cancelAll();
     }
 
     private boolean isRepeatableKey(CnCwKey key) {
@@ -2035,6 +2058,7 @@ public final class CalculatorView extends View {
             else return;
         }
         if (target.equals(lastDragSemantic)) return;
+        invalidateEvaluation();
         state = selectionDragEdge < 0
                 ? machine.moveTouchSelectionStart(target)
                 : machine.moveTouchSelectionEnd(target);
@@ -2048,6 +2072,7 @@ public final class CalculatorView extends View {
     private void moveCursorAtomically(CnCwCursorPath target, boolean haptic) {
         if (target == null) target = CnCwCursorPath.rootBoundary(state.cursor());
         if (haptic && target.equals(lastDragSemantic)) return;
+        invalidateEvaluation();
         state = machine.moveCursorTo(target);
         lastDragCursor = state.cursor();
         lastDragSemantic = state.semanticCursor();
@@ -2160,6 +2185,7 @@ public final class CalculatorView extends View {
         CharSequence value = clipboard.getPrimaryClip().getItemAt(0).coerceToText(getContext());
         if (value == null) return;
 
+        invalidateEvaluation();
         int accepted = machine.pasteExpression(value.toString());
         state = machine.state();
         postInvalidateOnAnimation();
@@ -2186,15 +2212,29 @@ public final class CalculatorView extends View {
 
     private void dispatchKey(CnCwKey key) {
         if (handleTableResultNavigation(key)) return;
-        long revision = ++inputRevision;
-        cancelPendingEvaluation();
-        if (key == CnCwKey.EXE && state.screen().isApplication()
+        long revision = invalidateEvaluation();
+        // Workflow OK/ENTER advances a cell; keep that edit synchronous so
+        // a quickly typed next digit cannot cancel the cell transition.
+        boolean execute = key == CnCwKey.EXE || (!state.hasWorkflowInput()
+                && (key == CnCwKey.OK || key == CnCwKey.ENTER));
+        if (execute && state.screen().isApplication()
                 && !state.applicationLanding()) {
             CnCwMachine snapshot = machine.copyForEvaluation();
             evaluating = true;
             postInvalidateOnAnimation();
             pendingEvaluation = evaluationExecutor.submit(() -> {
-                CnCwUiState next = snapshot.dispatch(key);
+                CnCwUiState next;
+                try {
+                    next = snapshot.dispatch(key);
+                } catch (CancellationException cancelled) {
+                    post(() -> {
+                        if (revision != inputRevision) return;
+                        pendingEvaluation = null;
+                        evaluating = false;
+                        postInvalidateOnAnimation();
+                    });
+                    return;
+                }
                 post(() -> {
                     if (revision != inputRevision) return;
                     machine = snapshot;
@@ -2248,10 +2288,33 @@ public final class CalculatorView extends View {
         evaluating = false;
     }
 
-    @Override
-    protected void onDetachedFromWindow() {
+    /** All View-to-machine edits share the same stale-result gate. */
+    private long invalidateEvaluation() {
         inputRevision++;
         cancelPendingEvaluation();
+        return inputRevision;
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasWindowFocus) {
+        super.onWindowFocusChanged(hasWindowFocus);
+        if (!hasWindowFocus) {
+            cancelGestures();
+            invalidateEvaluation();
+            postInvalidateOnAnimation();
+        }
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        if (evaluationExecutor.isShutdown()) evaluationExecutor = createEvaluationExecutor();
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        cancelGestures();
+        invalidateEvaluation();
         evaluationExecutor.shutdownNow();
         super.onDetachedFromWindow();
     }
