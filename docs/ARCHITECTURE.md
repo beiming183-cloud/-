@@ -29,7 +29,7 @@ declared in Gradle and generated `BuildConfig` constants (`MODEL_ID`,
 `HAS_SPREADSHEET`, `APPLICATION_COUNT`); the UI consumes that contract instead
 of inferring features from a package name.
 
-The published ID is `com.codex.cnscientific.calculator991`.  The Java namespace
+The published ID is `com.beibei.calculator`.  The Java namespace
 remains an internal compatibility detail; it is not a claim of affiliation
 with any calculator vendor.
 
@@ -128,6 +128,12 @@ forms and a complete formatter still need to be connected to this document
 boundary.
 
 ## Heavy-work boundary
+
+2026-09-19 更新：普通表达式的 EXE、OK、ENTER 均通过后台快照求值；结构化表单的 OK/ENTER 下一格仍是同步编辑。键盘、粘贴、触摸光标/选区、选格统一使旧求值 revision 失效。AC、失焦和窗口销毁会取消旧任务，手势按 pointerId 独立释放，清理延迟长按和重复输入。
+
+核心 `evaluate()` 打开线程内共享 `CalculationBudget`，嵌套/并列数值分析沿用同一预算：100 万次函数取值、2 秒。检查点响应中断；超预算沿用 `TIMEOUT`，取消原样抛出 `CancellationException`，不得被展示为语法错误。预算不是可强杀任意代码的系统 watchdog；计算必须经过协作检查点。正常误差容限不降低，实际功耗仍需设备实测。
+
+当前 FORMAT 从正在显示的 typed 结果读取值，不从最新 Ans 猜值；历史回看、转换和恢复显示不会覆盖 Ans。工作流求值的序列化整表内容只用于求值，错误退出时重新加载选中单格，防止写回污染。详见[本轮修复](audits/2026-09-19/FIXES.md)。
 
 Fast navigation/editing executes inline.  EXE evaluation runs through an
 isolated, cancellable snapshot boundary in the Android adapter:

@@ -26,6 +26,7 @@ import com.codex.fx991.core.cw.CnCwMachine;
 import com.codex.fx991.core.cw.CnCwModeEngine;
 import com.codex.fx991.core.cw.CnCwScreen;
 import com.codex.fx991.core.cw.CnCwUiState;
+import com.codex.fx991.core.cw.CnCwWorkflowAction;
 import com.codex.fx991.core.cw.CnCwWorkflowSession;
 import com.codex.fx991.core.cw.CnCwWorkflowSpec;
 import com.codex.fx991.core.mode.CnCwModel;
@@ -36,6 +37,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.CancellationException;
 import java.math.BigDecimal;
 
 /**
@@ -53,6 +55,7 @@ public final class CalculatorView extends View {
     private CnCwKey repeatingKey;
     private int repeatingPointerId = -1;
     private boolean displayPressed;
+    private int displayPointerId = -1;
     private boolean displaySelectionMode;
     private boolean displayLongPressTriggered;
     private float displayDownX;
@@ -100,16 +103,23 @@ public final class CalculatorView extends View {
     /** Geometry/legends are owned by the physical 991 layout, not the painter. */
     private final PhysicalKeyLayout physicalLayout;
     private final CnCwTouchRouter touchRouter = new CnCwTouchRouter();
-    private final ExecutorService evaluationExecutor = Executors.newSingleThreadExecutor(task -> {
-        Thread thread = new Thread(task, "cn-cw-evaluator");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private ExecutorService evaluationExecutor = createEvaluationExecutor();
     private CnCwMachine machine;
     private CnCwUiState state;
     private Future<?> pendingEvaluation;
     private long inputRevision;
     private boolean evaluating;
+    /** View-local viewport for core-owned TABLE results; never changes math state. */
+    private CnCwModeEngine.ModeResult tableResult;
+    private int tableFirstRow;
+
+    private static ExecutorService createEvaluationExecutor() {
+        return Executors.newSingleThreadExecutor(task -> {
+            Thread thread = new Thread(task, "cn-cw-evaluator");
+            thread.setDaemon(true);
+            return thread;
+        });
+    }
 
     public CalculatorView(Context context) {
         super(context);
@@ -396,21 +406,28 @@ public final class CalculatorView extends View {
         float contentTop = lcd.top + lcd.height() * 0.145f;
         float contentBottom = lcd.bottom - dp(3);
         float available = lcd.width() - dp(12);
-        boolean showExpandedAnsProcess = state.resultShown()
+        CnCwModeEngine.ModeResult structuredResult = state.resultShown()
+                && state.hasStructuredApplicationResult() ? state.applicationResult() : null;
+        boolean tableResultShown = structuredResult != null
+                && structuredResult.layout() == CnCwModeEngine.ResultLayout.TABLE;
+        boolean showExpandedAnsProcess = !tableResultShown
+                && state.resultShown()
                 && state.expression().contains("Ans")
                 && !machine.calculationProcessDisplay().isBlank();
-        if (showExpandedAnsProcess) {
-            drawInspectionProcess(canvas, machine.calculationProcessDisplay(), lcd,
-                    contentTop, contentBottom, available);
-        } else {
-            drawNaturalExpression(canvas, state.naturalExpression(), lcd, contentTop,
-                    contentBottom, available);
+        if (!tableResultShown) {
+            if (showExpandedAnsProcess) {
+                drawInspectionProcess(canvas, machine.calculationProcessDisplay(), lcd,
+                        contentTop, contentBottom, available);
+            } else {
+                drawNaturalExpression(canvas, state.naturalExpression(), lcd, contentTop,
+                        contentBottom, available);
+            }
+            if (state.hasSelection()) {
+                drawSelectionHandles(canvas, lcd, contentTop, contentBottom);
+            }
         }
-        if (state.hasSelection()) {
-            drawSelectionHandles(canvas, lcd, contentTop, contentBottom);
-        }
-        if (state.resultShown() && state.hasStructuredApplicationResult()) {
-            drawStructuredApplicationResult(canvas, state.applicationResult(), lcd,
+        if (structuredResult != null) {
+            drawStructuredApplicationResult(canvas, structuredResult, lcd,
                     contentTop, contentBottom, available);
         } else if (state.resultShown() && !state.result().isEmpty()) {
             String[] lines = decimalDisplayResult(state.result()).split("\\n", -1);
@@ -498,28 +515,62 @@ public final class CalculatorView extends View {
                 paint.setTypeface(selected ? FACE_MEDIUM : FACE_NORMAL);
                 paint.setTextAlign(Paint.Align.CENTER);
                 paint.setTextSize(sp(10.5f));
-                String value = selected ? cleanClipboardText(state.displayText())
+                String value = input.isChoiceCell(row, column)
+                        ? input.displayCell(row, column)
+                        : selected ? cleanClipboardText(state.displayText())
                         : input.cell(row, column);
                 canvas.drawText(ellipsize(value, cellWidth - dp(5f)),
                         scratch.centerX(), centeredBaseline(top, top + cellHeight), paint);
             }
         }
         paint.setStyle(Paint.Style.FILL);
-        paint.setColor(LCD_INK);
-        paint.setTypeface(FACE_NORMAL);
-        paint.setTextAlign(Paint.Align.RIGHT);
-        paint.setTextSize(sp(8f));
-        String hint = workflowShapeAdjustable(input)
-                ? "SHIFT+方向 调整尺寸 · OK 下一格 · EXE 计算"
-                : "OK 下一格 · EXE 计算";
-        canvas.drawText(ellipsize(hint, lcd.width() - dp(12)), lcd.right - dp(6),
-                lcd.bottom - dp(3), paint);
+        drawWorkflowActionBar(canvas, lcd, input);
+    }
+
+    private void drawWorkflowActionBar(Canvas canvas, RectF lcd,
+                                       CnCwWorkflowSession.Snapshot input) {
+        List<CnCwWorkflowAction> actions = input.actions();
+        for (int index = 0; index < actions.size(); index++) {
+            CnCwWorkflowAction action = actions.get(index);
+            RectF bounds = workflowActionBounds(lcd, actions.size(), index);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(action.enabled() ? Color.argb(42, 24, 58, 45)
+                    : Color.argb(14, 24, 58, 45));
+            canvas.drawRoundRect(bounds, dp(2f), dp(2f), paint);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(0.65f));
+            paint.setColor(action.enabled() ? Color.argb(145, 24, 58, 45)
+                    : Color.argb(50, 24, 58, 45));
+            canvas.drawRoundRect(bounds, dp(2f), dp(2f), paint);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(action.enabled() ? LCD_INK : Color.argb(105, 24, 58, 45));
+            paint.setTypeface(action.type() == CnCwWorkflowAction.Type.EXECUTE
+                    ? FACE_BOLD : FACE_NORMAL);
+            paint.setTextAlign(Paint.Align.CENTER);
+            paint.setTextSize(sp(actions.size() >= 5 ? 7.6f : 8.2f));
+            canvas.drawText(ellipsize(action.label(), bounds.width() - dp(4f)),
+                    bounds.centerX(), centeredBaseline(bounds.top, bounds.bottom), paint);
+        }
     }
 
     private RectF workflowGridBounds(RectF lcd) {
         float top = lcd.top + lcd.height() * 0.22f;
-        float bottom = lcd.bottom - dp(18f);
+        float bottom = lcd.bottom - dp(50f);
         return new RectF(lcd.left + dp(6f), top, lcd.right - dp(6f), bottom);
+    }
+
+    private RectF workflowActionBarBounds(RectF lcd) {
+        return new RectF(lcd.left + dp(6f), lcd.bottom - dp(45f),
+                lcd.right - dp(6f), lcd.bottom - dp(3f));
+    }
+
+    private RectF workflowActionBounds(RectF lcd, int count, int index) {
+        RectF bar = workflowActionBarBounds(lcd);
+        int columns = Math.max(1, count);
+        float gap = dp(1.5f);
+        float width = (bar.width() - gap * (columns - 1)) / columns;
+        float left = bar.left + index * (width + gap);
+        return new RectF(left, bar.top, left + width, bar.bottom);
     }
 
     private String workflowColumnLabel(CnCwWorkflowSession.Snapshot input, int column) {
@@ -577,10 +628,39 @@ public final class CalculatorView extends View {
         int visibleRow = Math.min(visibleRows - 1,
                 Math.max(0, (int) ((y - grid.top - headerHeight) / cellHeight)));
         int row = startRow + visibleRow;
+        invalidateEvaluation();
         state = machine.selectWorkflowCell(row, column);
         performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
         postInvalidateOnAnimation();
         return true;
+    }
+
+    private boolean selectWorkflowActionAt(float x, float y) {
+        if (!state.hasWorkflowInput() || state.resultShown()) return false;
+        CnCwWorkflowSession.Snapshot input = state.workflowInput();
+        List<CnCwWorkflowAction> actions = input.actions();
+        RectF lcd = displayBounds(getWidth());
+        for (int index = 0; index < actions.size(); index++) {
+            RectF bounds = workflowActionBounds(lcd, actions.size(), index);
+            if (!bounds.contains(x, y)) continue;
+            CnCwWorkflowAction action = actions.get(index);
+            if (!action.enabled()) {
+                performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+                return true;
+            }
+            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            if (action.type() == CnCwWorkflowAction.Type.EXECUTE) {
+                dispatchKey(CnCwKey.EXE);
+            } else if (action.type() == CnCwWorkflowAction.Type.BACK) {
+                dispatchKey(CnCwKey.BACK);
+            } else {
+                invalidateEvaluation();
+                state = machine.performWorkflowAction(action.type());
+                postInvalidateOnAnimation();
+            }
+            return true;
+        }
+        return false;
     }
 
     /** Renders core-owned application results without parsing display strings. */
@@ -591,7 +671,7 @@ public final class CalculatorView extends View {
         switch (result.layout()) {
             case KEY_VALUE -> drawKeyValueResult(canvas, result, lcd, contentTop, contentBottom, available);
             case MATRIX, VECTOR -> drawGridResult(canvas, result, lcd, contentTop, contentBottom, available);
-            case TABLE -> drawKeyValueResult(canvas, result, lcd, contentTop, contentBottom, available);
+            case TABLE -> drawTableResult(canvas, result, lcd, contentTop, contentBottom, available);
             case TEXT -> { }
         }
     }
@@ -631,6 +711,105 @@ public final class CalculatorView extends View {
             canvas.drawText(ellipsize(item.value(), cellWidth - dp(8f)),
                     left, centerY + dp(8f), paint);
         }
+    }
+
+    private int tableVisibleRows(CnCwModeEngine.ModeResult result) {
+        return Math.max(1, Math.min(4, result == null ? 1 : result.rows()));
+    }
+
+    private void drawTableResult(Canvas canvas, CnCwModeEngine.ModeResult result,
+                                 RectF lcd, float contentTop, float contentBottom,
+                                 float available) {
+        int rows = result.rows();
+        int columns = result.columns();
+        if (rows <= 0 || columns <= 0 || result.cells().size() != rows * columns) {
+            drawKeyValueResult(canvas, result, lcd, contentTop, contentBottom, available);
+            return;
+        }
+        if (tableResult != result) {
+            tableResult = result;
+            tableFirstRow = 0;
+        }
+        int visibleRows = tableVisibleRows(result);
+        int maxStart = Math.max(0, rows - visibleRows);
+        tableFirstRow = Math.max(0, Math.min(tableFirstRow, maxStart));
+
+        float resultTop = contentTop + (contentBottom - contentTop) * 0.43f;
+        float titleBottom = resultTop + dp(14f);
+        float headerHeight = dp(14f);
+        float gridTop = titleBottom;
+        float gridBottom = contentBottom - dp(11f);
+        float gridLeft = lcd.left + dp(7f);
+        float gridRight = lcd.right - dp(rows > visibleRows ? 7f : 5f);
+        float cellWidth = (gridRight - gridLeft) / columns;
+        float rowHeight = Math.max(dp(10f),
+                (gridBottom - gridTop - headerHeight) / visibleRows);
+
+        paint.setColor(LCD_INK);
+        paint.setTypeface(FACE_BOLD);
+        paint.setTextAlign(Paint.Align.LEFT);
+        paint.setTextSize(sp(10.5f));
+        canvas.drawText(ellipsize(result.title(), available * 0.58f),
+                gridLeft, resultTop + dp(10f), paint);
+        paint.setTextAlign(Paint.Align.RIGHT);
+        paint.setTypeface(FACE_NORMAL);
+        paint.setTextSize(sp(8.5f));
+        String range = (tableFirstRow + 1) + "–"
+                + Math.min(rows, tableFirstRow + visibleRows) + "/" + rows;
+        canvas.drawText(range, gridRight, resultTop + dp(10f), paint);
+
+        for (int column = 0; column < columns; column++) {
+            float left = gridLeft + column * cellWidth;
+            paint.setColor(Color.argb(38, 24, 58, 45));
+            canvas.drawRect(left, gridTop, left + cellWidth, gridTop + headerHeight, paint);
+            paint.setColor(LCD_INK);
+            paint.setTypeface(FACE_BOLD);
+            paint.setTextAlign(Paint.Align.CENTER);
+            paint.setTextSize(sp(9f));
+            String heading = column < result.items().size()
+                    ? result.items().get(column).label() : Integer.toString(column + 1);
+            canvas.drawText(ellipsize(heading, cellWidth - dp(3f)),
+                    left + cellWidth * 0.5f,
+                    centeredBaseline(gridTop, gridTop + headerHeight), paint);
+        }
+
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(dp(0.55f));
+        paint.setColor(Color.argb(95, 24, 58, 45));
+        for (int vr = 0; vr < visibleRows; vr++) {
+            int row = tableFirstRow + vr;
+            if (row >= rows) break;
+            float top = gridTop + headerHeight + vr * rowHeight;
+            for (int column = 0; column < columns; column++) {
+                float left = gridLeft + column * cellWidth;
+                scratch.set(left, top, left + cellWidth, top + rowHeight);
+                paint.setStyle(Paint.Style.FILL);
+                paint.setColor(vr % 2 == 0
+                        ? Color.argb(12, 24, 58, 45) : Color.TRANSPARENT);
+                canvas.drawRect(scratch, paint);
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setColor(Color.argb(72, 24, 58, 45));
+                canvas.drawRect(scratch, paint);
+                paint.setStyle(Paint.Style.FILL);
+                paint.setColor(LCD_INK);
+                paint.setTypeface(FACE_MEDIUM);
+                paint.setTextAlign(Paint.Align.CENTER);
+                paint.setTextSize(sp(columns >= 3 ? 9.2f : 10f));
+                String value = result.cells().get(row * columns + column);
+                canvas.drawText(ellipsize(value, cellWidth - dp(4f)),
+                        scratch.centerX(), centeredBaseline(top, top + rowHeight), paint);
+            }
+        }
+        paint.setStyle(Paint.Style.FILL);
+        if (rows > visibleRows) {
+            drawScrollBar(canvas, lcd, tableFirstRow, visibleRows, rows,
+                    gridTop + headerHeight, gridTop + headerHeight + visibleRows * rowHeight);
+        }
+        paint.setColor(LCD_INK);
+        paint.setTypeface(FACE_NORMAL);
+        paint.setTextAlign(Paint.Align.LEFT);
+        paint.setTextSize(sp(7.8f));
+        canvas.drawText("↑↓逐行  Page↑↓翻页", gridLeft, contentBottom - dp(1f), paint);
     }
 
     private void drawGridResult(Canvas canvas, CnCwModeEngine.ModeResult result,
@@ -1428,13 +1607,17 @@ public final class CalculatorView extends View {
         int pointerId = event.getPointerId(actionIndex);
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN) cancelGestures();
                 if (event.getActionMasked() == MotionEvent.ACTION_DOWN
                         && displayBounds(getWidth()).contains(event.getX(), event.getY())) {
                     if (state.hasWorkflowInput() && !state.resultShown()) {
-                        selectWorkflowCellAt(event.getX(), event.getY());
+                        if (!selectWorkflowActionAt(event.getX(), event.getY())) {
+                            selectWorkflowCellAt(event.getX(), event.getY());
+                        }
                         return true;
                     }
                     displayPressed = true;
+                    displayPointerId = pointerId;
                     displaySelectionMode = false;
                     displayLongPressTriggered = false;
                     selectionTapCandidate = false;
@@ -1516,6 +1699,7 @@ public final class CalculatorView extends View {
                             }
                             CnCwCursorPath anchor = displaySemanticPosition(
                                     displayDownX, displayDownY);
+                            invalidateEvaluation();
                             state = machine.selectTouchWord(anchor);
                             lastDragCursor = state.cursor();
                             lastDragSemantic = state.semanticCursor();
@@ -1537,12 +1721,16 @@ public final class CalculatorView extends View {
             }
             case MotionEvent.ACTION_MOVE -> {
                 if (displayPressed) {
+                    int displayIndex = event.findPointerIndex(displayPointerId);
+                    if (displayIndex < 0) return true;
+                    float displayX = event.getX(displayIndex);
+                    float displayY = event.getY(displayIndex);
                     if (displaySelectionMode) {
-                        moveSelectionBoundaryToDisplayPosition(event.getX(), event.getY());
+                        moveSelectionBoundaryToDisplayPosition(displayX, displayY);
                         return true;
                     }
-                    float dx = event.getX() - displayDownX;
-                    float dy = event.getY() - displayDownY;
+                    float dx = displayX - displayDownX;
+                    float dy = displayY - displayDownY;
                     if (selectionTapCandidate) {
                         if (Math.abs(dx) > dp(10) || Math.abs(dy) > dp(10)) {
                             selectionTapCandidate = false;
@@ -1551,15 +1739,20 @@ public final class CalculatorView extends View {
                     }
                     if (Math.abs(dx) > dp(4) && Math.abs(dx) > Math.abs(dy)) {
                         if (displayLongPress != null) gestureHandler.removeCallbacks(displayLongPress);
-                        moveCursorToDisplayPosition(event.getX(), event.getY(), true);
+                        moveCursorToDisplayPosition(displayX, displayY, true);
                     }
                     return true;
                 }
                 return true;
             }
             case MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
-                if (displayPressed && event.getActionMasked() == MotionEvent.ACTION_UP) {
+                // Every pointer owns its release, including the last key finger
+                // after a display finger has already left the screen.
+                touchRouter.pointerUp(pointerId);
+                if (pointerId == repeatingPointerId) stopKeyRepeat();
+                if (displayPressed && pointerId == displayPointerId) {
                     displayPressed = false;
+                    displayPointerId = -1;
                     if (displayLongPress != null) gestureHandler.removeCallbacks(displayLongPress);
                     if (displaySelectionMode || displayLongPressTriggered) {
                         displaySelectionMode = false;
@@ -1570,8 +1763,8 @@ public final class CalculatorView extends View {
                         postInvalidateOnAnimation();
                         return true;
                     }
-                    float dx = event.getX() - displayDownX;
-                    float dy = event.getY() - displayDownY;
+                    float dx = event.getX(actionIndex) - displayDownX;
+                    float dy = event.getY(actionIndex) - displayDownY;
                     if (selectionTapCandidate) {
                         selectionTapCandidate = false;
                         if (Math.abs(dx) < dp(12) && Math.abs(dy) < dp(12)) {
@@ -1580,25 +1773,16 @@ public final class CalculatorView extends View {
                         return true;
                     }
                     if (Math.abs(dx) < dp(18) && Math.abs(dy) < dp(18)) {
-                        moveCursorToDisplayPosition(event.getX(), event.getY(), false);
+                        moveCursorToDisplayPosition(event.getX(actionIndex), event.getY(actionIndex), false);
                     }
                     return true;
                 }
-                touchRouter.pointerUp(pointerId);
-                if (pointerId == repeatingPointerId) stopKeyRepeat();
                 if (event.getActionMasked() == MotionEvent.ACTION_UP) performClick();
                 postInvalidateOnAnimation();
                 return true;
             }
             case MotionEvent.ACTION_CANCEL -> {
-                displayPressed = false;
-                displaySelectionMode = false;
-                displayLongPressTriggered = false;
-                selectionTapCandidate = false;
-                selectionDragEdge = 0;
-                if (displayLongPress != null) gestureHandler.removeCallbacks(displayLongPress);
-                stopKeyRepeat();
-                touchRouter.cancelAll();
+                cancelGestures();
                 postInvalidateOnAnimation();
                 return true;
             }
@@ -1632,6 +1816,20 @@ public final class CalculatorView extends View {
         keyRepeat = null;
         repeatingKey = null;
         repeatingPointerId = -1;
+    }
+
+    /** No delayed input is allowed to survive a lost gesture or inactive window. */
+    private void cancelGestures() {
+        displayPressed = false;
+        displayPointerId = -1;
+        displaySelectionMode = false;
+        displayLongPressTriggered = false;
+        selectionTapCandidate = false;
+        selectionDragEdge = 0;
+        if (displayLongPress != null) gestureHandler.removeCallbacks(displayLongPress);
+        displayLongPress = null;
+        stopKeyRepeat();
+        touchRouter.cancelAll();
     }
 
     private boolean isRepeatableKey(CnCwKey key) {
@@ -1860,6 +2058,7 @@ public final class CalculatorView extends View {
             else return;
         }
         if (target.equals(lastDragSemantic)) return;
+        invalidateEvaluation();
         state = selectionDragEdge < 0
                 ? machine.moveTouchSelectionStart(target)
                 : machine.moveTouchSelectionEnd(target);
@@ -1873,6 +2072,7 @@ public final class CalculatorView extends View {
     private void moveCursorAtomically(CnCwCursorPath target, boolean haptic) {
         if (target == null) target = CnCwCursorPath.rootBoundary(state.cursor());
         if (haptic && target.equals(lastDragSemantic)) return;
+        invalidateEvaluation();
         state = machine.moveCursorTo(target);
         lastDragCursor = state.cursor();
         lastDragSemantic = state.semanticCursor();
@@ -1985,6 +2185,7 @@ public final class CalculatorView extends View {
         CharSequence value = clipboard.getPrimaryClip().getItemAt(0).coerceToText(getContext());
         if (value == null) return;
 
+        invalidateEvaluation();
         int accepted = machine.pasteExpression(value.toString());
         state = machine.state();
         postInvalidateOnAnimation();
@@ -2010,15 +2211,30 @@ public final class CalculatorView extends View {
     }
 
     private void dispatchKey(CnCwKey key) {
-        long revision = ++inputRevision;
-        cancelPendingEvaluation();
-        if (key == CnCwKey.EXE && state.screen().isApplication()
+        if (handleTableResultNavigation(key)) return;
+        long revision = invalidateEvaluation();
+        // Workflow OK/ENTER advances a cell; keep that edit synchronous so
+        // a quickly typed next digit cannot cancel the cell transition.
+        boolean execute = key == CnCwKey.EXE || (!state.hasWorkflowInput()
+                && (key == CnCwKey.OK || key == CnCwKey.ENTER));
+        if (execute && state.screen().isApplication()
                 && !state.applicationLanding()) {
             CnCwMachine snapshot = machine.copyForEvaluation();
             evaluating = true;
             postInvalidateOnAnimation();
             pendingEvaluation = evaluationExecutor.submit(() -> {
-                CnCwUiState next = snapshot.dispatch(key);
+                CnCwUiState next;
+                try {
+                    next = snapshot.dispatch(key);
+                } catch (CancellationException cancelled) {
+                    post(() -> {
+                        if (revision != inputRevision) return;
+                        pendingEvaluation = null;
+                        evaluating = false;
+                        postInvalidateOnAnimation();
+                    });
+                    return;
+                }
                 post(() -> {
                     if (revision != inputRevision) return;
                     machine = snapshot;
@@ -2037,6 +2253,33 @@ public final class CalculatorView extends View {
         postInvalidateOnAnimation();
     }
 
+    private boolean handleTableResultNavigation(CnCwKey key) {
+        if (!state.resultShown() || !state.hasStructuredApplicationResult()) return false;
+        CnCwModeEngine.ModeResult result = state.applicationResult();
+        if (result == null || result.layout() != CnCwModeEngine.ResultLayout.TABLE) return false;
+        int visibleRows = tableVisibleRows(result);
+        int delta = switch (key) {
+            case UP -> -1;
+            case DOWN -> 1;
+            case PAGE_UP -> -visibleRows;
+            case PAGE_DOWN -> visibleRows;
+            default -> 0;
+        };
+        if (delta == 0) return false;
+        if (tableResult != result) {
+            tableResult = result;
+            tableFirstRow = 0;
+        }
+        int maxStart = Math.max(0, result.rows() - visibleRows);
+        int next = Math.max(0, Math.min(maxStart, tableFirstRow + delta));
+        if (next != tableFirstRow) {
+            tableFirstRow = next;
+            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+        }
+        postInvalidateOnAnimation();
+        return true;
+    }
+
     private void cancelPendingEvaluation() {
         if (pendingEvaluation != null) {
             pendingEvaluation.cancel(true);
@@ -2045,10 +2288,33 @@ public final class CalculatorView extends View {
         evaluating = false;
     }
 
-    @Override
-    protected void onDetachedFromWindow() {
+    /** All View-to-machine edits share the same stale-result gate. */
+    private long invalidateEvaluation() {
         inputRevision++;
         cancelPendingEvaluation();
+        return inputRevision;
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasWindowFocus) {
+        super.onWindowFocusChanged(hasWindowFocus);
+        if (!hasWindowFocus) {
+            cancelGestures();
+            invalidateEvaluation();
+            postInvalidateOnAnimation();
+        }
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        if (evaluationExecutor.isShutdown()) evaluationExecutor = createEvaluationExecutor();
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        cancelGestures();
+        invalidateEvaluation();
         evaluationExecutor.shutdownNow();
         super.onDetachedFromWindow();
     }
